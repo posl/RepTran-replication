@@ -1,0 +1,21 @@
+version: '3'
+services:
+  socrates:
+    container_name: terry
+    tty: true
+    image: python3.7
+    build: ./
+    ports:
+      - "9999:9999"
+    volumes:
+      - .:/src
+    # setting to use GPU
+    deploy:
+      resources:
+        reservations:
+          devices:
+          - driver: nvidia
+            capabilities: [gpu]
+    environment:
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=all
