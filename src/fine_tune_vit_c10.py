@@ -1,50 +1,7 @@
-import torch
-from datasets import load_dataset, load_metric
-from transformers import ViTImageProcessor, DefaultDataCollator, ViTForImageClassification, TrainingArguments, Trainer
-from utils import get_device
-
-def transforms(batch):
-    """
-    画像のバッチを前処理する
-    
-    Parameters
-    ------------------
-    
-    Returns
-    ------------------
-    
-    """
-    # 画像のバッチを変換してtorch.tensorにする
-    inputs = processor(images=batch["img"], return_tensors="pt")
-
-    # ラベルのフィールドも前処理時に追加
-    inputs["labels"] = batch["label"]
-    return inputs
-
-def compute_metrics(pred):
-    """
-    予測結果から評価指標を計算する
-    
-    Parameters
-    ------------------
-    
-    Returns
-    ------------------
-    
-    """
-    labels = pred.label_ids
-    preds = pred.predictions.argmax(-1)
-    acc = met_acc.compute(predictions=preds, references=labels)
-    f1 = met_f1.compute(predictions=preds, references=labels, average="macro")
-    return {
-        "accuracy": acc,
-        "f1": f1
-    }
-
-# HACK: processorだけは仕方なくグローバル定義
-# 今回用いるViTで使われている前処理をロード
-model_name_or_path = 'google/vit-base-patch16-224-in21k'
-processor = ViTImageProcessor.from_pretrained(model_name_or_path)
+from datasets import load_dataset
+from transformers import DefaultDataCollator, ViTForImageClassification, TrainingArguments, Trainer
+from utils.helper import get_device
+from utils.vit_util import processor, transforms, compute_metrics
 
 if __name__ == "__main__":
     # デバイス (cuda, or cpu) の取得
@@ -55,14 +12,11 @@ if __name__ == "__main__":
     cifar10_preprocessed = cifar10.with_transform(transforms)
     # バッチごとの処理のためのdata_collator
     data_collator = DefaultDataCollator()
-    # 評価指標のロード
-    met_acc = load_metric("accuracy")
-    met_f1 = load_metric("f1")
     # ラベルを示す文字列のlist
     labels = cifar10_preprocessed["train"].features["label"].names
     # pretrained modelのロード
     model = ViTForImageClassification.from_pretrained(
-        model_name_or_path,
+        "google/vit-base-patch16-224-in21k",
         num_labels=len(labels),
         id2label={str(i): c for i, c in enumerate(labels)},
         label2id={c: str(i) for i, c in enumerate(labels)}
@@ -100,12 +54,6 @@ if __name__ == "__main__":
         tokenizer=processor,
     )
     train_results = trainer.train()
-
-    # 学習＆テストデータの予測
-    train_pred = trainer.predict(cifar10_preprocessed["train"])
-    test_pred = trainer.predict(cifar10_preprocessed["test"])
-    print(train_pred.metrics)
-    print(test_pred.metrics)
 
     # 保存
     trainer.save_model() # from_pretrained()から読み込めるようになる
