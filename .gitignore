@@ -15,4 +15,3 @@ notebooks/*.ipynb
 *.log
 tmp*.sh
 *pkl
-transformers-4.30.2/

@@ -8,6 +8,6 @@ RUN pip install --upgrade pip
 RUN pip install -r requirements.txt
 RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash \
 		&& apt-get install git-lfs && git lfs install
-RUN unzip transformers-4.30.2.zip && cd transformers-4.30.2 && pip install -e .
+RUN cd transformers-4.30.2 && pip install -e .
 EXPOSE 8888
 EXPOSE 6006
