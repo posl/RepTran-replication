@@ -348,6 +348,7 @@ class ViTLayer(nn.Module):
         hidden_states: torch.Tensor,
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
+        output_intermediate_states: bool = False,
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
         self_attention_outputs = self.attention(
             self.layernorm_before(hidden_states),  # in ViT, layernorm is applied before self-attention
@@ -363,11 +364,16 @@ class ViTLayer(nn.Module):
         # in ViT, layernorm is also applied after self-attention
         layer_output = self.layernorm_after(hidden_states)
         layer_output = self.intermediate(layer_output)
+        # TODO:この時点での出力が欲しい！
+        intermediate_outputs = layer_output
 
         # second residual connection is done here
         layer_output = self.output(layer_output, hidden_states)
 
-        outputs = (layer_output,) + outputs
+        if output_intermediate_states:
+            outputs = (layer_output,) + outputs + (intermediate_outputs,)
+        else:
+            outputs = (layer_output,) + outputs
 
         return outputs
 
@@ -385,10 +391,12 @@ class ViTEncoder(nn.Module):
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
         output_hidden_states: bool = False,
+        output_intermediate_states: bool = False,
         return_dict: bool = True,
     ) -> Union[tuple, BaseModelOutput]:
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
+        all_intermediate_states = () if output_intermediate_states else None
 
         for i, layer_module in enumerate(self.layer):
             if output_hidden_states:
@@ -410,12 +418,18 @@ class ViTEncoder(nn.Module):
                     layer_head_mask,
                 )
             else:
-                layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions)
+                layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, output_intermediate_states)
 
             hidden_states = layer_outputs[0]
 
             if output_attentions:
                 all_self_attentions = all_self_attentions + (layer_outputs[1],)
+            
+            if output_intermediate_states:
+                if not output_attentions:
+                    all_intermediate_states = all_intermediate_states + (layer_outputs[1],)
+                else:
+                    all_intermediate_states = all_intermediate_states + (layer_outputs[2],)
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -426,6 +440,7 @@ class ViTEncoder(nn.Module):
             last_hidden_state=hidden_states,
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
+            intermediate_states=all_intermediate_states,
         )
 
 
@@ -552,6 +567,7 @@ class ViTModel(ViTPreTrainedModel):
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        output_intermediate_states: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
@@ -562,6 +578,9 @@ class ViTModel(ViTPreTrainedModel):
         output_attentions = output_attentions if output_attentions is not None else self.config.output_attentions
         output_hidden_states = (
             output_hidden_states if output_hidden_states is not None else self.config.output_hidden_states
+        )
+        output_intermediate_states = (
+            output_intermediate_states if output_intermediate_states is not None else self.config.output_intermediate_states
         )
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
@@ -589,6 +608,7 @@ class ViTModel(ViTPreTrainedModel):
             head_mask=head_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            output_intermediate_states=output_intermediate_states,
             return_dict=return_dict,
         )
         sequence_output = encoder_outputs[0]
@@ -604,6 +624,7 @@ class ViTModel(ViTPreTrainedModel):
             pooler_output=pooled_output,
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
+            intermediate_states=encoder_outputs.intermediate_states,
         )
 
 
@@ -790,6 +811,7 @@ class ViTForImageClassification(ViTPreTrainedModel):
         labels: Optional[torch.Tensor] = None,
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
+        output_intermediate_states: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
     ) -> Union[tuple, ImageClassifierOutput]:
@@ -806,6 +828,7 @@ class ViTForImageClassification(ViTPreTrainedModel):
             head_mask=head_mask,
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
+            output_intermediate_states=output_intermediate_states,
             interpolate_pos_encoding=interpolate_pos_encoding,
             return_dict=return_dict,
         )
@@ -848,4 +871,5 @@ class ViTForImageClassification(ViTPreTrainedModel):
             logits=logits,
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
+            intermediate_states=outputs.intermediate_states,
         )

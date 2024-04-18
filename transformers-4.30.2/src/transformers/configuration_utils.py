@@ -264,6 +264,7 @@ class PretrainedConfig(PushToHubMixin):
         # Attributes with defaults
         self.return_dict = kwargs.pop("return_dict", True)
         self.output_hidden_states = kwargs.pop("output_hidden_states", False)
+        self.output_intermediate_states = kwargs.pop("output_intermediate_states", False)
         self.output_attentions = kwargs.pop("output_attentions", False)
         self.torchscript = kwargs.pop("torchscript", False)  # Only used by PyTorch models
         self.torch_dtype = kwargs.pop("torch_dtype", None)  # Only used by PyTorch models
