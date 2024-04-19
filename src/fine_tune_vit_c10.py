@@ -1,13 +1,16 @@
-from datasets import load_dataset
+import os
+from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, TrainingArguments, Trainer
 from utils.helper import get_device
 from utils.vit_util import processor, transforms, compute_metrics
+from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
     # デバイス (cuda, or cpu) の取得
     device = get_device()
     # datasetをロード (初回の読み込みだけやや時間かかる)
-    cifar10 = load_dataset("cifar10")
+    dataset_dir = ViTExperiment.DATASET_DIR
+    cifar10 = load_from_disk(os.path.join(dataset_dir, "c10"))
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     cifar10_preprocessed = cifar10.with_transform(transforms)
     # バッチごとの処理のためのdata_collator
@@ -16,18 +19,18 @@ if __name__ == "__main__":
     labels = cifar10_preprocessed["train"].features["label"].names
     # pretrained modelのロード
     model = ViTForImageClassification.from_pretrained(
-        "google/vit-base-patch16-224-in21k",
+        ViTExperiment.ViT_PATH,
         num_labels=len(labels),
         id2label={str(i): c for i, c in enumerate(labels)},
         label2id={c: str(i) for i, c in enumerate(labels)}
     ).to(device)
 
     # 学習の設定
-    batch_size = 32
+    batch_size = ViTExperiment.BATCH_SIZE
     logging_steps = len(cifar10_preprocessed["train"]) // batch_size
     training_args = TrainingArguments(
-        output_dir="./out_vit_c10",
-        num_train_epochs=2,
+        output_dir=ViTExperiment.OUTPUT_DIR,
+        num_train_epochs=ViTExperiment.NUM_EPOCHS,
         learning_rate=2e-4,
         weight_decay=0.01,
         per_device_train_batch_size=batch_size,

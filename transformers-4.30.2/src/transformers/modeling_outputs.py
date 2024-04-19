@@ -1204,6 +1204,7 @@ class ImageClassifierOutput(ModelOutput):
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
     intermediate_states: Optional[Tuple[torch.FloatTensor]] = None
+    gradients: Optional[Tuple[torch.FloatTensor]] = None
 
 
 @dataclass

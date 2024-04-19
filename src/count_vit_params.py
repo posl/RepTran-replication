@@ -1,12 +1,11 @@
-import os, sys
 import numpy as np
-import torch
 from transformers import AutoModelForImageClassification, Trainer
 from utils.helper import get_device
+from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
     device = get_device()
-    pretrained_dir = "/src/src/out_vit_c10"
+    pretrained_dir = ViTExperiment.OUTPUT_DIR
     # pretrained modelのロード
     loaded_model = AutoModelForImageClassification.from_pretrained(pretrained_dir).to(device)
     loaded_model.eval()

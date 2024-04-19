@@ -1,7 +1,10 @@
 from datasets import load_metric
 from transformers import ViTImageProcessor
+import sys
+sys.path.append('../')
+from utils.constant import ViTExperiment
 
-processor = ViTImageProcessor.from_pretrained("google/vit-base-patch16-224-in21k")
+processor = ViTImageProcessor.from_pretrained(ViTExperiment.ViT_PATH)
 met_acc = load_metric("accuracy")
 met_f1 = load_metric("f1")
 
@@ -42,3 +45,4 @@ def compute_metrics(pred):
         "accuracy": acc,
         "f1": f1
     }
+

@@ -308,9 +308,12 @@ class ViTIntermediate(nn.Module):
         else:
             self.intermediate_act_fn = config.hidden_act
 
-    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+    def forward(self, hidden_states: torch.Tensor, tgt_pos=None, tmp_score=None) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         hidden_states = self.intermediate_act_fn(hidden_states)
+        # 特定の位置のニューロン値を置き換える
+        if tmp_score is not None:
+            hidden_states[:, tgt_pos, :] = tmp_score
 
         return hidden_states
 
@@ -349,6 +352,7 @@ class ViTLayer(nn.Module):
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
         output_intermediate_states: bool = False,
+        tgt_pos=None, tmp_score=None
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
         self_attention_outputs = self.attention(
             self.layernorm_before(hidden_states),  # in ViT, layernorm is applied before self-attention
@@ -363,7 +367,7 @@ class ViTLayer(nn.Module):
 
         # in ViT, layernorm is also applied after self-attention
         layer_output = self.layernorm_after(hidden_states)
-        layer_output = self.intermediate(layer_output)
+        layer_output = self.intermediate(layer_output, tgt_pos=tgt_pos, tmp_score=tmp_score)
         # TODO:この時点での出力が欲しい！
         intermediate_outputs = layer_output
 
@@ -393,6 +397,7 @@ class ViTEncoder(nn.Module):
         output_hidden_states: bool = False,
         output_intermediate_states: bool = False,
         return_dict: bool = True,
+        tgt_layer=None, tgt_pos=None, tmp_score=None
     ) -> Union[tuple, BaseModelOutput]:
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
@@ -418,8 +423,19 @@ class ViTEncoder(nn.Module):
                     layer_head_mask,
                 )
             else:
-                layer_outputs = layer_module(hidden_states, layer_head_mask, output_attentions, output_intermediate_states)
-
+                if i == tgt_layer:
+                    layer_outputs = layer_module(
+                                                hidden_states, layer_head_mask,
+                                                output_attentions=output_attentions,
+                                                output_intermediate_states=output_intermediate_states,
+                                                tgt_pos=tgt_pos, tmp_score=tmp_score
+                                                )
+                else:
+                    layer_outputs = layer_module(
+                                                hidden_states, layer_head_mask,
+                                                output_attentions=output_attentions,
+                                                output_intermediate_states=output_intermediate_states,
+                                                )
             hidden_states = layer_outputs[0]
 
             if output_attentions:
@@ -570,6 +586,7 @@ class ViTModel(ViTPreTrainedModel):
         output_intermediate_states: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        tgt_layer=None, tgt_pos=None, tmp_score=None
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
         r"""
         bool_masked_pos (`torch.BoolTensor` of shape `(batch_size, num_patches)`, *optional*):
@@ -610,6 +627,7 @@ class ViTModel(ViTPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_intermediate_states=output_intermediate_states,
             return_dict=return_dict,
+            tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score
         )
         sequence_output = encoder_outputs[0]
         sequence_output = self.layernorm(sequence_output)
@@ -814,6 +832,7 @@ class ViTForImageClassification(ViTPreTrainedModel):
         output_intermediate_states: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
+        tgt_layer=None, tgt_pos=None, tmp_score=None, tgt_label=None
     ) -> Union[tuple, ImageClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -823,6 +842,11 @@ class ViTForImageClassification(ViTPreTrainedModel):
         """
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
+        if tmp_score is not None:
+            batch_size = tmp_score.shape[0]
+            # pixel_valuesをbatch_sizeだけrepeatして4次元のtensorにする
+            pixel_values = pixel_values.repeat(batch_size, 1, 1, 1)
+
         outputs = self.vit(
             pixel_values,
             head_mask=head_mask,
@@ -831,11 +855,22 @@ class ViTForImageClassification(ViTPreTrainedModel):
             output_intermediate_states=output_intermediate_states,
             interpolate_pos_encoding=interpolate_pos_encoding,
             return_dict=return_dict,
+            tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score
         )
 
         sequence_output = outputs[0]
 
         logits = self.classifier(sequence_output[:, 0, :])
+        
+        if tmp_score is not None:
+            # tgt_labelが定義されているかどうかをチェック
+            assert tgt_label is not None
+            import torch.nn.functional as F
+            tgt_probs = F.softmax(logits, dim=1)  # (batch, 1)
+            tgt_prob = tgt_probs[:, tgt_label]
+            gradients = torch.autograd.grad(torch.unbind(tgt_prob), tmp_score)[0]
+        else:
+            gradients = None
 
         loss = None
         if labels is not None:
@@ -872,4 +907,5 @@ class ViTForImageClassification(ViTPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
             intermediate_states=outputs.intermediate_states,
+            gradients=gradients
         )

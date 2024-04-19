@@ -15,3 +15,5 @@ notebooks/*.ipynb
 *.log
 tmp*.sh
 *pkl
+dataset/*
+!dataset/*.py
