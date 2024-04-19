@@ -397,7 +397,8 @@ class ViTEncoder(nn.Module):
         output_hidden_states: bool = False,
         output_intermediate_states: bool = False,
         return_dict: bool = True,
-        tgt_layer=None, tgt_pos=None, tmp_score=None
+        tgt_layer=None, tgt_pos=None, tmp_score=None,
+        prev_hidden_states = None
     ) -> Union[tuple, BaseModelOutput]:
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
@@ -405,6 +406,7 @@ class ViTEncoder(nn.Module):
 
         for i, layer_module in enumerate(self.layer):
             if output_hidden_states:
+                assert prev_hidden_states is None, "output_hidden_states and prev_hidden_states can't be set at the same time."
                 all_hidden_states = all_hidden_states + (hidden_states,)
 
             layer_head_mask = head_mask[i] if head_mask is not None else None
@@ -422,7 +424,23 @@ class ViTEncoder(nn.Module):
                     hidden_states,
                     layer_head_mask,
                 )
-            else:
+            elif prev_hidden_states is None:
+                if i == tgt_layer:
+                    layer_outputs = layer_module(
+                                                hidden_states, layer_head_mask,
+                                                output_attentions=output_attentions,
+                                                output_intermediate_states=output_intermediate_states,
+                                                tgt_pos=tgt_pos, tmp_score=tmp_score
+                                                )
+                else:
+                    layer_outputs = layer_module(
+                                                hidden_states, layer_head_mask,
+                                                output_attentions=output_attentions,
+                                                output_intermediate_states=output_intermediate_states,
+                                                )
+            elif prev_hidden_states is not None:
+                if i <= tgt_layer-1:
+                    layer_outputs = (prev_hidden_states, )
                 if i == tgt_layer:
                     layer_outputs = layer_module(
                                                 hidden_states, layer_head_mask,
@@ -586,7 +604,8 @@ class ViTModel(ViTPreTrainedModel):
         output_intermediate_states: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        tgt_layer=None, tgt_pos=None, tmp_score=None
+        tgt_layer=None, tgt_pos=None, tmp_score=None,
+        prev_hidden_states = None
     ) -> Union[Tuple, BaseModelOutputWithPooling]:
         r"""
         bool_masked_pos (`torch.BoolTensor` of shape `(batch_size, num_patches)`, *optional*):
@@ -627,7 +646,8 @@ class ViTModel(ViTPreTrainedModel):
             output_hidden_states=output_hidden_states,
             output_intermediate_states=output_intermediate_states,
             return_dict=return_dict,
-            tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score
+            tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score,
+            prev_hidden_states = prev_hidden_states
         )
         sequence_output = encoder_outputs[0]
         sequence_output = self.layernorm(sequence_output)
@@ -832,7 +852,8 @@ class ViTForImageClassification(ViTPreTrainedModel):
         output_intermediate_states: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
-        tgt_layer=None, tgt_pos=None, tmp_score=None, tgt_label=None
+        tgt_layer=None, tgt_pos=None, tmp_score=None, tgt_label=None,
+        prev_hidden_states = None
     ) -> Union[tuple, ImageClassifierOutput]:
         r"""
         labels (`torch.LongTensor` of shape `(batch_size,)`, *optional*):
@@ -855,7 +876,8 @@ class ViTForImageClassification(ViTPreTrainedModel):
             output_intermediate_states=output_intermediate_states,
             interpolate_pos_encoding=interpolate_pos_encoding,
             return_dict=return_dict,
-            tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score
+            tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score,
+            prev_hidden_states=prev_hidden_states
         )
 
         sequence_output = outputs[0]

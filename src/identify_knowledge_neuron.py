@@ -2,6 +2,7 @@ import os, sys, time
 from tqdm import tqdm
 import numpy as np
 import torch
+import argparse
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
@@ -34,6 +35,11 @@ if __name__ == "__main__":
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
 
+    parser = argparse.ArgumentParser(description='start_layer_idx selector')
+    parser.add_argument('--start_layer_idx', type=int, default=9)
+    args = parser.parse_args()
+    start_layer_idx = args.start_layer_idx
+
     # ひとまず適当にtgt_layerを決めて中間層のニューロンを取得する
     tgt_pos = ViTExperiment.CLS_IDX # tgt_posはCLS_IDXで固定 (intermediate_statesの2次元目の0番目の要素に対応する中間層ニューロン)
     num_points = ViTExperiment.NUM_POINTS # integrated gradientの積分近似の分割数
@@ -44,36 +50,34 @@ if __name__ == "__main__":
         'base': [],
         'ig_list': []
     }
-    start_layer_idx = 9
+    cache_dir = os.path.join(ViTExperiment.OUTPUT_DIR, f"cache_states_train")
     tic = time.perf_counter()
+
     # loop for the layer
     for tgt_layer in range(start_layer_idx, model.vit.config.num_hidden_layers):
         print(f"tgt_layer={tgt_layer}")
         grad_list, base_list = [], []
+        # 対象のレイヤの1つ前のhidden neuronsの値を取得 (直前から計算を再開したいので)
+        hidden_save_path = os.path.join(cache_dir, f"hidden_states_l{tgt_layer-1}.pt")
+        cached_hidden_states = torch.load(hidden_save_path, map_location="cpu")
+        # 対象のレイヤのintermediate neuronsの値を取得
+        intermediate_save_path = os.path.join(cache_dir, f"intermediate_states_l{tgt_layer}.pt")
+        cached_mid_states = torch.load(intermediate_save_path, map_location="cpu")
+
         # loop for the dataset
-        for si, entry_dic in tqdm(enumerate(cifar10_preprocessed["train"].iter(batch_size=1)), 
+        for data_idx, entry_dic in tqdm(enumerate(cifar10_preprocessed["train"].iter(batch_size=1)), 
                                 total=len(cifar10_preprocessed["train"])): # NOTE: 重みを変える分でバッチ次元使ってるのでデータサンプルにバッチ次元をできない (データのバッチ化ができない)
-            if si == 1:
-                break
+            # if data_idx == 100:
+            #     break
+            # data_idxに対応するcached statesを取得
+            cached_hidden_state = torch.unsqueeze(cached_hidden_states[data_idx], 0)
+            tgt_mid = torch.unsqueeze(cached_mid_states[data_idx], 0)
+            # data取得
             x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"][0]
-            # print("get prediction labels...")
-            output = model.forward(x, output_intermediate_states=True)
-            
-            # get pred label
-            logits = output.logits
-            y_pred = int(torch.argmax(logits[0, :]))  # scalar
-            # print(f"y_true={y}, y_pred={y_pred}")
-            res_dict['pred'].append(y_pred)
-            
-            # get intermediate states
-            mid = output.intermediate_states
-            tgt_mid = mid[tgt_layer][:, tgt_pos, :]
-            
             # get scaled weights
             scaled_weights, weights_step = scaled_input(tgt_mid, num_points)  # (num_points, ffn_size), (ffn_size)
             scaled_weights.requires_grad_(True)
-            # print("get integrated gradients...")
-            output = model(x, tgt_pos=tgt_pos, tgt_layer=tgt_layer, tmp_score=scaled_weights, tgt_label=y)
+            output = model(x, tgt_pos=tgt_pos, tgt_layer=tgt_layer, tmp_score=scaled_weights, tgt_label=y, prev_hidden_states=cached_hidden_state)
             grad = output.gradients
             # this var stores the partial diff. for each scaled weights
             grad = grad.sum(dim=0)  # (ffn_size) # ここが積分計算の近似値
@@ -84,15 +88,19 @@ if __name__ == "__main__":
     
     res_dict['ig_list'] = np.array(res_dict['ig_list']).transpose(1, 0, 2)
     res_dict['base'] = np.array(res_dict['base']).transpose(1, 0, 2)
-    print(res_dict['ig_list'].shape) # (num_sample, 12, 3072) = (サンプル数, レイヤ数, 中間ニューロン数)
-    print(res_dict['base'].shape) # (num_sample, 12, 3072) = (サンプル数, レイヤ数, 中間ニューロン数)
+    print(res_dict['ig_list'].shape) # (num_sample, num_tgt_layers, 3072) = (サンプル数, 対象レイヤ数, 中間ニューロン数)
+    print(res_dict['base'].shape) # (num_sample, num_tgt_layers, 3072) = (サンプル数, 対象レイヤ数, 中間ニューロン数)
     # result_dirがなかったら作る
     result_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "results")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     # npyで三次元配列を保存
-    np.save(os.path.join(result_dir, f"ig_list_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy"), res_dict['ig_list'])
-    np.save(os.path.join(result_dir, f"base_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy"), res_dict['base'])
+    ig_list_save_path = os.path.join(result_dir, f"ig_list_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy")
+    np.save(ig_list_save_path, res_dict['ig_list'])
+    base_save_path = os.path.join(result_dir, f"base_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy")
+    np.save(base_save_path, res_dict['base'])
+    print(f"ig_list: {res_dict['ig_list'].shape} is saved at {ig_list_save_path}.")
+    print(f"base: {res_dict['base'].shape} is saved at {base_save_path}.")
 
     toc = time.perf_counter()
     print(f"***** Costing time: {toc - tic:0.4f} seconds *****")
