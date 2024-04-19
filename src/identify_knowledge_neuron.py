@@ -41,14 +41,15 @@ if __name__ == "__main__":
     # record various results
     res_dict = {
         'pred': [],
-        'ig_pred': [],
-        'ig_gold': [],
-        'base': []
+        'base': [],
+        'ig_list': []
     }
+    start_layer_idx = 9
     tic = time.perf_counter()
-    for tgt_layer in range(model.vit.config.num_hidden_layers):
+    # loop for the layer
+    for tgt_layer in range(start_layer_idx, model.vit.config.num_hidden_layers):
         print(f"tgt_layer={tgt_layer}")
-        ig_gold = None # integrated gradient for gold label
+        grad_list, base_list = [], []
         # loop for the dataset
         for si, entry_dic in tqdm(enumerate(cifar10_preprocessed["train"].iter(batch_size=1)), 
                                 total=len(cifar10_preprocessed["train"])): # NOTE: 重みを変える分でバッチ次元使ってるのでデータサンプルにバッチ次元をできない (データのバッチ化ができない)
@@ -56,7 +57,7 @@ if __name__ == "__main__":
                 break
             x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"][0]
             # print("get prediction labels...")
-            output = model.forward(x, output_hidden_states=True, output_attentions=True, output_intermediate_states=True)
+            output = model.forward(x, output_intermediate_states=True)
             
             # get pred label
             logits = output.logits
@@ -75,11 +76,23 @@ if __name__ == "__main__":
             output = model(x, tgt_pos=tgt_pos, tgt_layer=tgt_layer, tmp_score=scaled_weights, tgt_label=y)
             grad = output.gradients
             # this var stores the partial diff. for each scaled weights
-            grad = grad.sum(dim=0)  # (ffn_size)
-            ig_gold = grad if ig_gold is None else torch.add(ig_gold, grad)  # (ffn_size)
-        ig_gold = ig_gold * weights_step  # (ffn_size)
-        res_dict['ig_gold'].append(ig_gold.tolist())
-        res_dict['base'].append(tgt_mid.squeeze().tolist())
-    print(np.array(res_dict['ig_gold']).shape) # (12, 3072) = (レイヤ数, 中間ニューロン数)
+            grad = grad.sum(dim=0)  # (ffn_size) # ここが積分計算の近似値
+            grad_list.append(grad.tolist())
+            base_list.append(tgt_mid.squeeze().tolist())
+        res_dict['ig_list'].append(np.array(grad_list))
+        res_dict['base'].append(np.array(base_list))
+    
+    res_dict['ig_list'] = np.array(res_dict['ig_list']).transpose(1, 0, 2)
+    res_dict['base'] = np.array(res_dict['base']).transpose(1, 0, 2)
+    print(res_dict['ig_list'].shape) # (num_sample, 12, 3072) = (サンプル数, レイヤ数, 中間ニューロン数)
+    print(res_dict['base'].shape) # (num_sample, 12, 3072) = (サンプル数, レイヤ数, 中間ニューロン数)
+    # result_dirがなかったら作る
+    result_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "results")
+    if not os.path.exists(result_dir):
+        os.makedirs(result_dir)
+    # npyで三次元配列を保存
+    np.save(os.path.join(result_dir, f"ig_list_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy"), res_dict['ig_list'])
+    np.save(os.path.join(result_dir, f"base_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy"), res_dict['base'])
+
     toc = time.perf_counter()
     print(f"***** Costing time: {toc - tic:0.4f} seconds *****")
