@@ -22,27 +22,36 @@ def scaled_input(emb, num_points):
     return res, step[0]
 
 if __name__ == "__main__":
+    # プログラム引数の受け取り
+    parser = argparse.ArgumentParser(description='start_layer_idx selector')
+    parser.add_argument('tgt_label', type=int)
+    parser.add_argument('--used_column', type=str, default="train")
+    parser.add_argument('--start_layer_idx', type=int, default=9)
+    args = parser.parse_args()
+    tgt_label = args.tgt_label
+    start_layer_idx = args.start_layer_idx
+    used_column = args.used_column
+
     # デバイス (cuda, or cpu) の取得
     device = get_device()
     # datasetをロード (初回の読み込みだけやや時間かかる)
     cifar10 = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, "c10"))
+    # 指定したラベルだけ集めたデータセット
+    tgt_dataset = cifar10[used_column].filter(lambda x: x["label"] == tgt_label)
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
-    cifar10_preprocessed = cifar10.with_transform(transforms)
+    cifar10_preprocessed = tgt_dataset.with_transform(transforms)
     # ラベルを示す文字列のlist
-    labels = cifar10_preprocessed["train"].features["label"].names
+    labels = cifar10_preprocessed.features["label"].names
     # pretrained modelのロード
     pretrained_dir = ViTExperiment.OUTPUT_DIR
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
 
-    parser = argparse.ArgumentParser(description='start_layer_idx selector')
-    parser.add_argument('--start_layer_idx', type=int, default=9)
-    args = parser.parse_args()
-    start_layer_idx = args.start_layer_idx
 
     # ひとまず適当にtgt_layerを決めて中間層のニューロンを取得する
     tgt_pos = ViTExperiment.CLS_IDX # tgt_posはCLS_IDXで固定 (intermediate_statesの2次元目の0番目の要素に対応する中間層ニューロン)
     num_points = ViTExperiment.NUM_POINTS # integrated gradientの積分近似の分割数
+    end_layer_idx = model.vit.config.num_hidden_layers
     
     # record various results
     res_dict = {
@@ -54,7 +63,7 @@ if __name__ == "__main__":
     tic = time.perf_counter()
 
     # loop for the layer
-    for tgt_layer in range(start_layer_idx, model.vit.config.num_hidden_layers):
+    for tgt_layer in range(start_layer_idx, end_layer_idx):
         print(f"tgt_layer={tgt_layer}")
         grad_list, base_list = [], []
         # 対象のレイヤの1つ前のhidden neuronsの値を取得 (直前から計算を再開したいので)
@@ -65,13 +74,13 @@ if __name__ == "__main__":
         cached_mid_states = torch.load(intermediate_save_path, map_location="cpu")
 
         # loop for the dataset
-        for data_idx, entry_dic in tqdm(enumerate(cifar10_preprocessed["train"].iter(batch_size=1)), 
-                                total=len(cifar10_preprocessed["train"])): # NOTE: 重みを変える分でバッチ次元使ってるのでデータサンプルにバッチ次元をできない (データのバッチ化ができない)
+        for data_idx, entry_dic in tqdm(enumerate(cifar10_preprocessed.iter(batch_size=1)), 
+                                total=len(cifar10_preprocessed)): # NOTE: 重みを変える分でバッチ次元使ってるのでデータサンプルにバッチ次元をできない (データのバッチ化ができない)
             # if data_idx == 100:
             #     break
             # data_idxに対応するcached statesを取得
-            cached_hidden_state = torch.unsqueeze(cached_hidden_states[data_idx], 0)
-            tgt_mid = torch.unsqueeze(cached_mid_states[data_idx], 0)
+            cached_hidden_state = torch.unsqueeze(cached_hidden_states[data_idx], 0).to(device)
+            tgt_mid = torch.unsqueeze(cached_mid_states[data_idx], 0).to(device)
             # data取得
             x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"][0]
             # get scaled weights
@@ -95,9 +104,9 @@ if __name__ == "__main__":
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     # npyで三次元配列を保存
-    ig_list_save_path = os.path.join(result_dir, f"ig_list_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy")
+    ig_list_save_path = os.path.join(result_dir, f"ig_list_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}_{tgt_label}.npy")
     np.save(ig_list_save_path, res_dict['ig_list'])
-    base_save_path = os.path.join(result_dir, f"base_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}.npy")
+    base_save_path = os.path.join(result_dir, f"base_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}_{tgt_label}.npy")
     np.save(base_save_path, res_dict['base'])
     print(f"ig_list: {res_dict['ig_list'].shape} is saved at {ig_list_save_path}.")
     print(f"base: {res_dict['base'].shape} is saved at {base_save_path}.")
