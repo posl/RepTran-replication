@@ -31,6 +31,8 @@ if __name__ == "__main__":
     tgt_label = args.tgt_label
     start_layer_idx = args.start_layer_idx
     used_column = args.used_column
+    # argparseで受け取った引数のサマリーを表示
+    print(f"tgt_label: {tgt_label}, start_layer_idx: {start_layer_idx}, used_column: {used_column}")
 
     # デバイス (cuda, or cpu) の取得
     device = get_device()
