@@ -2,7 +2,6 @@ import os, subprocess, argparse
 
 if __name__ == "__main__":
     argparse = argparse.ArgumentParser()
-    # tgt_labelをスキップするリスト
     argparse.add_argument("--tgt_labels", type=int, nargs="*", default=range(10))
     args = argparse.parse_args()
     tgt_labels = args.tgt_labels
