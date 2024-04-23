@@ -9,6 +9,6 @@ if __name__ == "__main__":
     
     os.chdir("../src")
     for tgt_label in tgt_labels:
-        result = subprocess.run(["python", "identify_knowledge_neuron.py", str(tgt_label)])
+        result = subprocess.run(["python", "calc_integrated_gradient.py", str(tgt_label)])
         if result.returncode != 0:
             exit(1)
