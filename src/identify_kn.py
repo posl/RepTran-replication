@@ -23,7 +23,7 @@ if __name__ == "__main__":
         for tgt_label in tgt_labels:
             print(f"tgt_label: {tgt_label}")
             # neuronごとのscoreの保存されているnpy
-            res_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "results")
+            res_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "neuron_scores")
             # scoreをロード
             ig_path = os.path.join(res_dir, f"{ig_method}_l{start_layer_idx}tol12_{tgt_label}.npy")
             ig = np.load(ig_path)

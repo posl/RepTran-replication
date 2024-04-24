@@ -61,16 +61,13 @@ if __name__ == "__main__":
         'base': [],
         'ig_list': []
     }
-    cache_dir = os.path.join(ViTExperiment.OUTPUT_DIR, f"cache_states_train")
+    cache_dir = os.path.join(ViTExperiment.OUTPUT_DIR, f"cache_states_{used_column}")
     tic = time.perf_counter()
 
     # loop for the layer
     for tgt_layer in range(start_layer_idx, end_layer_idx):
         print(f"tgt_layer={tgt_layer}")
         grad_list, base_list = [], []
-        # 対象のレイヤの1つ前のhidden neuronsの値を取得 (直前から計算を再開したいので)
-        hidden_save_path = os.path.join(cache_dir, f"hidden_states_l{tgt_layer-1}.pt")
-        cached_hidden_states = torch.load(hidden_save_path, map_location="cpu")
         # 対象のレイヤのintermediate neuronsの値を取得
         intermediate_save_path = os.path.join(cache_dir, f"intermediate_states_l{tgt_layer}.pt")
         cached_mid_states = torch.load(intermediate_save_path, map_location="cpu")
@@ -81,14 +78,13 @@ if __name__ == "__main__":
             # if data_idx == 100:
             #     break
             # data_idxに対応するcached statesを取得
-            cached_hidden_state = torch.unsqueeze(cached_hidden_states[data_idx], 0).to(device)
             tgt_mid = torch.unsqueeze(cached_mid_states[data_idx], 0).to(device)
             # data取得
             x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"][0]
             # get scaled weights
             scaled_weights, weights_step = scaled_input(tgt_mid, num_points)  # (num_points, ffn_size), (ffn_size)
             scaled_weights.requires_grad_(True)
-            output = model(x, tgt_pos=tgt_pos, tgt_layer=tgt_layer, tmp_score=scaled_weights, tgt_label=y, prev_hidden_states=cached_hidden_state)
+            output = model(x, tgt_pos=tgt_pos, tgt_layer=tgt_layer, tmp_score=scaled_weights, tgt_label=y)
             grad = output.gradients
             # this var stores the partial diff. for each scaled weights
             grad = grad.sum(dim=0)  # (ffn_size) # ここが積分計算の近似値
@@ -102,7 +98,7 @@ if __name__ == "__main__":
     print(res_dict['ig_list'].shape) # (num_sample, num_tgt_layers, 3072) = (サンプル数, 対象レイヤ数, 中間ニューロン数)
     print(res_dict['base'].shape) # (num_sample, num_tgt_layers, 3072) = (サンプル数, 対象レイヤ数, 中間ニューロン数)
     # result_dirがなかったら作る
-    result_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "results")
+    result_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "neuron_scores")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     # npyで三次元配列を保存
