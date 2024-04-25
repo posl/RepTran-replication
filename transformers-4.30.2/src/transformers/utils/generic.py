@@ -432,7 +432,7 @@ def find_labels(model_class):
     if "QuestionAnswering" in model_name:
         return [p for p in signature.parameters if "label" in p or p in ("start_positions", "end_positions")]
     else:
-        return [p for p in signature.parameters if "label" in p]
+        return [p for p in signature.parameters if ("label" in p and p != "tgt_label")]
 
 
 def flatten_dict(d: MutableMapping, parent_key: str = "", delimiter: str = "."):
