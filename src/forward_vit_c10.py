@@ -10,7 +10,7 @@ from utils.vit_util import processor, transforms, compute_metrics
 from utils.constant import ViTExperiment
 
 def pred_to_proba(pred):
-    proba = torch.nn.functional.softmax(torch.tensor(pred.predictions[1]), dim=-1)
+    proba = torch.nn.functional.softmax(torch.tensor(pred.predictions), dim=-1)
     return proba.cpu().numpy()
 
 
@@ -78,7 +78,7 @@ if __name__ == "__main__":
         with open(os.path.join(pred_out_dir, "test_pred.pkl"), "wb") as f:
             pickle.dump(test_pred, f)
         # proba (各サンプルに対する予測確率) を正解ラベルごとにまとめたものも保存する
-        train_labels = np.array(cifar10["train"]["label"])
+        train_labels = np.array(cifar10["train"]["label"]) # サンプルごとの正解ラベル
         test_labels = np.array(cifar10["test"]["label"])
         # PredictionOutputオブジェクト -> 予測確率に変換
         train_pred_proba = pred_to_proba(train_pred)
