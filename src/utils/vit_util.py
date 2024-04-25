@@ -1,12 +1,13 @@
-from datasets import load_metric
+import numpy as np
 from transformers import ViTImageProcessor
 import sys
 sys.path.append('../')
 from utils.constant import ViTExperiment
+import evaluate
 
 processor = ViTImageProcessor.from_pretrained(ViTExperiment.ViT_PATH)
-met_acc = load_metric("accuracy")
-met_f1 = load_metric("f1")
+met_acc = evaluate.load("accuracy")
+met_f1 = evaluate.load("f1")
 
 def transforms(batch):
     """
@@ -26,7 +27,7 @@ def transforms(batch):
     inputs["labels"] = batch["label"]
     return inputs
 
-def compute_metrics(pred):
+def compute_metrics(eval_pred):
     """
     予測結果から評価指標を計算する
     
@@ -37,12 +38,12 @@ def compute_metrics(pred):
     ------------------
     
     """
-    labels = pred.label_ids
-    preds = pred.predictions.argmax(-1)
-    acc = met_acc.compute(predictions=preds, references=labels)
-    f1 = met_f1.compute(predictions=preds, references=labels, average="macro")
+    logits = eval_pred.predictions
+    labels = eval_pred.label_ids
+    predictions = np.argmax(logits, axis=-1)
+    acc = met_acc.compute(predictions=predictions, references=labels)
+    f1 = met_f1.compute(predictions=predictions, references=labels, average="macro")
     return {
         "accuracy": acc,
         "f1": f1
     }
-
