@@ -26,7 +26,14 @@ if __name__ == "__main__":
     device = get_device()
     # datasetをロード (初回の読み込みだけやや時間かかる)
     dataset_dir = ViTExperiment.DATASET_DIR
+    # バッチごとの処理のためのdata_collator
+    data_collator = DefaultDataCollator()
     ds = load_from_disk(os.path.join(dataset_dir, ds_name))
+    # label取得のためoriginal datasetも取得する
+    ds_ori_name = ds_name.rstrip("c") if ds_name.endswith("c") else ds_name
+    ds_ori = load_from_disk(os.path.join(dataset_dir, ds_ori_name))
+    ds_ori_preprocessed = ds_ori.with_transform(transforms)
+    
     # datasetごとに違う変数のセット
     if ds_name == "c10" or ds_name == "c10c":
         tf_func = transforms
@@ -38,13 +45,11 @@ if __name__ == "__main__":
         NotImplementedError
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     ds_preprocessed = ds.with_transform(tf_func)
-    # バッチごとの処理のためのdata_collator
-    data_collator = DefaultDataCollator()
     # ラベルを示す文字列のlist
-    labels = ds_preprocessed["train"].features[label_col].names
+    labels = ds_ori_preprocessed["train"].features[label_col].names
     
     # pretrained modelのロード
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR if ds_name == "c10" or ds_name == "c100" else getattr(ViTExperiment, ds_name.rstrip("c")).OUTPUT_DIR
+    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR if ds_name == "c10" or ds_name == "c100" else getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # 学習時の設定をロード
@@ -55,16 +60,13 @@ if __name__ == "__main__":
         args=training_args,
         data_collator=data_collator,
         compute_metrics=compute_metrics,
-        train_dataset=ds_preprocessed["train"],
-        eval_dataset=ds_preprocessed["test"],
+        train_dataset=ds_ori_preprocessed["train"],
+        eval_dataset=ds_ori_preprocessed["test"],
         tokenizer=processor,
     )
-    # データセットのサイズとバッチサイズからイテレーション回数を計算
     training_args_dict = training_args.to_dict()
     train_batch_size = training_args_dict["per_device_train_batch_size"]
     eval_batch_size = training_args_dict["per_device_eval_batch_size"]
-    train_iter = math.ceil(len(ds_preprocessed["train"]) / train_batch_size)
-    eval_iter = math.ceil(len(ds_preprocessed["test"]) / eval_batch_size)
     # 予測結果格納ディレクトリ
     pred_out_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     # pred_out_dirがなければ作成
@@ -74,6 +76,9 @@ if __name__ == "__main__":
     # C10 or C100データセットに対する推論
     # ====================================================================
     if ds_name == "c10" or ds_name == "c100":
+        # データセットのサイズとバッチサイズからイテレーション回数を計算
+        train_iter = math.ceil(len(ds_preprocessed["train"]) / train_batch_size)
+        eval_iter = math.ceil(len(ds_preprocessed["test"]) / eval_batch_size)
         # 訓練・テストデータに対する推論の実行
         print(f"predict training data... #iter = {train_iter} ({len(ds_preprocessed['train'])} samples / {train_batch_size} batches)")
         train_pred = trainer.predict(ds_preprocessed["train"])
@@ -107,11 +112,11 @@ if __name__ == "__main__":
     # ====================================================================
     if ds_name == "c10c" or ds_name == "c100c":
         # 20種類のcorruptionsに対するループ
-        for key in ds.keys():
-            eval_iter = math.ceil(len(ds_preprocessed) / eval_batch_size)
+        for key in ds_preprocessed.keys():
+            eval_iter = math.ceil(len(ds_preprocessed[key]) / eval_batch_size)
             # 推論の実行
-            print(f"predict {ds_name}:{key} data... #iter = {eval_iter} ({len(ds_preprocessed)} samples / {eval_batch_size} batches)")
-            key_pred = trainer.predict(ds_preprocessed)
+            print(f"predict {ds_name}:{key} data... #iter = {eval_iter} ({len(ds_preprocessed[key])} samples / {eval_batch_size} batches)")
+            key_pred = trainer.predict(ds_preprocessed[key])
             # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
             with open(os.path.join(pred_out_dir, f"{ds_name}_{key}_pred.pkl"), "wb") as f:
                 pickle.dump(key_pred, f)
