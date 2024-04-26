@@ -67,7 +67,7 @@ elif ds == "c100c":
         features=datasets.Features(
             {
                 "img": cifar100["train"].features["img"],
-                "label": cifar100["train"].features["fine_label"],
+                "fine_label": cifar100["train"].features["fine_label"],
             }
         ),
     )
@@ -84,7 +84,7 @@ elif ds == "c100c":
             continue
         print(f"key: {key}")
         ds_arr = np.load(os.path.join(c100c_raw_dir, npy_file))
-        ds_dict[key] = Dataset.from_dict({"img": arr2img(ds_arr), "label": labels}, info=info)
+        ds_dict[key] = Dataset.from_dict({"img": arr2img(ds_arr), "fine_label": labels}, info=info)
     print(ds_dict)
     ds_dict.save_to_disk("c100c")
 else:
