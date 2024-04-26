@@ -1,11 +1,18 @@
+import argparse
 import numpy as np
 from transformers import AutoModelForImageClassification, Trainer
 from utils.helper import get_device
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
+    # データセットをargparseで受け取る
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ds", type=str)
+    args = parser.parse_args()
+    ds_name = args.ds
+    print(f"ds_name: {ds_name}")
     device = get_device()
-    pretrained_dir = ViTExperiment.OUTPUT_DIR
+    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
     # pretrained modelのロード
     loaded_model = AutoModelForImageClassification.from_pretrained(pretrained_dir).to(device)
     loaded_model.eval()

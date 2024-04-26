@@ -41,13 +41,13 @@ if __name__ == "__main__":
         # ラベルを示す文字列のlist
         labels = cifar10_preprocessed.features["label"].names
         # pretrained modelのロード
-        pretrained_dir = ViTExperiment.OUTPUT_DIR
+        pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
         model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
         model.eval()
         end_layer_idx = model.vit.config.num_hidden_layers
 
         # 知識ニューロンを読み込む
-        save_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "neuron_scores")
+        save_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
         kn_path = os.path.join(save_dir, f"{tgt_method}_l{start_layer_idx}tol12_{tgt_label}.json")
         with open(kn_path, "r") as f:
             kn_dict = json.load(f)
@@ -65,7 +65,7 @@ if __name__ == "__main__":
                 all_proba.append(proba.detach().cpu().numpy())
             all_proba = np.concatenate(all_proba, axis=0)
             # 結果をnpyで保存
-            save_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "pred_results")
+            save_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "pred_results")
             save_path = os.path.join(save_dir, f"{used_column}_proba_{tgt_method}_l{start_layer_idx}tol12_{op}_{tgt_label}.npy")
             np.save(save_path, all_proba)
             print(f"proba: {all_proba.shape} is saved at {save_path}")

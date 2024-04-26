@@ -12,6 +12,7 @@ met_f1 = evaluate.load("f1")
 def transforms(batch):
     """
     画像のバッチを前処理する
+    ラベルを表すカラム名がlabel (c10) の場合に適用可能
     
     Parameters
     ------------------
@@ -25,6 +26,25 @@ def transforms(batch):
 
     # ラベルのフィールドも前処理時に追加
     inputs["labels"] = batch["label"]
+    return inputs
+
+def transforms_c100(batch):
+    """
+    画像のバッチを前処理する
+    ラベルを表すカラム名が fine_label (c100) の場合に適用可能
+    
+    Parameters
+    ------------------
+    
+    Returns
+    ------------------
+    
+    """
+    # 画像のバッチを変換してtorch.tensorにする
+    inputs = processor(images=batch["img"], return_tensors="pt")
+
+    # ラベルのフィールドも前処理時に追加
+    inputs["labels"] = batch["fine_label"]
     return inputs
 
 def compute_metrics(eval_pred):

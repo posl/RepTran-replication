@@ -6,7 +6,7 @@ import argparse
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms
+from utils.vit_util import transforms, transforms_c100
 from utils.constant import ViTExperiment
 
 def scaled_input(emb, num_points):
@@ -21,31 +21,43 @@ def scaled_input(emb, num_points):
     res = torch.cat([torch.add(baseline, step * i) for i in range(num_points)], dim=0)  # (num_points, ffn_size)
     return res, step[0]
 
-if __name__ == "__main__":
+if __name__ == "__main__":    
     # プログラム引数の受け取り
-    parser = argparse.ArgumentParser(description='start_layer_idx selector')
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ds", type=str)
     parser.add_argument('tgt_label', type=int)
     parser.add_argument('--used_column', type=str, default="train")
     parser.add_argument('--start_layer_idx', type=int, default=9)
     args = parser.parse_args()
+    ds_name = args.ds
     tgt_label = args.tgt_label
     start_layer_idx = args.start_layer_idx
     used_column = args.used_column
     # argparseで受け取った引数のサマリーを表示
+    print(f"ds_name: {ds_name}")
     print(f"tgt_label: {tgt_label}, start_layer_idx: {start_layer_idx}, used_column: {used_column}")
+    # datasetごとに違う変数のセット
+    if ds_name == "c10" or ds_name == "c10c":
+        tf_func = transforms
+        label_col = "label"
+    elif ds_name == "c100":
+        tf_func = transforms_c100
+        label_col = "fine_label"
+    else:
+        NotImplementedError
 
     # デバイス (cuda, or cpu) の取得
     device = get_device()
     # datasetをロード (初回の読み込みだけやや時間かかる)
-    cifar10 = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, "c10"))
+    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_name))
     # 指定したラベルだけ集めたデータセット
-    tgt_dataset = cifar10[used_column].filter(lambda x: x["label"] == tgt_label)
+    tgt_dataset = ds[used_column].filter(lambda x: x[label_col] == tgt_label)
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
-    cifar10_preprocessed = tgt_dataset.with_transform(transforms)
+    ds_preprocessed = tgt_dataset.with_transform(tf_func)
     # ラベルを示す文字列のlist
-    labels = cifar10_preprocessed.features["label"].names
+    labels = ds_preprocessed.features[label_col].names
     # pretrained modelのロード
-    pretrained_dir = ViTExperiment.OUTPUT_DIR
+    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
 
@@ -61,7 +73,7 @@ if __name__ == "__main__":
         'base': [],
         'ig_list': []
     }
-    cache_dir = os.path.join(ViTExperiment.OUTPUT_DIR, f"cache_states_{used_column}")
+    cache_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, f"cache_states_{used_column}")
     tic = time.perf_counter()
 
     # loop for the layer
@@ -73,8 +85,8 @@ if __name__ == "__main__":
         cached_mid_states = torch.load(intermediate_save_path, map_location="cpu")
 
         # loop for the dataset
-        for data_idx, entry_dic in tqdm(enumerate(cifar10_preprocessed.iter(batch_size=1)), 
-                                total=len(cifar10_preprocessed)): # NOTE: 重みを変える分でバッチ次元使ってるのでデータサンプルにバッチ次元をできない (データのバッチ化ができない)
+        for data_idx, entry_dic in tqdm(enumerate(ds_preprocessed.iter(batch_size=1)), 
+                                total=len(ds_preprocessed)): # NOTE: 重みを変える分でバッチ次元使ってるのでデータサンプルにバッチ次元をできない (データのバッチ化ができない)
             # if data_idx == 100:
             #     break
             # data_idxに対応するcached statesを取得
@@ -98,7 +110,7 @@ if __name__ == "__main__":
     print(res_dict['ig_list'].shape) # (num_sample, num_tgt_layers, 3072) = (サンプル数, 対象レイヤ数, 中間ニューロン数)
     print(res_dict['base'].shape) # (num_sample, num_tgt_layers, 3072) = (サンプル数, 対象レイヤ数, 中間ニューロン数)
     # result_dirがなかったら作る
-    result_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "neuron_scores")
+    result_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
     # npyで三次元配列を保存

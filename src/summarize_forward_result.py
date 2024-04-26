@@ -9,7 +9,7 @@ import seaborn as sns
 sns.set_style("dark")
 
 def plot_accuracy(ori_acc_dict, acc_dict):
-    save_parth = os.path.join(ViTExperiment.OUTPUT_DIR, "pred_results", "accuracy_per_dataset.pdf")
+    save_parth = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "pred_results", "accuracy_per_dataset.pdf")
     datasets = list(acc_dict.keys())
     accuracies = list(acc_dict.values())
     
@@ -30,27 +30,35 @@ def plot_accuracy(ori_acc_dict, acc_dict):
     plt.savefig(save_parth, dpi=300)
 
 if __name__ == "__main__":
-    pretrained_dir = ViTExperiment.OUTPUT_DIR
+    # データセットをargparseで受け取る
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ds", type=str)
+    args = parser.parse_args()
+    ds_name = args.ds
+    print(f"ds_name: {ds_name}")
+    
+    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
     dataset_dir = ViTExperiment.DATASET_DIR
     pred_out_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    c10 = load_from_disk(os.path.join(dataset_dir, "c10"))
-    c10c = load_from_disk(os.path.join(dataset_dir, "c10c"))
+    ds = load_from_disk(os.path.join(dataset_dir, ds_name))
+    dsc = load_from_disk(os.path.join(dataset_dir, ds_name+'c'))
+    
     # dict to store the accuracy for each dataset
-    c10_acc_dict = {}
-    c10c_acc_dict = {}
-    # loop for c10 and c10c
-    for ds in [c10, c10c]:
+    ds_acc_dict = {}
+    dsc_acc_dict = {}
+    # loop for ds and dsc
+    for d in [ds, dsc]:
         # loop for columns of the dataset
-        for key in ds.keys():
+        for key in d.keys():
             print(f"key: {key}")
             # 予測結果の読み込み
-            filename = f"{key}_pred.pkl" if ds == c10 else f"c10c_{key}_pred.pkl"
+            filename = f"{key}_pred.pkl" if d == ds else f"{ds_name}c_{key}_pred.pkl"
             with open(os.path.join(pred_out_dir, filename), "rb") as f:
                 pred = pickle.load(f)
             # 予測結果のメトリクス表示
             print(f'acc: {pred.metrics["test_accuracy"]}, f1: {pred.metrics["test_f1"]}')
-            if ds == c10:
-                c10_acc_dict[key] = pred.metrics["test_accuracy"]["accuracy"]
-            elif ds == c10c:
-                c10c_acc_dict[key] = pred.metrics["test_accuracy"]["accuracy"]
-    plot_accuracy(c10_acc_dict, c10c_acc_dict)
+            if d == ds:
+                ds_acc_dict[key] = pred.metrics["test_accuracy"]["accuracy"]
+            elif d == dsc:
+                dsc_acc_dict[key] = pred.metrics["test_accuracy"]["accuracy"]
+    plot_accuracy(ds_acc_dict, dsc_acc_dict)

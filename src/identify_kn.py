@@ -8,10 +8,12 @@ from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    parser.add_argument("ds", type=str)
     parser.add_argument("--tgt_labels", type=int, nargs="*", default=range(10))
     parser.add_argument('--used_column', type=str, default="train")
     parser.add_argument("--start_layer_idx", type=int, default=9)
     args = parser.parse_args()
+    ds_name = args.ds
     tgt_labels = args.tgt_labels
     start_layer_idx = args.start_layer_idx
     used_column = args.used_column
@@ -23,7 +25,7 @@ if __name__ == "__main__":
         for tgt_label in tgt_labels:
             print(f"tgt_label: {tgt_label}")
             # neuronごとのscoreの保存されているnpy
-            res_dir = os.path.join(ViTExperiment.OUTPUT_DIR, "neuron_scores")
+            res_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
             # scoreをロード
             ig_path = os.path.join(res_dir, f"{ig_method}_l{start_layer_idx}tol12_{tgt_label}.npy")
             ig = np.load(ig_path)
