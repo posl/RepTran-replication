@@ -104,9 +104,10 @@ if __name__ == "__main__":
         # 20種類のcorruptionsに対するループ
         for key in c10c.keys():
             cifar10_preprocessed = c10c[key].with_transform(transforms)
+            eval_iter = math.ceil(len(cifar10_preprocessed) / eval_batch_size)
             # 推論の実行
             print(f"predict c10c:{key} data... #iter = {eval_iter} ({len(cifar10_preprocessed)} samples / {eval_batch_size} batches)")
             key_pred = trainer.predict(cifar10_preprocessed)
-            # 予測結果を格納するPredictioOutputオブジェクトをpickleで保存
+            # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
             with open(os.path.join(pred_out_dir, f"c10c_{key}_pred.pkl"), "wb") as f:
                 pickle.dump(key_pred, f)
