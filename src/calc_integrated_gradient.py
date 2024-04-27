@@ -37,7 +37,7 @@ if __name__ == "__main__":
     print(f"ds_name: {ds_name}")
     print(f"tgt_label: {tgt_label}, start_layer_idx: {start_layer_idx}, used_column: {used_column}")
     # datasetごとに違う変数のセット
-    if ds_name == "c10" or ds_name == "c10c":
+    if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":
