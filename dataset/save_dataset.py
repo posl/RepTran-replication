@@ -8,8 +8,10 @@ from tqdm import tqdm
 
 parser = argparse.ArgumentParser(description='Dataset selector')
 parser.add_argument('ds', type=str)
+parser.add_argument('--severity', type=int, help="severity of corruption (integer from 0 to 4). when set to -1, treat all as one dataset.", default=-1)
 args = parser.parse_args()
 ds = args.ds
+severity = args.severity
 print(f"ds: {ds}")
 
 def arr2img(arr):
@@ -21,6 +23,17 @@ def arr2img(arr):
         imgs.append(Image.fromarray(a))
     return imgs
 
+def get_sublist(original_list, severity):
+    """severityに応じて適切な部分リストを取得する"""
+    if severity == -1:
+        return original_list # すべての要素を取得する
+    elif severity >= 0 and severity <= 4:
+        start_index = severity * 10000
+        end_index = (severity + 1) * 10000 if severity < 4 else None
+        return original_list[start_index:end_index]
+    else:
+        raise ValueError("severity must be an integer in the range 0 to 4 or -1")
+
 # cifar10
 if ds == "c10":
     cifar10 = load_dataset("cifar10")
@@ -29,63 +42,39 @@ if ds == "c10":
 elif ds == "c100":
     cifar100 = load_dataset("cifar100")
     cifar100.save_to_disk("c100") # use load_from_disk when loading for the consistency
-# cifar10-c
-elif ds == "c10c":
-    # original c10
-    cifar10 = load_from_disk("c10")
+# cifar10-c or cifar-100-c
+elif ds == "c10c" or ds == "c100c":
+    print(f"severity: {severity}")
+    # original ds
+    ori_ds = load_from_disk(ds.rstrip("c"))
+    label_col = "label" if ds == "c10c" else "fine_label"
     # set the same info as the original
     info = DatasetInfo(
         features=datasets.Features(
             {
-                "img": cifar10["train"].features["img"],
-                "label": cifar10["train"].features["label"],
+                "img": ori_ds["train"].features["img"],
+                label_col: ori_ds["train"].features[label_col],
             }
         ),
     )
-    # c10c raw data path
-    c10c_raw_dir = os.path.join("c10c/raw_data")
+    # ds raw data path
+    ds_raw_dir = os.path.join(f"{ds}/raw_data")
     # get .npy files
-    npy_files = [f for f in os.listdir(c10c_raw_dir) if f.endswith(".npy")]
+    npy_files = [f for f in os.listdir(ds_raw_dir) if f.endswith(".npy")]
     # make the dict (key=corruption name, val=corresponding image)
-    labels = np.load(os.path.join(c10c_raw_dir, "labels.npy"))
+    labels = np.load(os.path.join(ds_raw_dir, "labels.npy"))
+    labels = get_sublist(labels, severity) # slices only the portion corresponding to severity
     ds_dict = DatasetDict({})
     for npy_file in npy_files:
         key = npy_file.split(".npy")[0]
         if key == "labels":
             continue
         print(f"key: {key}")
-        ds_arr = np.load(os.path.join(c10c_raw_dir, npy_file))
-        ds_dict[key] = Dataset.from_dict({"img": arr2img(ds_arr), "label": labels}, info=info)
+        ds_arr = np.load(os.path.join(ds_raw_dir, npy_file))
+        ds_arr = get_sublist(ds_arr, severity) # slices only the portion corresponding to severity
+        print(f"ds_arr: {ds_arr.shape}")
+        ds_dict[key] = Dataset.from_dict({"img": arr2img(ds_arr), label_col: labels}, info=info)
     print(ds_dict)
-    ds_dict.save_to_disk("c10c")
-# cifar100-c
-elif ds == "c100c":
-    # original c100
-    cifar100 = load_from_disk("c100")
-    # set the same info as the original
-    info = DatasetInfo(
-        features=datasets.Features(
-            {
-                "img": cifar100["train"].features["img"],
-                "fine_label": cifar100["train"].features["fine_label"],
-            }
-        ),
-    )
-    # c100c raw data path
-    c100c_raw_dir = os.path.join("c100c/raw_data")
-    # get .npy files
-    npy_files = [f for f in os.listdir(c100c_raw_dir) if f.endswith(".npy")]
-    # make the dict (key=corruption name, val=corresponding image)
-    labels = np.load(os.path.join(c100c_raw_dir, "labels.npy"))
-    ds_dict = DatasetDict({})
-    for npy_file in npy_files:
-        key = npy_file.split(".npy")[0]
-        if key == "labels":
-            continue
-        print(f"key: {key}")
-        ds_arr = np.load(os.path.join(c100c_raw_dir, npy_file))
-        ds_dict[key] = Dataset.from_dict({"img": arr2img(ds_arr), "fine_label": labels}, info=info)
-    print(ds_dict)
-    ds_dict.save_to_disk("c100c")
+    ds_dict.save_to_disk(f"{ds}_severity{severity}") if severity != -1 else ds_dict.save_to_disk(ds)
 else:
     raise NotImplementedError
