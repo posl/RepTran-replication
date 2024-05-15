@@ -1,8 +1,8 @@
 import os
 import torch
 import argparse
-from datasets import load_from_disk, get_dataset_split_names
-from transformers import DefaultDataCollator, ViTForImageClassification, TrainingArguments, Trainer
+from datasets import load_from_disk
+from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device, get_corruption_types
 from utils.vit_util import processor, transforms, transforms_c100, compute_metrics
 from utils.constant import ViTExperiment
@@ -75,7 +75,7 @@ if __name__ == "__main__":
         print(f"{'='*60}\nds_name: {ds_name}, corrp_type: all\n{'='*60}")
         # get all corrup. type
         ct_list = get_corruption_types()
-        for ct in ct_list:
-            print(f"{'='*60}\ncorrp_type: {ct}\n{'='*60}")
+        for i, ct in enumerate(ct_list):
+            print(f"{'='*60}\ncorrp_type: {ct} ({i+1}/{len(ct_list)})\n{'='*60}")
             # training for corruption dataset
             fine_tune_corruption(ds_name, ct, severity)
