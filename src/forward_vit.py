@@ -83,7 +83,7 @@ if __name__ == "__main__":
         print(f"predict training data... #iter = {train_iter} ({len(ds_preprocessed['train'])} samples / {train_batch_size} batches)")
         train_pred = trainer.predict(ds_preprocessed["train"])
         print(f"predict evaluation data... #iter = {eval_iter} ({len(ds_preprocessed['test'])} samples / {eval_batch_size} batches)")
-        test_pred = trainer.predict(ds_preprocessed["test"])
+        w
         # 予測結果を格納するPredictioOutputオブジェクトをpickleで保存
         with open(os.path.join(pred_out_dir, "train_pred.pkl"), "wb") as f:
             pickle.dump(train_pred, f)

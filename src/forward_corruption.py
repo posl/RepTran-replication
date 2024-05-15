@@ -40,7 +40,7 @@ if __name__ == "__main__":
     ct_list = get_corruption_types()
     dataset_dir = ViTExperiment.DATASET_DIR
     data_collator = DefaultDataCollator()
-    pretrained_dir = getattr(ViTExperiment, ds_name.rstrip('c')).OUTPUT_DIR
+    pretrained_dir = getattr(ViTExperiment, ds_name.rstrip('c')).OUTPUT_DIR 
 
     # 対象のcorruptionでfine-tuneしたモデルをロード
     if ori_ct is not None:
@@ -50,6 +50,10 @@ if __name__ == "__main__":
     else:
         model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
         training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
+    # 予測結果格納ディレクトリ
+    pred_out_dir = os.path.join(adapt_out_dir, "pred_results", "PredictionOutput") if ori_ct is not None \
+            else os.path.join(pretrained_dir, "pred_results_divided_corr", "PredictionOutput")
+    os.makedirs(pred_out_dir, exist_ok=True)
 
     # 各ctのtest setに対する予測を行う
     for i, ct in enumerate(ct_list):
@@ -77,12 +81,23 @@ if __name__ == "__main__":
         # テストデータに対する推論実行
         print(f"predict {ds_name}:{ct} data... #iter = {eval_iter} ({len(ds_test)} samples / {eval_batch_size} batches)")
         pred = trainer.predict(ds_test)
-        
-        # 予測結果格納ディレクトリ
-        pred_out_dir = os.path.join(adapt_out_dir, "pred_results", "PredictionOutput") if ori_ct is not None \
-                else os.path.join(pretrained_dir, "pred_results_divided_corr", "PredictionOutput")
-        os.makedirs(pred_out_dir, exist_ok=True)
         # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
         with open(os.path.join(pred_out_dir, f"{ds_name}_{ct}_pred.pkl"), "wb") as f:
             pickle.dump(pred, f)
         print(f"saved to {os.path.join(pred_out_dir, f'{ds_name}_{ct}_pred.pkl')}")
+    # オリジナルのデータセットも予測する
+    ori_ds = load_from_disk(os.path.join(dataset_dir, ds_name.rstrip('c')))
+    ori_ds_preprocessed = ori_ds.with_transform(tf_func)
+    trainer = Trainer(
+            model=model,
+            args=training_args,
+            data_collator=data_collator,
+            compute_metrics=compute_metrics,
+            train_dataset=ori_ds_preprocessed["train"],
+            eval_dataset=ori_ds_preprocessed["test"],
+            tokenizer=processor,
+    )
+    test_pred = trainer.predict(ori_ds_preprocessed["test"])
+    with open(os.path.join(pred_out_dir, "ori_test_pred.pkl"), "wb") as f:
+        pickle.dump(test_pred, f)
+    print(f"saved to {os.path.join(pred_out_dir, 'ori_test_pred.pkl')}")
