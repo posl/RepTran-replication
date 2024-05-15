@@ -9,10 +9,6 @@ from utils.helper import get_device, get_corruption_types
 from utils.vit_util import processor, transforms, compute_metrics, transforms_c100
 from utils.constant import ViTExperiment
 
-def pred_to_proba(pred):
-    proba = torch.nn.functional.softmax(torch.tensor(pred.predictions), dim=-1)
-    return proba.cpu().numpy()
-
 if __name__ == "__main__":
     # データセットをargparseで受け取る
     parser = argparse.ArgumentParser()

@@ -6,12 +6,8 @@ import pickle
 from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device
-from utils.vit_util import processor, transforms, compute_metrics, transforms_c100
+from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, pred_to_proba
 from utils.constant import ViTExperiment
-
-def pred_to_proba(pred):
-    proba = torch.nn.functional.softmax(torch.tensor(pred.predictions), dim=-1)
-    return proba.cpu().numpy()
 
 
 if __name__ == "__main__":
@@ -83,7 +79,7 @@ if __name__ == "__main__":
         print(f"predict training data... #iter = {train_iter} ({len(ds_preprocessed['train'])} samples / {train_batch_size} batches)")
         train_pred = trainer.predict(ds_preprocessed["train"])
         print(f"predict evaluation data... #iter = {eval_iter} ({len(ds_preprocessed['test'])} samples / {eval_batch_size} batches)")
-        w
+        test_pred = trainer.predict(ds_preprocessed["test"])
         # 予測結果を格納するPredictioOutputオブジェクトをpickleで保存
         with open(os.path.join(pred_out_dir, "train_pred.pkl"), "wb") as f:
             pickle.dump(train_pred, f)
