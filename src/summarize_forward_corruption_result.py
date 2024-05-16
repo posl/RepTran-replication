@@ -82,8 +82,8 @@ if __name__ == "__main__":
     intra_acc_change = df_pivot[df_pivot.index == ori_ct]["acc_change"].values[0]
     inter_acc_change = df_pivot[df_pivot.index != ori_ct]["acc_change"].mean()
     print(f"intra_acc_change: {intra_acc_change}, inter_acc_change: {inter_acc_change}")
-    # pretrained_dir直下に ft_noise_result.csv を作成
-    save_path = os.path.join(pretrained_dir, "ft_noise_result.csv")
+    # pretrained_dir直下に ft_noise_acc_change.csv を作成
+    save_path = os.path.join(pretrained_dir, "ft_noise_acc_change.csv")
     # save_pathにファイルが存在しない場合
     if not os.path.exists(save_path):
         # 1行目に"ori_ct,intra_acc_change,inter_acc_change"を書き込む

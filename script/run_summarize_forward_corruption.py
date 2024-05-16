@@ -10,3 +10,6 @@ if __name__ == "__main__":
         result = subprocess.run(["python", "summarize_forward_corruption_result.py", "c100c", "--ct", ct])
         if result.returncode != 0:
             exit(1)
+        result = subprocess.run(["python", "count_pred_change.py", "c100c", "--ct", ct])
+        if result.returncode != 0:
+            exit(1)
