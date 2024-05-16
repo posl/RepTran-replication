@@ -57,7 +57,7 @@ if __name__ == "__main__":
     df_dsc = pd.DataFrame(dsc_acc_dict.items(), columns=["corruption type", "ft. acc."])
     df = pd.merge(df_ds, df_dsc, on="corruption type")
     df_melted = pd.melt(df, id_vars="corruption type", value_vars=["ori. acc.", "ft. acc."], var_name="type", value_name="accuracy")
-    print(df_melted)
+    # print(df_melted)
 
     palette = {"ori. acc.": "skyblue", "ft. acc.": "salmon"}
     plt.figure(figsize=(14, 8))
@@ -73,3 +73,22 @@ if __name__ == "__main__":
     save_path = os.path.join(corrup_pred_dir, f"accuracy_per_dataset_severity{severity}.pdf")
     plt.savefig(save_path, dpi=300)
     print(f"save plot to {save_path}")
+
+    # 対象のcorruptionに対する向上とそれ以外に対するダウングレードを確認
+    df_pivot = df_melted.pivot(index="corruption type", columns="type", values="accuracy")
+    df_pivot["acc_change"] = df_pivot["ft. acc."] / df_pivot["ori. acc."]
+    # print(df_pivot)
+    # corruption typeがori_ctと異なる行に対してacc_changeの平均を出す
+    intra_acc_change = df_pivot[df_pivot.index == ori_ct]["acc_change"].values[0]
+    inter_acc_change = df_pivot[df_pivot.index != ori_ct]["acc_change"].mean()
+    print(f"intra_acc_change: {intra_acc_change}, inter_acc_change: {inter_acc_change}")
+    # pretrained_dir直下に ft_noise_result.csv を作成
+    save_path = os.path.join(pretrained_dir, "ft_noise_result.csv")
+    # save_pathにファイルが存在しない場合
+    if not os.path.exists(save_path):
+        # 1行目に"ori_ct,intra_acc_change,inter_acc_change"を書き込む
+        with open(save_path, "w") as f:
+            f.write("corruption_type,intra_acc_change,inter_acc_change\n")
+    # ori_ct, intra_acc_change, inter_acc_changeの3つの列からなる1行をsave_pathに追記
+    with open(save_path, "a") as f:
+        f.write(f"{ori_ct},{intra_acc_change},{inter_acc_change}\n")
