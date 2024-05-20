@@ -29,7 +29,7 @@ if __name__ == "__main__":
     }
     layer_params = {layer: 0 for layer in layer_types.keys()}
     for name, param in loaded_model.named_parameters():
-        # print(name, param.shape)
+        print(name, param.shape)
         # nameにskipped_layerのいずれかの文字列が含まれていたらスキップ
         if any(layer in name for layer in skipped_layer):
             continue

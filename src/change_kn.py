@@ -63,6 +63,7 @@ if __name__ == "__main__":
         kn_path = os.path.join(save_dir, f"{tgt_method}_l{start_layer_idx}tol12_{tgt_label}.json")
         with open(kn_path, "r") as f:
             kn_dict = json.load(f)
+        print(f"num_of_kn: {kn_dict['num_kn']}")
         for op in ["enhance", "suppress"]:
             print(f"op: {op}")
             all_proba = []

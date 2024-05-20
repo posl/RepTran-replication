@@ -21,7 +21,7 @@ def scaled_input(emb, num_points):
     res = torch.cat([torch.add(baseline, step * i) for i in range(num_points)], dim=0)  # (num_points, ffn_size)
     return res, step[0]
 
-if __name__ == "__main__":    
+if __name__ == "__main__":
     # プログラム引数の受け取り
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
