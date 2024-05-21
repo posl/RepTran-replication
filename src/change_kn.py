@@ -10,6 +10,17 @@ from utils.helper import get_device
 from utils.vit_util import transforms, transforms_c100
 from utils.constant import ViTExperiment
 
+def generate_random_positions(start_layer_idx, end_layer_idx, num_neurons, num_kn):
+    """
+    ランダムに知識ニューロンの位置 (start_layer_idx以上かつend_layer_idx-1以下のレイヤ番号, 0以上num_neurons以下のニューロン番号) を選ぶ
+    """
+    kn_list = []
+    for _ in range(num_kn):
+        layer_idx = np.random.randint(start_layer_idx, end_layer_idx)
+        neuron_idx = np.random.randint(num_neurons)
+        kn_list.append([layer_idx, neuron_idx])
+    return kn_list
+
 if __name__ == "__main__":
     # プログラム引数の受け取り
     parser = argparse.ArgumentParser(description='start_layer_idx selector')
@@ -57,13 +68,24 @@ if __name__ == "__main__":
         model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
         model.eval()
         end_layer_idx = model.vit.config.num_hidden_layers
-
-        # 知識ニューロンを読み込む
+        intermediate_size = model.vit.config.intermediate_size
         save_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
-        kn_path = os.path.join(save_dir, f"{tgt_method}_l{start_layer_idx}tol12_{tgt_label}.json")
-        with open(kn_path, "r") as f:
-            kn_dict = json.load(f)
+
+        # randomの場合は, vscore高いニューロンと同数をターゲットレイヤ全体からランダムに選ぶ
+        if tgt_method == "random":
+            vscore_kn_path = os.path.join(save_dir, f"vscore_l{start_layer_idx}tol{end_layer_idx}_{tgt_label}.json")
+            with open(vscore_kn_path, "r") as f:
+                vscore_kn_dict = json.load(f)
+            kn_dict = dict.fromkeys(vscore_kn_dict)
+            kn_dict["num_kn"] = vscore_kn_dict["num_kn"]
+            kn_dict["kn"] = generate_random_positions(start_layer_idx, end_layer_idx, intermediate_size, kn_dict["num_kn"])
+        else:
+            # 知識ニューロンを読み込む
+            kn_path = os.path.join(save_dir, f"{tgt_method}_l{start_layer_idx}tol{end_layer_idx}_{tgt_label}.json")
+            with open(kn_path, "r") as f:
+                kn_dict = json.load(f)
         print(f"num_of_kn: {kn_dict['num_kn']}")
+
         for op in ["enhance", "suppress"]:
             print(f"op: {op}")
             all_proba = []
