@@ -95,7 +95,6 @@ def count_pred_change(old_pred, new_pred):
         4種類の修正結果 (repaired, broken, non-repaired, non-broken) を示した辞書.
         キーが修正結果の名前，値がそのインデックスのリスト.
         NOTE: old_pred, new_predは同じ評価用データに対する予測結果で, shuffleもされていない前提.
-    
     """
     old_labels = pred_to_labels(old_pred)
     new_labels = pred_to_labels(new_pred)
@@ -116,3 +115,31 @@ def count_pred_change(old_pred, new_pred):
         "non_broken": non_broken
     }
     return result
+
+def get_vscore(batch_neuron_values):
+    """
+    ニューロンに対するvscoreを返す
+    
+    Parameters
+    ------------------
+    batch_neuron_values: numpy.ndarray
+        ニューロンの値を表す行列 (num_samples, num_neurons_of_tgt_layer)
+
+    Returns
+    ------------------
+    vscore: numpy.ndarray
+        ニューロンごとのvscore (num_neurons_of_tgt_layer, )
+    """
+    # num_samplesが1以下の場合は, (num_neurons_of_tgt_layer, ) の形状のnanを返す
+    if batch_neuron_values.shape[0] <= 1:
+        return np.full(batch_neuron_values.shape[1], np.nan)
+    neuron_cov = np.cov(batch_neuron_values, rowvar=False) # (num_neurons_of_tgt_layer, num_neurons_of_tgt_layer)
+    # ニューロン分散共分散行列の対角成分 = 各ニューロンの分散 を取得
+    neuron_var = np.diag(neuron_cov)
+    # neuron_covの各行の和
+    neuron_cov_sum = np.nansum(neuron_cov, axis=0) # 自分の分散 + (他の共分散の総和)
+    # 他ニューロンとの共分散の平均
+    mean_cov = (neuron_cov_sum - neuron_var) / (neuron_cov_sum.shape[0] - 1)
+    # vscoreを計算
+    vscore = neuron_var + mean_cov # (num_neurons_of_tgt_layer,)
+    return vscore

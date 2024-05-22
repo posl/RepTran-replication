@@ -5,7 +5,7 @@ import argparse
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100
+from utils.vit_util import transforms, transforms_c100, get_vscore
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
@@ -64,16 +64,8 @@ if __name__ == "__main__":
 
             # tgt_labelに対するim_statesだけを取得
             tgt_im = im_states[tgt_idx] # (num_samples_for_tgt_label, num_neurons_of_tgt_layer)
-            # 対象のレイヤに対象のラベルのサンプルを入れたときのニューロン分散共分散行列を作成
-            neuron_cov = np.cov(tgt_im, rowvar=False) # (num_neurons_of_tgt_layer, num_neurons_of_tgt_layer)
-            # ニューロン分散共分散行列の対角成分 = 各ニューロンの分散 を取得
-            neuron_var = np.diag(neuron_cov)
-            # neuron_covの各行の和
-            neuron_cov_sum = np.nansum(neuron_cov, axis=0) # 自分の分散 + (他の共分散の総和)
-            # 他ニューロンとの共分散の平均
-            mean_cov = (neuron_cov_sum - neuron_var) / (neuron_cov_sum.shape[0] - 1)
             # vscoreを計算
-            vscore = neuron_var + mean_cov # (num_neurons_of_tgt_layer,)
+            vscore = get_vscore(tgt_im)
             vscore_per_layer.append(vscore)
         # vscoreを保存
         vscores = np.array(vscore_per_layer)
