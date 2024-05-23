@@ -8,9 +8,10 @@ if __name__ == "__main__":
     for uc in ["train", "test"]:
         for i, ct in enumerate(ct_list):
             print(ct, uc)
-            cmd = ["python", "calc_identify_vscore_cor_mis.py", "c100", ct, "--used_column", uc]
+            # cmd = ["python", "calc_identify_vscore_cor_mis.py", "c100", ct, "--used_column", uc]
+            cmd = ["python", "calc_identify_vscore_cor_mis_all_labels.py", "c100", ct, "--used_column", uc]
             # 最初だけinclude_ori=Trueで実行
-            if i == 0 and uc == "test":
+            if i == 0:
                 cmd.append("--include_ori")
             result = subprocess.run(cmd)
             if result.returncode != 0:
