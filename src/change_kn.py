@@ -10,6 +10,8 @@ from utils.helper import get_device
 from utils.vit_util import transforms, transforms_c100
 from utils.constant import ViTExperiment
 
+TGT_METHOD_LIST = ["vscore", "ig_list", "base"]
+
 def generate_random_positions(start_layer_idx, end_layer_idx, num_neurons, num_kn):
     """
     ランダムに知識ニューロンの位置 (start_layer_idx以上かつend_layer_idx-1以下のレイヤ番号, 0以上num_neurons以下のニューロン番号) を選ぶ
@@ -28,7 +30,7 @@ if __name__ == "__main__":
     parser.add_argument('tgt_labels', type=int, nargs='+')
     parser.add_argument('--used_column', type=str, default="train")
     parser.add_argument('--start_layer_idx', type=int, default=9)
-    parser.add_argument('--tgt_method', type=str, default="ig_list")
+    parser.add_argument('--tgt_method', type=str, default="ig_list", choices=TGT_METHOD_LIST)
     args = parser.parse_args()
     ds_name = args.ds_name
     tgt_labels = args.tgt_labels
@@ -79,7 +81,7 @@ if __name__ == "__main__":
             kn_dict = dict.fromkeys(vscore_kn_dict)
             kn_dict["num_kn"] = vscore_kn_dict["num_kn"]
             kn_dict["kn"] = generate_random_positions(start_layer_idx, end_layer_idx, intermediate_size, kn_dict["num_kn"])
-        else:
+        else: # vscore, ig_list, base の場合
             # 知識ニューロンを読み込む
             kn_path = os.path.join(save_dir, f"{tgt_method}_l{start_layer_idx}tol{end_layer_idx}_{tgt_label}.json")
             with open(kn_path, "r") as f:

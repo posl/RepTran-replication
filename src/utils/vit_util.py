@@ -53,6 +53,11 @@ def pred_to_proba(pred):
     return proba.cpu().numpy()
 
 def pred_to_labels(pred):
+    # probaに変換されたnumpy配列を受け取る場合
+    if isinstance(pred, np.ndarray):
+        proba = pred
+        labels = np.argmax(proba, axis=-1)
+        return labels
     proba = torch.nn.functional.softmax(torch.tensor(pred.predictions), dim=-1)
     labels = torch.argmax(proba, dim=-1)
     return labels.cpu().numpy()
