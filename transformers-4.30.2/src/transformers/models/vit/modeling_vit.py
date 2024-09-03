@@ -19,6 +19,7 @@ import collections.abc
 import math
 from typing import Dict, List, Optional, Set, Tuple, Union
 
+import numpy as np
 import torch
 import torch.utils.checkpoint
 from torch import nn
@@ -316,13 +317,24 @@ class ViTIntermediate(nn.Module):
         if tmp_score is not None:
             hidden_states[:, tgt_pos, :] = tmp_score
         if imp_pos is not None:
-            # if imp_pos is [], then it does not loop the following for stmt.
-            for layer, pos in imp_pos:
-                if imp_op == "enhance":
-                    hidden_states[:, tgt_pos, pos] *= 2
-                elif imp_op == "suppress":
-                    hidden_states[:, tgt_pos, pos] *= 0
-                # TODO: add "custom" to specify different ratio per position
+            # imp_opが文字列型の場合
+            if isinstance(imp_op, str):
+                # if imp_pos is [], then it does not loop the following for stmt.
+                for layer, pos in imp_pos:
+                    if imp_op == "enhance":
+                        hidden_states[:, tgt_pos, pos] *= 2
+                    elif imp_op == "suppress":
+                        hidden_states[:, tgt_pos, pos] *= 0
+                    # TODO: add "custom" to specify different ratio per position
+            # imp_opがarrayの場合
+            elif isinstance(imp_op, np.ndarray):
+                # imp_posが空でない場合
+                if len(imp_pos) > 0:
+                    assert len(imp_pos) == len(imp_op), f"imp_pos: {len(imp_pos)}, imp_op: {len(imp_op)}"
+                    for dlt, (_, pos) in zip(imp_op, imp_pos):
+                        hidden_states[:, tgt_pos, pos] *= dlt
+            else:
+                raise ValueError(f"imp_op must be str or list but got {type(imp_op)}")
         return hidden_states
 
 
@@ -418,7 +430,7 @@ class ViTEncoder(nn.Module):
             if output_hidden_states:
                 all_hidden_states = all_hidden_states + (hidden_states,)
             if imp_pos is not None:
-                imp_pos_at_this_layer = [x for x in imp_pos if x[0] == i]
+                imp_pos_at_this_layer = [x for x in imp_pos if x[0] == i] # layer i のニューロン位置だけ取得
 
             layer_head_mask = head_mask[i] if head_mask is not None else None
 

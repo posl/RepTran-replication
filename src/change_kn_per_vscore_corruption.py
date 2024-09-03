@@ -29,8 +29,8 @@ if __name__ == "__main__":
     parser.add_argument('ds_name', type=str)
     parser.add_argument('tgt_ct', type=str)
     parser.add_argument('--severity', type=int, help="severity of corruption (integer from 0 to 4). when set to -1, treat all as one dataset.", default=4)
-    parser.add_argument('--used_column', type=str, default="test")
-    parser.add_argument('--start_layer_idx', type=int, default=9)
+    parser.add_argument('--used_column', type=str, default="train")
+    parser.add_argument('--start_layer_idx', type=int, default=0)
     args = parser.parse_args()
     ds_name = args.ds_name
     tgt_ct = args.tgt_ct

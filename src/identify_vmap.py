@@ -11,7 +11,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('--used_column', type=str, default="train")
-    parser.add_argument("--start_layer_idx", type=int, default=1)
+    parser.add_argument("--start_layer_idx", type=int, default=0)
     args = parser.parse_args()
     ds_name = args.ds
     start_li = args.start_layer_idx
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     # 対象の設定
     end_li = model.vit.config.num_hidden_layers
     ct_list = get_corruption_types()
-    target_layer = 10 # vmap.ipynbの調査結果から，最終層だけ対象にする
+    target_layer = 11 # vmap.ipynbの調査結果から，最終層だけ対象にする
 
     vscore_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
     vmap_dic = defaultdict(defaultdict)
