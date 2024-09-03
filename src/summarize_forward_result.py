@@ -96,4 +96,6 @@ if __name__ == "__main__":
                     ds_acc_dict[key] = acc["accuracy"]
                 elif d == dsc:
                     dsc_acc_dict[key] = acc["accuracy"]
-    plot_accuracy(ds_acc_dict, dsc_acc_dict, severity)
+    print(ds_acc_dict)
+    print(dsc_acc_dict)
+    # plot_accuracy(ds_acc_dict, dsc_acc_dict, severity)
