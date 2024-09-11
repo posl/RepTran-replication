@@ -10,14 +10,16 @@ if __name__ == "__main__":
     # データセットをargparseで受け取る
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
+    parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     args = parser.parse_args()
     ds_name = args.ds
-    print(f"ds_name: {ds_name}")
+    k = args.k
+    print(f"ds_name: {ds_name}, fold_id: {k}")
     # デバイス (cuda, or cpu) の取得
     device = get_device()
     dataset_dir = ViTExperiment.DATASET_DIR
     # datasetをロード (初回の読み込みだけやや時間かかる)
-    ds = load_from_disk(os.path.join(dataset_dir, ds_name))
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
 
     # datasetごとに違う変数のセット
     if ds_name == "c10":
@@ -47,7 +49,7 @@ if __name__ == "__main__":
     batch_size = ViTExperiment.BATCH_SIZE
     logging_steps = len(ds_preprocessed["train"]) // batch_size
     training_args = TrainingArguments(
-        output_dir=getattr(ViTExperiment, ds_name).OUTPUT_DIR,
+        output_dir=getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k),
         num_train_epochs=getattr(ViTExperiment, ds_name).NUM_EPOCHS,
         learning_rate=2e-4,
         weight_decay=0.01,
@@ -65,6 +67,7 @@ if __name__ == "__main__":
     )
 
     # 学習の実行
+    # NOTE: 表示されるプログレスバーの分母の数字は，num_epoch*num_sample/batch_size
     trainer = Trainer(
         model=model,
         args=training_args,
