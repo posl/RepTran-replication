@@ -120,8 +120,8 @@ if __name__ == "__main__":
             print(acc_df)
                 
             # dfの前処理
-            # "dataset" 列 が f"{tgt_ct}_{cor_mis}" であり, かつ, "operation" 列が op である行があるかどうかをチェック
-            condition = (acc_df['operation'] == {op})
+            # "operation" 列が op である行があるかどうかをチェック
+            condition = (acc_df['operation'] == op)
             # 条件に合う行が存在しない場合
             if acc_df[condition].empty:
                 # acc, f1_dfの新しい行を作成
@@ -131,8 +131,9 @@ if __name__ == "__main__":
                 f1_df = f1_df.append(new_row_dict, ignore_index=True)
                 # conditionを更新 (上のconditionから行が変更されたので再評価必要)
                 condition = acc_df['operation'] == op
+            print(condition)
             # この時点でconditionに合う行は1つでないといけない
-            assert len(acc_df[condition]) == 1
+            assert len(acc_df[condition]) == 1, f"len(acc_df[condition]) must be 1, but got {len(acc_df[condition])}"
 
             if op == "enhance":
                 # enhance: vdiff (vcor-vmis) が大きいニューロンを増幅

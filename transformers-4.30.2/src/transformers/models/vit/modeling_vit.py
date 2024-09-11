@@ -332,7 +332,7 @@ class ViTIntermediate(nn.Module):
                 if len(imp_pos) > 0:
                     assert len(imp_pos) == len(imp_op), f"imp_pos: {len(imp_pos)}, imp_op: {len(imp_op)}"
                     for dlt, (_, pos) in zip(imp_op, imp_pos):
-                        hidden_states[:, tgt_pos, pos] *= dlt
+                        hidden_states[:, tgt_pos, pos] *= dlt # dltは最適化の変数になる
             else:
                 raise ValueError(f"imp_op must be str or list but got {type(imp_op)}")
         return hidden_states
