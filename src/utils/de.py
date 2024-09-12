@@ -35,6 +35,7 @@ class DE_searcher(object):
         patch_aggr=None,
         batch_size=None,
         is_multi_label=True,
+        pop_size=50,
     ):
         super(DE_searcher, self).__init__()
         self.device = device
@@ -52,6 +53,7 @@ class DE_searcher(object):
         self.max_search_num = max_search_num
         self.indices_to_sampled_correct = None
         self.tgt_pos = 0 # TODO: should not be hard coded
+        self.pop_size = pop_size
 
         # ラベルの設定
         if is_multi_label:
@@ -132,14 +134,37 @@ class DE_searcher(object):
         final_fitness = fitness_for_correct + fitness_for_wrong
         return (final_fitness,)
 
+    def is_the_performance_unchanged(self, curr_best_patch_candidate):
+        """
+        curr_best_performance: fitness of curr_best_patch_candidate:
+        Ret (bool):
+                True: the performance
+        """
+        curr_best_performance = curr_best_patch_candidate.fitness.values[0]
 
-    def search(self, places_to_fix, save_path):
+        if self.the_best_performance is None:
+            self.the_best_performance = curr_best_performance
+            return False
+
+        if np.float32(curr_best_performance) == np.float32(self.the_best_performance):
+            self.num_iter_unchanged += 1
+        else:
+            self.num_iter_unchanged = 0  # look for subsequent
+            if curr_best_performance > self.the_best_performance:
+                self.the_best_performance = curr_best_performance
+
+        if self.max_num_of_unchanged < self.num_iter_unchanged:
+            return True
+        else:
+            return False
+
+    def search(self, places_to_fix, save_dir):
 
         # ターゲットとなるレイヤ達の重みの平均や分散を取得
         num_places_to_fix = len(places_to_fix)  # the number of places to fix # NDIM of a patch candidate
 
         # set search parameters
-        pop_size = 100
+        pop_size = self.pop_size
         toolbox = self.base.Toolbox()
 
         # 初期値はターゲットレイヤの重みの平均と分散を用いて正規分布からサンプリング (len(places_to_fix)個をサンプリング)
@@ -188,9 +213,8 @@ class DE_searcher(object):
         record = stats.compile(pop)
         logbook.record(gen=0, evals=len(pop), **record)
 
-        search_start_time = time.time()
         # search start
-        import time
+        search_start_time = time.perf_counter()
 
         # 世代の繰り返し
         for iter_idx in range(self.max_search_num):
@@ -243,17 +267,6 @@ class DE_searcher(object):
             record = stats.compile(pop)
             logbook.record(gen=iter_idx, evals=len(pop), **record)
 
-            #########################################################
-            # update for best value to check for early stop #########
-            #########################################################
-            # レイヤのインデックスをキー，そのレイヤの修正後の重みを値とする辞書
-            deltas = {}  # this is deltas for set update op
-            for i, (idx_to_tl, inner_indices) in enumerate(places_to_fix):
-                if idx_to_tl not in deltas.keys():
-                    deltas[idx_to_tl] = self.init_weights[idx_to_tl]
-                # since our op is set
-                deltas[idx_to_tl][tuple(inner_indices)] = best[i]
-
             # check for two stop coniditions
             # ここでearly stopの判定を行う (fitnessが変化しないエポックが一定数続いたら終了)
             if self.is_the_performance_unchanged(best):
@@ -264,14 +277,7 @@ class DE_searcher(object):
         # if self.empty_graph is not None:
         logger.info(f"best ind.: {best}, fitness: {best.fitness.values[0]}")
 
-        # 重みの辞書更新
-        deltas = {}  # this is deltas for set update op
-        for i, (idx_to_tl, inner_indices) in enumerate(places_to_fix):
-            if idx_to_tl not in deltas.keys():
-                deltas[idx_to_tl] = self.init_weights[idx_to_tl]
-            # since our op is set
-            deltas[idx_to_tl][tuple(inner_indices)] = best[i]
-        # pklに保存
-        with open(save_path, "wb") as f:
-            pickle.dump(deltas, f)
+        # bestをnpyで保存
+        save_path = os.path.join(save_dir, f"best_patch.npy")
+        np.save(save_path, best)
         logger.info("The model is saved to {}".format(save_path))

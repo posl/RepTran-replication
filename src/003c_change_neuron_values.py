@@ -95,9 +95,10 @@ if __name__ == "__main__":
     vmap_cor = vmap_dic["cor"]
     vmap_mis = vmap_dic["mis"]
     vmap_diff = vmap_cor - vmap_mis # (num_neurons, num_layers)
-    # vdiffの上位10%のニューロンを取得
-    top10 = np.percentile(np.abs(vmap_diff[:, tgt_layer]), 90)
-    condition = np.abs(vmap_diff[:, tgt_layer]).reshape(-1) > top10
+    # vdiffの上位theta%のニューロンを取得
+    theta = 3
+    top_theta = np.percentile(np.abs(vmap_diff[:, tgt_layer]), 100-theta)
+    condition = np.abs(vmap_diff[:, tgt_layer]).reshape(-1) > top_theta
     logger.info(f"sum(condition)={sum(condition)}")
     logger.info(f"localized_neurons={np.where(condition)[0]}")
     places_to_fix = [[tgt_layer, pos] for pos in np.where(condition)[0]]
@@ -120,17 +121,16 @@ if __name__ == "__main__":
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
     # 正解データからrepairに使う一定数だけランダムに取り出す
-    num_sampled_from_correct = 200
+    num_sampled_from_correct = 400
     indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
     # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
     tgt_ds = tgt_ds.select(indices_to_correct.tolist() + indices_to_incorrect.tolist())
     tgt_labels = tgt_labels[indices_to_correct.tolist() + indices_to_incorrect.tolist()]
-    logger.info(f"len(tgt_ds): {len(tgt_ds)}, len(tgt_labels): {len(tgt_labels)}")
-    logger.info(f"first 50 labels: {tgt_labels[:50]}")
-    logger.info(f"last 50 labels: {tgt_labels[-50:]}")
     # correct, incorrect indicesを更新
     indices_to_correct = np.arange(num_sampled_from_correct)
     indices_to_incorrect = np.arange(num_sampled_from_correct, num_sampled_from_correct + len(indices_to_incorrect))
+    logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
+    logger.info(f"len(tgt_ds): {len(tgt_ds)}, len(tgt_labels): {len(tgt_labels)}")
 
     # DE_searcherの初期化
     max_search_num = 100
@@ -149,13 +149,14 @@ if __name__ == "__main__":
         model=model,
         batch_size=batch_size,
         patch_aggr=patch_aggr,
-        tgt_vdiff=tgt_vdiff
+        tgt_vdiff=tgt_vdiff,
+        pop_size=50,
     )
 
-    save_path = os.path.join(pretrained_dir, "repairing_by_de")
-    os.makedirs(save_path, exist_ok=True)
+    save_dir = os.path.join(pretrained_dir, "repairing_by_de")
+    os.makedirs(save_dir, exist_ok=True)
     logger.info(f"Start DE search...")
     s = time.perf_counter()
-    searcher.search(places_to_fix, save_path=save_path)
+    searcher.search(places_to_fix, save_dir=save_dir)
     e = time.perf_counter()
     logger.info(f"Total execution time: {e-s} sec.")
