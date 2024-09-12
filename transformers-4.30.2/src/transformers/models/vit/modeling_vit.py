@@ -312,10 +312,11 @@ class ViTIntermediate(nn.Module):
     def forward(self, hidden_states: torch.Tensor, tgt_pos=None, tmp_score=None, imp_pos=None, imp_op=None
 ) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
-        hidden_states = self.intermediate_act_fn(hidden_states)
         # 特定の位置のニューロン値を置き換える
+        # use predefined score
         if tmp_score is not None:
             hidden_states[:, tgt_pos, :] = tmp_score
+        # use delta to update the current value
         if imp_pos is not None:
             # imp_opが文字列型の場合
             if isinstance(imp_op, str):
@@ -335,6 +336,7 @@ class ViTIntermediate(nn.Module):
                         hidden_states[:, tgt_pos, pos] *= dlt # dltは最適化の変数になる
             else:
                 raise ValueError(f"imp_op must be str or list but got {type(imp_op)}")
+        hidden_states = self.intermediate_act_fn(hidden_states)
         return hidden_states
 
 

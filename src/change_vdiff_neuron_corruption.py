@@ -60,7 +60,7 @@ if __name__ == "__main__":
     ct_list = get_corruption_types()
     dataset_dir = ViTExperiment.DATASET_DIR
     data_collator = DefaultDataCollator()
-    pretrained_dir = getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR 
+    pretrained_dir = "/src/src/out_vit_c100"
 
     # tgt_ctがct_list+["ori"]の中になかったらエラー
     if tgt_ct not in ct_list + ["ori"]:
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     # オリジナルのモデル (ノーマルのC100でftしたモデル) をロード
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
-    result_dir = os.path.join(getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR, f"{tgt_ct}_severity{severity}", "vmap")
+    result_dir = os.path.join("/src/src/out_vit_c100", f"{tgt_ct}_severity{severity}", "vmap")
     # 対象レイヤの設定
     start_li = start_layer_idx
     end_li = model.vit.config.num_hidden_layers
@@ -93,7 +93,7 @@ if __name__ == "__main__":
     acc_df = pd.DataFrame(columns=header.split(","))
     f1_df = pd.DataFrame(columns=header.split(","))
     # 結果を保存するdirectory
-    save_dir = os.path.join(getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR, "pred_results_all_label_by_vdiff")
+    save_dir = os.path.join("/src/src/out_vit_c100", "pred_results_all_label_by_vdiff")
     os.makedirs(save_dir, exist_ok=True)
 
     tic = time.perf_counter()
