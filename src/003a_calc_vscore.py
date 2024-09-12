@@ -56,6 +56,11 @@ if __name__ == "__main__":
 
     for split in target_split_names:
         print(f"Process {split}...")
+        # 必要なディレクトリがない場合は先に作っておく
+        vscore_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), "vscores")
+        os.makedirs(vscore_dir, exist_ok=True)
+        cache_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"cache_states_{split}")
+        os.makedirs(cache_dir, exist_ok=True)
         all_mid_states = []
         all_logits = []
         # loop for dataset batch
@@ -80,7 +85,6 @@ if __name__ == "__main__":
         print(f"len(correct_mid_states), len(incorrect_mid_states) = {len(correct_mid_states), len(incorrect_mid_states)}")
 
         # 正解/不正解データに対するv-scoreの計算を行い，保存する
-        vscore_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), "vscores")
         for cor_mis, mid_states in zip(["cor", "mis"], [correct_mid_states, incorrect_mid_states]):
             print(f"cor_mis: {cor_mis}, len({cor_mis}_states): {len(mid_states)}")
             # 対象のレイヤに対してvscoreを計算
@@ -102,9 +106,6 @@ if __name__ == "__main__":
         # 各サンプルに対するレイヤごとの隠れ状態を保存していく
         # 将来的なことを考えてnumpy->tensorに変換してから保存
         num_layers = model.vit.config.num_hidden_layers
-        cache_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"cache_states_{split}")
-        if not os.path.exists(cache_dir):
-            os.makedirs(cache_dir)
         for l_idx in range(num_layers):
             # 特定のレイヤのstatesだけ抜き出し
             tgt_mid_states = torch.tensor(all_mid_states[:, l_idx, :]).cpu()
