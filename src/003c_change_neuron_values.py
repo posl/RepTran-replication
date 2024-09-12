@@ -10,7 +10,7 @@ from utils.helper import get_device
 from utils.vit_util import transforms, transforms_c100, get_vscore
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
-from lib_de.de import DE_searcher
+from utils.de import DE_searcher
 from logging import getLogger
 
 logger = getLogger("base_logger")
@@ -72,9 +72,10 @@ if __name__ == "__main__":
     batch_size = ViTExperiment.BATCH_SIZE
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_ds = ds_preprocessed[tgt_split]
-    tgt_layer = -1 # NOTE: we only use the last layer for repairing
+    tgt_labels = labels[tgt_split]
+    tgt_layer = 11 # NOTE: we only use the last layer for repairing
     print(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
-    logger(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
+    logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
 
     # ===============================================
     # localization phase
@@ -93,13 +94,15 @@ if __name__ == "__main__":
     # take diff of vscores and get top 10% neurons
     vmap_cor = vmap_dic["cor"]
     vmap_mis = vmap_dic["mis"]
-    vmap_diff = vmap_cor - vmap_mis
+    vmap_diff = vmap_cor - vmap_mis # (num_neurons, num_layers)
+    # vdiffの上位10%のニューロンを取得
     top10 = np.percentile(np.abs(vmap_diff[:, tgt_layer]), 90)
     condition = np.abs(vmap_diff[:, tgt_layer]).reshape(-1) > top10
-    print(f"sum(condition)={sum(condition)}")
     logger.info(f"sum(condition)={sum(condition)}")
-    print(f"localized_neurons={np.where(condition)}")
-    logger.info(f"localized_neurons={np.where(condition)}")
+    logger.info(f"localized_neurons={np.where(condition)[0]}")
+    places_to_fix = [[tgt_layer, pos] for pos in np.where(condition)[0]]
+    # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
+    tgt_vdiff = vmap_diff[condition, tgt_layer]
 
     # ===============================================
     # patch generation phase
@@ -111,8 +114,48 @@ if __name__ == "__main__":
         pred_res = pickle.load(f)
     pred_logits = pred_res.predictions
     pred_labels = np.argmax(pred_logits, axis=-1)
-    # 実際のラベルとどれくらい合ってたかを表示
     is_correct = pred_labels == labels[tgt_split]
     indices_to_correct = np.where(is_correct)[0]
     indices_to_incorrect = np.where(~is_correct)[0]
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
+
+    # 正解データからrepairに使う一定数だけランダムに取り出す
+    num_sampled_from_correct = 200
+    indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
+    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
+    tgt_ds = tgt_ds.select(indices_to_correct.tolist() + indices_to_incorrect.tolist())
+    tgt_labels = tgt_labels[indices_to_correct.tolist() + indices_to_incorrect.tolist()]
+    logger.info(f"len(tgt_ds): {len(tgt_ds)}, len(tgt_labels): {len(tgt_labels)}")
+    logger.info(f"first 50 labels: {tgt_labels[:50]}")
+    logger.info(f"last 50 labels: {tgt_labels[-50:]}")
+    # correct, incorrect indicesを更新
+    indices_to_correct = np.arange(num_sampled_from_correct)
+    indices_to_incorrect = np.arange(num_sampled_from_correct, num_sampled_from_correct + len(indices_to_incorrect))
+
+    # DE_searcherの初期化
+    max_search_num = 100
+    patch_aggr = 1
+    searcher = DE_searcher(
+        inputs=tgt_ds,
+        labels=tgt_labels,
+        indices_to_correct=indices_to_correct,
+        indices_to_wrong=indices_to_incorrect,
+        num_label=len(set(tgt_labels)),
+        indices_to_target_layers=[tgt_layer],
+        device=device,
+        mutation=(0.5, 1),
+        recombination=0.7,
+        max_search_num=max_search_num,
+        model=model,
+        batch_size=batch_size,
+        patch_aggr=patch_aggr,
+        tgt_vdiff=tgt_vdiff
+    )
+
+    save_path = os.path.join(pretrained_dir, "repairing_by_de")
+    os.makedirs(save_path, exist_ok=True)
+    logger.info(f"Start DE search...")
+    s = time.perf_counter()
+    searcher.search(places_to_fix, save_path=save_path)
+    e = time.perf_counter()
+    logger.info(f"Total execution time: {e-s} sec.")

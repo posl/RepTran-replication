@@ -1,2 +1,0 @@
-class Searcher(object):
-    pass
