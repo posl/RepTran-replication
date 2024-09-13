@@ -8,11 +8,13 @@ if __name__ == "__main__":
     # データセットをargparseで受け取る
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
+    parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     args = parser.parse_args()
     ds_name = args.ds
-    print(f"ds_name: {ds_name}")
+    k = args.k
+    print(f"ds_name: {ds_name}, fold_id: {k}")
     device = get_device()
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
+    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # pretrained modelのロード
     loaded_model = AutoModelForImageClassification.from_pretrained(pretrained_dir).to(device)
     loaded_model.eval()

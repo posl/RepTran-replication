@@ -1,5 +1,6 @@
 import numpy as np
 import torch
+import torch.nn as nn
 from transformers import ViTImageProcessor
 import sys
 sys.path.append('../')
@@ -148,3 +149,19 @@ def get_vscore(batch_neuron_values):
     # vscoreを計算
     vscore = neuron_var + mean_cov # (num_neurons_of_tgt_layer,)
     return vscore
+
+class ViTFromLastLayer(nn.Module):
+    def __init__(self, base_model):
+        super(ViTFromLastLayer, self).__init__()
+        self.base_model = base_model
+        self.base_model.eval()
+        self.base_model_last_layer = self.base_model.vit.encoder.layer[-1]
+
+    def forward(self, hidden_states_before_layernorm, tgt_pos=None, tmp_score=None,
+        imp_pos=None, imp_op=None):
+        layer_output = self.base_model_last_layer.layernorm_after(hidden_states_before_layernorm)
+        layer_output = self.base_model_last_layer.intermediate(layer_output, tgt_pos=tgt_pos, tmp_score=tmp_score, imp_pos=imp_pos, imp_op=imp_op)
+        layer_output = self.base_model_last_layer.output(layer_output, hidden_states_before_layernorm)
+        sequence_output = self.base_model.vit.layernorm(layer_output)
+        logits = self.base_model.classifier(sequence_output[:, 0, :])
+        return logits

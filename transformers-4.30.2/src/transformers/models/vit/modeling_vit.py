@@ -374,6 +374,7 @@ class ViTLayer(nn.Module):
         head_mask: Optional[torch.Tensor] = None,
         output_attentions: bool = False,
         output_intermediate_states: bool = False,
+        output_hidden_states_before_layernorm: bool = False,
         tgt_pos=None, tmp_score=None,
         imp_pos=None, imp_op=None
     ) -> Union[Tuple[torch.Tensor, torch.Tensor], Tuple[torch.Tensor]]:
@@ -386,7 +387,8 @@ class ViTLayer(nn.Module):
         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
 
         # first residual connection
-        hidden_states = attention_output + hidden_states
+        hidden_states = attention_output + hidden_states # XXX: ここの状態
+        hidden_states_before_layernorm = hidden_states
 
         # in ViT, layernorm is also applied after self-attention
         layer_output = self.layernorm_after(hidden_states)
@@ -401,6 +403,9 @@ class ViTLayer(nn.Module):
             outputs = (layer_output,) + outputs + (intermediate_outputs,)
         else:
             outputs = (layer_output,) + outputs
+
+        if output_hidden_states_before_layernorm:
+            outputs =  outputs + (hidden_states_before_layernorm,)
 
         return outputs
 
@@ -419,6 +424,7 @@ class ViTEncoder(nn.Module):
         output_attentions: bool = False,
         output_hidden_states: bool = False,
         output_intermediate_states: bool = False,
+        output_hidden_states_before_layernorm: bool = False,
         return_dict: bool = True,
         tgt_layer=None, tgt_pos=None, tmp_score=None,
         imp_pos=None, imp_op=None
@@ -426,6 +432,7 @@ class ViTEncoder(nn.Module):
         all_hidden_states = () if output_hidden_states else None
         all_self_attentions = () if output_attentions else None
         all_intermediate_states = () if output_intermediate_states else None
+        all_hidden_states_before_layernorm = () if output_hidden_states_before_layernorm else None
         imp_pos_at_this_layer = None
 
         for i, layer_module in enumerate(self.layer):
@@ -455,6 +462,7 @@ class ViTEncoder(nn.Module):
                                             hidden_states, layer_head_mask,
                                             output_attentions=output_attentions,
                                             output_intermediate_states=output_intermediate_states,
+                                            output_hidden_states_before_layernorm=output_hidden_states_before_layernorm,
                                             tgt_pos=tgt_pos, tmp_score=tmp_score,
                                             imp_pos=imp_pos_at_this_layer, imp_op=imp_op
                                             )
@@ -463,6 +471,7 @@ class ViTEncoder(nn.Module):
                                             hidden_states, layer_head_mask,
                                             output_attentions=output_attentions,
                                             output_intermediate_states=output_intermediate_states,
+                                            output_hidden_states_before_layernorm=output_hidden_states_before_layernorm,
                                             tgt_pos=tgt_pos, tmp_score=None,
                                             imp_pos=imp_pos_at_this_layer, imp_op=imp_op
                                             )
@@ -477,6 +486,14 @@ class ViTEncoder(nn.Module):
                     all_intermediate_states = all_intermediate_states + (layer_outputs[1],)
                 else:
                     all_intermediate_states = all_intermediate_states + (layer_outputs[2],)
+            
+            if output_hidden_states_before_layernorm:
+                if output_attentions and output_intermediate_states:
+                    all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[3],)
+                elif output_attentions or output_intermediate_states:
+                    all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[2],)
+                else:
+                    all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[1],)
 
         if output_hidden_states:
             all_hidden_states = all_hidden_states + (hidden_states,)
@@ -488,6 +505,7 @@ class ViTEncoder(nn.Module):
             hidden_states=all_hidden_states,
             attentions=all_self_attentions,
             intermediate_states=all_intermediate_states,
+            hidden_states_before_layernorm=all_hidden_states_before_layernorm,
         )
 
 
@@ -615,6 +633,7 @@ class ViTModel(ViTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_intermediate_states: Optional[bool] = None,
+        output_hidden_states_before_layernorm: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         tgt_layer=None, tgt_pos=None, tmp_score=None,
@@ -631,6 +650,12 @@ class ViTModel(ViTPreTrainedModel):
         output_intermediate_states = (
             output_intermediate_states if output_intermediate_states is not None else self.config.output_intermediate_states
         )
+        output_hidden_states_before_layernorm = (
+            output_hidden_states_before_layernorm
+            if output_hidden_states_before_layernorm is not None
+            else self.config.output_hidden_states_before_layernorm
+        )
+
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 
         if pixel_values is None:
@@ -658,6 +683,7 @@ class ViTModel(ViTPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             output_intermediate_states=output_intermediate_states,
+            output_hidden_states_before_layernorm=output_hidden_states_before_layernorm,
             return_dict=return_dict,
             tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score,
             imp_pos=imp_pos, imp_op=imp_op
@@ -676,6 +702,7 @@ class ViTModel(ViTPreTrainedModel):
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
             intermediate_states=encoder_outputs.intermediate_states,
+            hidden_states_before_layernorm=encoder_outputs.hidden_states_before_layernorm,
         )
 
 
@@ -863,6 +890,7 @@ class ViTForImageClassification(ViTPreTrainedModel):
         output_attentions: Optional[bool] = None,
         output_hidden_states: Optional[bool] = None,
         output_intermediate_states: Optional[bool] = None,
+        output_hidden_states_before_layernorm: Optional[bool] = None,
         interpolate_pos_encoding: Optional[bool] = None,
         return_dict: Optional[bool] = None,
         tgt_layer=None, tgt_pos=None, tmp_score=None, tgt_label=None,
@@ -887,6 +915,7 @@ class ViTForImageClassification(ViTPreTrainedModel):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             output_intermediate_states=output_intermediate_states,
+            output_hidden_states_before_layernorm=output_hidden_states_before_layernorm,
             interpolate_pos_encoding=interpolate_pos_encoding,
             return_dict=return_dict,
             tgt_layer=tgt_layer, tgt_pos=tgt_pos, tmp_score=tmp_score,
@@ -942,5 +971,6 @@ class ViTForImageClassification(ViTPreTrainedModel):
             hidden_states=outputs.hidden_states,
             attentions=outputs.attentions,
             intermediate_states=outputs.intermediate_states,
+            hidden_states_before_layernorm=outputs.hidden_states_before_layernorm,
             gradients=gradients
         )
