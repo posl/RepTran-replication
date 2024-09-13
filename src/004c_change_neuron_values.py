@@ -96,11 +96,11 @@ if __name__ == "__main__":
     vmap_mis = vmap_dic["mis"]
     vmap_diff = vmap_cor - vmap_mis # (num_neurons, num_layers)
     # vdiffの上位theta%のニューロンを取得
-    theta = 3
+    theta = 10
     top_theta = np.percentile(np.abs(vmap_diff[:, tgt_layer]), 100-theta)
     condition = np.abs(vmap_diff[:, tgt_layer]).reshape(-1) > top_theta
     logger.info(f"localized_neurons={np.where(condition)[0]}")
-    logger.info(f"num(location)={np.where(condition)[0]}")
+    logger.info(f"num(location)={len(np.where(condition)[0])}")
     places_to_fix = [[tgt_layer, pos] for pos in np.where(condition)[0]]
     # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
     tgt_vdiff = vmap_diff[condition, tgt_layer]
@@ -151,7 +151,9 @@ if __name__ == "__main__":
 
     # DE_searcherの初期化
     max_search_num = 50
-    patch_aggr = 1
+    patch_aggr = 1 # TODO: これはハイパラなので外部化したい
+    patch_aggr = len(indices_to_correct) / len(indices_to_incorrect)
+    logger.info(f"alpha of the fitness func.: {patch_aggr}")
     num_labels = len(set(labels["train"]))
     searcher = DE_searcher(
         batch_hs_before_layernorm=batch_hs_before_layernorm,

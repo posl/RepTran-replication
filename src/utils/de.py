@@ -101,9 +101,7 @@ class DE_searcher(object):
         all_proba = []
         losses_of_all = []
         loss_fn = torch.nn.CrossEntropyLoss(reduction="none") # NOTE: バッチ内の各サンプルずつのロスを出すため. デフォルトのreduction="mean"だとバッチ内の平均になってしまう
-        for cached_state, y in tqdm(
-                zip(self.batch_hs_before_layernorm, self.batched_labels),
-                total=len(self.batch_hs_before_layernorm)):
+        for cached_state, y in zip(self.batch_hs_before_layernorm, self.batched_labels):
             logits = self.mdl(hidden_states_before_layernorm=cached_state, tgt_pos=self.tgt_pos, imp_pos=places_to_fix, imp_op=patch_candidate)
             # 出力されたlogitsを確率に変換
             proba = torch.nn.functional.softmax(logits, dim=-1)
@@ -114,24 +112,6 @@ class DE_searcher(object):
         losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
         all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
         all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
-
-        # # batchごとに取り出して予測実行
-        # for data_idx, entry_dic in tqdm(enumerate(self.inputs.iter(batch_size=self.batch_size)), 
-        #                             total=math.ceil(len(self.inputs)/self.batch_size)): # NOTE: shuffleされない
-        #     x, y = entry_dic["pixel_values"].to(self.device), np.array(entry_dic["labels"])
-        #     # imp_posはレイヤ番号とニューロン番号のリスト
-        #     assert len(patch_candidate) == len(places_to_fix), f"len(patch_candidate) must be equal to len(places_to_fix), but got {len(patch_candidate)} and {len(places_to_fix)}"
-        #     # バッチに対応するhidden statesとintermediate statesの取得
-        #     outputs = self.mdl(x, tgt_pos=self.tgt_pos, imp_pos=places_to_fix, imp_op=patch_candidate)
-        #     # outputs.logitsを確率にする
-        #     proba = torch.nn.functional.softmax(outputs.logits, dim=-1)
-        #     # sampleごとのロスを計算
-        #     loss = loss_fn(proba, torch.from_numpy(y).to(self.device)).cpu().detach().numpy()
-        #     all_proba.append(proba.detach().cpu().numpy())
-        #     losses_of_all.append(loss)
-        # losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
-        # all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
-        # all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
 
         # 予測結果が合ってるかどうかを評価
         is_correct = all_pred_laebls == self.ground_truth_labels
@@ -146,7 +126,7 @@ class DE_searcher(object):
 
         fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (losses_of_correct + 1)
         fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (losses_of_wrong + 1)
-        final_fitness = fitness_for_correct + self.patch_aggr * fitness_for_wrong
+        final_fitness = self.patch_aggr * fitness_for_correct + fitness_for_wrong
         return (final_fitness,)
 
     def is_the_performance_unchanged(self, curr_best_patch_candidate):
