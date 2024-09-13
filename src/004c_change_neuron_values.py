@@ -7,7 +7,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100, get_vscore
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from utils.de import DE_searcher
@@ -99,8 +99,8 @@ if __name__ == "__main__":
     theta = 3
     top_theta = np.percentile(np.abs(vmap_diff[:, tgt_layer]), 100-theta)
     condition = np.abs(vmap_diff[:, tgt_layer]).reshape(-1) > top_theta
-    logger.info(f"sum(condition)={sum(condition)}")
     logger.info(f"localized_neurons={np.where(condition)[0]}")
+    logger.info(f"num(location)={np.where(condition)[0]}")
     places_to_fix = [[tgt_layer, pos] for pos in np.where(condition)[0]]
     # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
     tgt_vdiff = vmap_diff[condition, tgt_layer]
@@ -121,36 +121,54 @@ if __name__ == "__main__":
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
     # 正解データからrepairに使う一定数だけランダムに取り出す
-    num_sampled_from_correct = 400
+    num_sampled_from_correct = 200
     indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
     # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
     tgt_ds = tgt_ds.select(indices_to_correct.tolist() + indices_to_incorrect.tolist())
     tgt_labels = tgt_labels[indices_to_correct.tolist() + indices_to_incorrect.tolist()]
+    
+    # repair setに対するhidden_states_before_layernormを取得
+    hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
+    hs_save_path = os.path.join(hs_save_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
+    assert os.path.exists(hs_save_path), f"{hs_save_path} does not exist."
+    hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
+    logger.info(f"hs_before_layernorm is loaded. shape: {hs_before_layernorm.shape}")
+    # 使うインデックスに対する状態だけを取り出す
+    hs_before_layernorm = hs_before_layernorm[indices_to_correct.tolist() + indices_to_incorrect.tolist()]
+    logger.info(f"hs_before_layernorm is sliced. shape: {hs_before_layernorm.shape}")
+    # hidden_states_before_layernormを32個ずつにバッチ化
+    num_batches = (hs_before_layernorm.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
+    batch_hs_before_layernorm = np.array_split(hs_before_layernorm, num_batches)
+    
     # correct, incorrect indicesを更新
     indices_to_correct = np.arange(num_sampled_from_correct)
     indices_to_incorrect = np.arange(num_sampled_from_correct, num_sampled_from_correct + len(indices_to_incorrect))
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
     logger.info(f"len(tgt_ds): {len(tgt_ds)}, len(tgt_labels): {len(tgt_labels)}")
 
+    # 最終層だけのモデルを準備
+    vit_from_last_layer = ViTFromLastLayer(model)
+
     # DE_searcherの初期化
-    max_search_num = 100
+    max_search_num = 50
     patch_aggr = 1
+    num_labels = len(set(labels["train"]))
     searcher = DE_searcher(
-        inputs=tgt_ds,
+        batch_hs_before_layernorm=batch_hs_before_layernorm,
         labels=tgt_labels,
         indices_to_correct=indices_to_correct,
         indices_to_wrong=indices_to_incorrect,
-        num_label=len(set(tgt_labels)),
+        num_label=num_labels,
         indices_to_target_layers=[tgt_layer],
         device=device,
         mutation=(0.5, 1),
         recombination=0.7,
         max_search_num=max_search_num,
-        model=model,
+        partial_model=vit_from_last_layer,
         batch_size=batch_size,
         patch_aggr=patch_aggr,
         tgt_vdiff=tgt_vdiff,
-        pop_size=50,
+        pop_size=100,
     )
 
     save_dir = os.path.join(pretrained_dir, "repairing_by_de")

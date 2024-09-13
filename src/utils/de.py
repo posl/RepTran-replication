@@ -4,7 +4,7 @@ import torch
 import numpy as np
 from tqdm import tqdm
 from collections.abc import Iterable
-from utils.data_util import format_label
+from utils.data_util import format_label, make_batch_of_label
 
 from logging import getLogger
 
@@ -20,7 +20,7 @@ class DE_searcher(object):
 
     def __init__(
         self,
-        inputs,
+        batch_hs_before_layernorm,
         labels,
         indices_to_correct,
         indices_to_wrong,
@@ -31,7 +31,7 @@ class DE_searcher(object):
         mutation=(0.5, 1),
         recombination=0.7,
         max_search_num=100,
-        model=None,
+        partial_model=None,
         patch_aggr=None,
         batch_size=None,
         is_multi_label=True,
@@ -39,7 +39,7 @@ class DE_searcher(object):
     ):
         super(DE_searcher, self).__init__()
         self.device = device
-        self.inputs = inputs
+        self.batch_hs_before_layernorm = batch_hs_before_layernorm
         self.indices_to_correct = indices_to_correct
         self.indices_to_wrong = indices_to_wrong
         self.num_label = num_label
@@ -49,7 +49,7 @@ class DE_searcher(object):
         self.batch_size = batch_size
         self.is_multi_label = is_multi_label
         self.maximum_fitness = 0.0  # the maximum fitness value
-        self.mdl = model
+        self.mdl = partial_model
         self.max_search_num = max_search_num
         self.indices_to_sampled_correct = None
         self.tgt_pos = 0 # TODO: should not be hard coded
@@ -68,6 +68,7 @@ class DE_searcher(object):
         else:
             self.labels = labels
             self.ground_truth_labels = labels
+        self.batched_labels = make_batch_of_label(labels, batch_size)
 
         # fitness computation related initialisation
         self.fitness = 0.0
@@ -97,27 +98,41 @@ class DE_searcher(object):
     def eval(self, patch_candidate, places_to_fix):
         # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
         # データの予測時は，places_to_fixの位置のニューロンをpatch_candidateの値に変更して予測する
-
         all_proba = []
         losses_of_all = []
         loss_fn = torch.nn.CrossEntropyLoss(reduction="none") # NOTE: バッチ内の各サンプルずつのロスを出すため. デフォルトのreduction="mean"だとバッチ内の平均になってしまう
-        # batchごとに取り出して予測実行
-        for data_idx, entry_dic in tqdm(enumerate(self.inputs.iter(batch_size=self.batch_size)), 
-                                    total=math.ceil(len(self.inputs)/self.batch_size)): # NOTE: shuffleされない
-            x, y = entry_dic["pixel_values"].to(self.device), np.array(entry_dic["labels"])
-            # imp_posはレイヤ番号とニューロン番号のリスト
-            assert len(patch_candidate) == len(places_to_fix), f"len(patch_candidate) must be equal to len(places_to_fix), but got {len(patch_candidate)} and {len(places_to_fix)}"
-            # バッチに対応するhidden statesとintermediate statesの取得
-            outputs = self.mdl(x, tgt_pos=self.tgt_pos, imp_pos=places_to_fix, imp_op=patch_candidate)
-            # outputs.logitsを確率にする
-            proba = torch.nn.functional.softmax(outputs.logits, dim=-1)
+        for cached_state, y in tqdm(
+                zip(self.batch_hs_before_layernorm, self.batched_labels),
+                total=len(self.batch_hs_before_layernorm)):
+            logits = self.mdl(hidden_states_before_layernorm=cached_state, tgt_pos=self.tgt_pos, imp_pos=places_to_fix, imp_op=patch_candidate)
+            # 出力されたlogitsを確率に変換
+            proba = torch.nn.functional.softmax(logits, dim=-1)
+            all_proba.append(proba.detach().cpu().numpy())
             # sampleごとのロスを計算
             loss = loss_fn(proba, torch.from_numpy(y).to(self.device)).cpu().detach().numpy()
-            all_proba.append(proba.detach().cpu().numpy())
             losses_of_all.append(loss)
         losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
         all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
         all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
+
+        # # batchごとに取り出して予測実行
+        # for data_idx, entry_dic in tqdm(enumerate(self.inputs.iter(batch_size=self.batch_size)), 
+        #                             total=math.ceil(len(self.inputs)/self.batch_size)): # NOTE: shuffleされない
+        #     x, y = entry_dic["pixel_values"].to(self.device), np.array(entry_dic["labels"])
+        #     # imp_posはレイヤ番号とニューロン番号のリスト
+        #     assert len(patch_candidate) == len(places_to_fix), f"len(patch_candidate) must be equal to len(places_to_fix), but got {len(patch_candidate)} and {len(places_to_fix)}"
+        #     # バッチに対応するhidden statesとintermediate statesの取得
+        #     outputs = self.mdl(x, tgt_pos=self.tgt_pos, imp_pos=places_to_fix, imp_op=patch_candidate)
+        #     # outputs.logitsを確率にする
+        #     proba = torch.nn.functional.softmax(outputs.logits, dim=-1)
+        #     # sampleごとのロスを計算
+        #     loss = loss_fn(proba, torch.from_numpy(y).to(self.device)).cpu().detach().numpy()
+        #     all_proba.append(proba.detach().cpu().numpy())
+        #     losses_of_all.append(loss)
+        # losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
+        # all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
+        # all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
+
         # 予測結果が合ってるかどうかを評価
         is_correct = all_pred_laebls == self.ground_truth_labels
         # 元々正解だったサンプルが変わらず正解だった数を取得
@@ -131,7 +146,7 @@ class DE_searcher(object):
 
         fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (losses_of_correct + 1)
         fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (losses_of_wrong + 1)
-        final_fitness = fitness_for_correct + fitness_for_wrong
+        final_fitness = fitness_for_correct + self.patch_aggr * fitness_for_wrong
         return (final_fitness,)
 
     def is_the_performance_unchanged(self, curr_best_patch_candidate):
@@ -244,6 +259,7 @@ class DE_searcher(object):
                         y[i] = a[i] + MU * (b[i] - c[i])
 
                 y.fitness.values = toolbox.evaluate(y, places_to_fix)
+                logger.info(f"[{new_model_name}] fitness: {y.fitness.values[0]}")
                 if y.fitness.values[0] >= ind.fitness.values[0]:  # better
                     pop[pop_idx] = y  # upddate
                     # set new model name
@@ -252,9 +268,7 @@ class DE_searcher(object):
                     if best.fitness.values[0] < pop[pop_idx].fitness.values[0]:
                         hof.update(pop)
                         best = hof[0]
-                        # print ("New best one is set: {},
-                        # fitness: {}, model_name: {}".format(
-                        # best, best.fitness.values[0], best.model_name))
+                        logger.info(f"New best one is set: {best}, fitness: {best.fitness.values[0]}, model_name: {best.model_name}")
 
             # 全population終わったらその世代でのベストのパッチ候補を表示
             hof.update(pop)

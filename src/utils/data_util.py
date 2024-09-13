@@ -16,3 +16,11 @@ def format_label(labels, num_label):
             new_labels[i, v] = 1
 
     return new_labels
+
+def make_batch_of_label(labels, num_batch):
+    """
+    [3,4,5,6,1,2,3,4,5,6] -> [[3,4,5,6],[1,2,3,4],[5,6]] (num_batch=4)
+    """
+    num_data = len(labels)
+    num_batch = (num_data + num_batch - 1) // num_batch
+    return np.array_split(labels, num_batch)
