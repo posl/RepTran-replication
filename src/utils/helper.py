@@ -1,6 +1,6 @@
 import os
 import torch
-
+import json
 
 def get_device():
     """
@@ -28,3 +28,9 @@ def get_corruption_types():
     # npy_filesのファイル名だけを保存
     corruption_types = [f.split(".npy")[0] for f in npy_files if f != "labels.npy"]
     return corruption_types
+
+def json2dict(json_path):
+    "jsonファイルを読み込んで辞書に変換する"
+    with open(json_path, "r", encoding="utf-8") as f:
+        d = json.load(f)
+    return d

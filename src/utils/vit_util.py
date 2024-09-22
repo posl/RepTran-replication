@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import torch.nn as nn
+from collections import defaultdict
 from transformers import ViTImageProcessor
 import sys
 sys.path.append('../')
@@ -150,6 +151,28 @@ def get_vscore(batch_neuron_values):
     vscore = neuron_var + mean_cov # (num_neurons_of_tgt_layer,)
     return vscore
 
+def localize_neurons(vmap_dic, tgt_layer, theta=10):
+    """
+    vmap_dicのcorとmisの差分が上位theta%のニューロンを取得する
+
+    Args:
+        vmap_dic (dict): _description_
+        tgt_layer (int): _description_
+        theta (float, optional): _description_. Defaults to 10.
+    """
+    # take diff of vscores and get top 10% neurons
+    vmap_cor = vmap_dic["cor"]
+    vmap_mis = vmap_dic["mis"]
+    vmap_diff = vmap_cor - vmap_mis # (num_neurons, num_layers)
+    # vdiffの上位theta%のニューロンを取得
+    theta = 10
+    top_theta = np.percentile(np.abs(vmap_diff[:, tgt_layer]), 100-theta)
+    condition = np.abs(vmap_diff[:, tgt_layer]).reshape(-1) > top_theta
+    places_to_fix = [[tgt_layer, pos] for pos in np.where(condition)[0]]
+    # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
+    tgt_vdiff = vmap_diff[condition, tgt_layer]
+    return places_to_fix, tgt_vdiff
+
 class ViTFromLastLayer(nn.Module):
     def __init__(self, base_model):
         super(ViTFromLastLayer, self).__init__()
@@ -165,3 +188,14 @@ class ViTFromLastLayer(nn.Module):
         sequence_output = self.base_model.vit.layernorm(layer_output)
         logits = self.base_model.classifier(sequence_output[:, 0, :])
         return logits
+    
+def generate_random_positions(start_layer_idx, end_layer_idx, num_neurons, num_kn):
+    """
+    ランダムに知識ニューロンの位置 (start_layer_idx以上かつend_layer_idx-1以下のレイヤ番号, 0以上num_neurons以下のニューロン番号) を選ぶ
+    """
+    kn_list = []
+    for _ in range(num_kn):
+        layer_idx = np.random.randint(start_layer_idx, end_layer_idx)
+        neuron_idx = np.random.randint(num_neurons)
+        kn_list.append([layer_idx, neuron_idx])
+    return kn_list

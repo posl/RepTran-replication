@@ -95,7 +95,7 @@ class DE_searcher(object):
 
         logger.info("Finish Initializing DE_searcher...")
 
-    def eval(self, patch_candidate, places_to_fix):
+    def eval(self, patch_candidate, places_to_fix, show_log=True):
         # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
         # データの予測時は，places_to_fixの位置のニューロンをpatch_candidateの値に変更して予測する
         all_proba = []
@@ -127,6 +127,9 @@ class DE_searcher(object):
         fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (losses_of_correct + 1)
         fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (losses_of_wrong + 1)
         final_fitness = self.patch_aggr * fitness_for_correct + fitness_for_wrong
+
+        if show_log:
+            logger.info(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
         return (final_fitness,)
 
     def is_the_performance_unchanged(self, curr_best_patch_candidate):
@@ -153,7 +156,7 @@ class DE_searcher(object):
         else:
             return False
 
-    def search(self, places_to_fix, save_dir):
+    def search(self, places_to_fix, save_path):
 
         # ターゲットとなるレイヤ達の重みの平均や分散を取得
         num_places_to_fix = len(places_to_fix)  # the number of places to fix # NDIM of a patch candidate
@@ -164,8 +167,8 @@ class DE_searcher(object):
 
         # 初期値はターゲットレイヤの重みの平均と分散を用いて正規分布からサンプリング (len(places_to_fix)個をサンプリング)
         def init_indiv():
-            v_sample = lambda tgt_vdiff: np.random.normal(loc=tgt_vdiff, scale=1, size=1)[0]
-            ind = np.float32(list(map(v_sample, self.tgt_vdiff)))
+            v_sample = lambda mean_v: np.random.normal(loc=mean_v, scale=1, size=1)[0]
+            ind = np.float32(list(map(v_sample, np.ones(num_places_to_fix, dtype=np.float32))))
             return ind
 
         # DEのためのパラメータ設定
@@ -272,6 +275,5 @@ class DE_searcher(object):
         logger.info(f"best ind.: {best}, fitness: {best.fitness.values[0]}")
 
         # bestをnpyで保存
-        save_path = os.path.join(save_dir, f"best_patch.npy")
         np.save(save_path, best)
         logger.info("The model is saved to {}".format(save_path))
