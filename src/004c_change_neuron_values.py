@@ -7,7 +7,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
-from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, localize_neurons
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, localize_neurons, localize_neurons_random
 from utils.data_util import make_batch_of_label
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
@@ -30,9 +30,11 @@ if __name__ == "__main__":
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     parser.add_argument("--setting_path", type=str, help="path to the setting json file", default=None)
+    parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
+    fl_method = args.fl_method
     setting_path = args.setting_path
     # 設定のjsonファイルが指定された場合
     if setting_path is not None:
@@ -92,6 +94,11 @@ if __name__ == "__main__":
     # localization phase
     # ===============================================
 
+    if fl_method == "vdiff":
+        localizer = localize_neurons
+    elif fl_method == "random":
+        localizer = localize_neurons_random
+
     vscore_dir = os.path.join(pretrained_dir, "vscores")
     vmap_dic = defaultdict(defaultdict)
     # 正解と不正解時のvscoreを読み込む
@@ -102,7 +109,7 @@ if __name__ == "__main__":
         vscores = np.load(vscore_save_path)
         vmap_dic[cor_mis] = vscores.T
         print(f"vscores shape ({cor_mis}): {vmap_dic[cor_mis].shape}")
-    places_to_fix, tgt_vdiff = localize_neurons(vmap_dic, tgt_layer, theta=setting_dic["theta"])
+    places_to_fix, tgt_vdiff = localizer(vmap_dic, tgt_layer, theta=setting_dic["theta"])
     logger.info(f"places_to_fix={places_to_fix}")
     logger.info(f"num(location)={len(places_to_fix)}")
 
@@ -176,7 +183,12 @@ if __name__ == "__main__":
     )
 
     save_dir = os.path.join(pretrained_dir, "repairing_by_de")
-    save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
+    if fl_method == "vdiff":
+        save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
+    elif fl_method == "random":
+        save_path = os.path.join(save_dir, f"best_patch_{setting_id}_random.npy")
+    else:
+        NotImplementedError
     os.makedirs(save_dir, exist_ok=True)
     logger.info(f"Start DE search...")
     s = time.perf_counter()
@@ -234,6 +246,11 @@ if __name__ == "__main__":
         "acc_new": acc_new
     }
     logger.info(f"delta_acc: {delta_acc}, repair_rate: {repair_rate}, break_rate: {break_rate}")
-    metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")
+    if fl_method == "vdiff":
+        metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")
+    elif fl_method == "random":
+        metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}_random.json")
+    else:
+        NotImplementedError
     with open(metrics_dir, "w") as f:
         json.dump(metrics, f)

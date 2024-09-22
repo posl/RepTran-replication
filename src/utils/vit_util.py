@@ -173,6 +173,16 @@ def localize_neurons(vmap_dic, tgt_layer, theta=10):
     tgt_vdiff = vmap_diff[condition, tgt_layer]
     return places_to_fix, tgt_vdiff
 
+def localize_neurons_random(vmap_dic, tgt_layer, theta=10):
+    places_to_fix, _ = localize_neurons(vmap_dic, tgt_layer, theta)
+    # places_to_fixと同じ数の，places_to_fix以外のランダムな位置を選択 (レイヤは同じ)
+    other_places = []
+    for _ in range(len(places_to_fix)):
+        layer_idx = tgt_layer
+        neuron_idx = np.random.randint(vmap_dic["cor"].shape[0])
+        other_places.append([layer_idx, neuron_idx])
+    return other_places, None
+
 class ViTFromLastLayer(nn.Module):
     def __init__(self, base_model):
         super(ViTFromLastLayer, self).__init__()
@@ -189,13 +199,13 @@ class ViTFromLastLayer(nn.Module):
         logits = self.base_model.classifier(sequence_output[:, 0, :])
         return logits
     
-def generate_random_positions(start_layer_idx, end_layer_idx, num_neurons, num_kn):
-    """
-    ランダムに知識ニューロンの位置 (start_layer_idx以上かつend_layer_idx-1以下のレイヤ番号, 0以上num_neurons以下のニューロン番号) を選ぶ
-    """
-    kn_list = []
-    for _ in range(num_kn):
-        layer_idx = np.random.randint(start_layer_idx, end_layer_idx)
-        neuron_idx = np.random.randint(num_neurons)
-        kn_list.append([layer_idx, neuron_idx])
-    return kn_list
+# def generate_random_positions(start_layer_idx, end_layer_idx, num_neurons, num_kn):
+#     """
+#     ランダムに知識ニューロンの位置 (start_layer_idx以上かつend_layer_idx-1以下のレイヤ番号, 0以上num_neurons以下のニューロン番号) を選ぶ
+#     """
+#     kn_list = []
+#     for _ in range(num_kn):
+#         layer_idx = np.random.randint(start_layer_idx, end_layer_idx)
+#         neuron_idx = np.random.randint(num_neurons)
+#         kn_list.append([layer_idx, neuron_idx])
+#     return kn_list
