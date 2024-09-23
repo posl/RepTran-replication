@@ -7,7 +7,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
-from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, localize_neurons, localize_neurons_random
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, localize_weights, localize_weights_random
 from utils.data_util import make_batch_of_label
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
@@ -17,7 +17,7 @@ from logging import getLogger
 logger = getLogger("base_logger")
 
 DEFAULT_SETTINGS = {
-    "theta": 10, 
+    "n": 5, 
     "num_sampled_from_correct": 200,
     "max_search_num": 50,
     "pop_size": 100,
@@ -35,6 +35,9 @@ if __name__ == "__main__":
     ds_name = args.ds
     k = args.k
     fl_method = args.fl_method
+    # TODO: あとでrandomly weights selectionも実装
+    if fl_method == "random":
+        NotImplementedError, "randomly weights selection is not implemented yet."
     setting_path = args.setting_path
     # 設定のjsonファイルが指定された場合
     if setting_path is not None:
@@ -95,23 +98,17 @@ if __name__ == "__main__":
     # ===============================================
 
     if fl_method == "vdiff":
-        localizer = localize_neurons
+        localizer = localize_weights
     elif fl_method == "random":
-        localizer = localize_neurons_random
+        localizer = localize_weights_random
 
+    vscore_before_dir = os.path.join(pretrained_dir, "vscores_before")
     vscore_dir = os.path.join(pretrained_dir, "vscores")
-    vmap_dic = defaultdict(defaultdict)
-    # 正解と不正解時のvscoreを読み込む
-    for cor_mis in ["cor", "mis"]:
-        vmap_dic[cor_mis] = defaultdict(np.array)
-        ds_type = f"ori_{tgt_split}"
-        vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_all_label_{ds_type}_{cor_mis}.npy")
-        vscores = np.load(vscore_save_path)
-        vmap_dic[cor_mis] = vscores.T
-        print(f"vscores shape ({cor_mis}): {vmap_dic[cor_mis].shape}")
-    places_to_fix, tgt_vdiff = localizer(vmap_dic, tgt_layer, theta=setting_dic["theta"])
-    logger.info(f"places_to_fix={places_to_fix}")
-    logger.info(f"num(location)={len(places_to_fix)}")
+    vscore_after_dir = os.path.join(pretrained_dir, "vscores_after")
+    pos_before, pos_after = localizer(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, setting_dic["n"])
+    logger.info(f"pos_before={pos_before}")
+    logger.info(f"pos_after={pos_after}")
+    logger.info(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
 
     # ===============================================
     # patch generation phase
@@ -157,6 +154,12 @@ if __name__ == "__main__":
     # 最終層だけのモデルを準備
     vit_from_last_layer = ViTFromLastLayer(model)
 
+    # TODO: pos_before, pos_afterの位置の重みを最適化の変数にする
+    linear_before2med = vit_from_last_layer.base_model_last_layer.intermediate.dense # on GPU
+    weight_before2med = linear_before2med.weight.cpu().detach().numpy() # on CPU
+    linear_med2after = vit_from_last_layer.base_model_last_layer.output.dense # on GPU
+    weight_med2after = linear_med2after.weight.cpu().detach().numpy() # on CPU
+
     # DE_searcherの初期化
     max_search_num = setting_dic["max_search_num"]
     alpha = setting_dic["alpha"]
@@ -178,11 +181,15 @@ if __name__ == "__main__":
         partial_model=vit_from_last_layer,
         batch_size=batch_size,
         patch_aggr=patch_aggr,
-        tgt_vdiff=tgt_vdiff,
         pop_size=pop_size,
+        mode="weight",
+        pos_before=pos_before,
+        pos_after=pos_after,
+        weight_before2med=weight_before2med,
+        weight_med2after=weight_med2after
     )
 
-    save_dir = os.path.join(pretrained_dir, "repair_neuron_by_de")
+    save_dir = os.path.join(pretrained_dir, "repair_weight_by_de")
     if fl_method == "vdiff":
         save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
     elif fl_method == "random":
@@ -192,7 +199,7 @@ if __name__ == "__main__":
     os.makedirs(save_dir, exist_ok=True)
     logger.info(f"Start DE search...")
     s = time.perf_counter()
-    searcher.search(places_to_fix, save_path=save_path)
+    searcher.search(save_path=save_path, pos_before=pos_before, pos_after=pos_after)
     e = time.perf_counter()
     tot_time = e - s
     logger.info(f"Total execution time: {tot_time} sec.")
@@ -202,6 +209,18 @@ if __name__ == "__main__":
     # ===============================================
     # 保存したpatchを読み込む
     patch = np.load(save_path)
+    # patchを適切な位置の重みにセットする
+    for ba, pos in enumerate([pos_before, pos_after]):
+        # patch_candidateのindexを設定
+        if ba == 0:
+            idx_patch_candidate = range(0, len(pos_before))
+            tgt_weight_data = vit_from_last_layer.base_model_last_layer.intermediate.dense.weight.data
+        else:
+            idx_patch_candidate = range(len(pos_before), len(pos_before) + len(pos_after))
+            tgt_weight_data = vit_from_last_layer.base_model_last_layer.output.dense.weight.data
+        # posで指定された位置のニューロンを書き換える
+        xi, yi = pos[:, 0], pos[:, 1]
+        tgt_weight_data[xi, yi] = torch.from_numpy(patch[idx_patch_candidate]).to(device)
     # repair setの全サンプルに対する中間状態とラベルを再ロード
     hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
     # 中間状態とラベルをバッチ化
@@ -211,7 +230,7 @@ if __name__ == "__main__":
 
     all_proba = []
     for cached_state, y in zip(batch_hs_before_layernorm, batched_labels):
-        logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos, imp_pos=places_to_fix, imp_op=patch)
+        logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos)
         # 出力されたlogitsを確率に変換
         proba = torch.nn.functional.softmax(logits, dim=-1)
         all_proba.append(proba.detach().cpu().numpy())

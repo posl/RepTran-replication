@@ -1,7 +1,9 @@
+import os
 import numpy as np
 import torch
 import torch.nn as nn
 from collections import defaultdict
+from itertools import product
 from transformers import ViTImageProcessor
 import sys
 sys.path.append('../')
@@ -182,6 +184,65 @@ def localize_neurons_random(vmap_dic, tgt_layer, theta=10):
         neuron_idx = np.random.randint(vmap_dic["cor"].shape[0])
         other_places.append([layer_idx, neuron_idx])
     return other_places, None
+
+def rank_descending(x):
+    # x を降順に並べ替えるためのインデックスを取得
+    sorted_indices = np.argsort(x)[::-1]
+    # 順位用の空の配列を準備
+    ranks = np.empty_like(sorted_indices)
+    # インデックスを使って順位を設定
+    ranks[sorted_indices] = np.arange(len(x))
+    return ranks
+
+def return_rank(x, i, order="desc"):
+    # x[i] の順位を返す
+    if order == "desc":
+        return np.argsort(x)[::-1].tolist().index(i)
+    elif order == "asc":
+        return np.argsort(x).tolist().index(i)
+    else:
+        raise NotImplementedError
+
+def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair"):
+    vdiff_dic = defaultdict(defaultdict)
+    # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
+    for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
+        vdiff_dic[ba] = defaultdict(np.array)
+        vmap_dic = defaultdict(np.array)
+        # 正解と不正解時のvscoreを読み込む
+        for cor_mis in ["cor", "mis"]:
+            vmap_dic[cor_mis] = defaultdict(np.array)
+            ds_type = f"ori_{tgt_split}"
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+            vscores = np.load(vscore_save_path)
+            vmap_dic[cor_mis] = vscores.T
+        vmap_cor = vmap_dic["cor"]
+        vmap_mis = vmap_dic["mis"]
+        # vdiffとそのランキングをbaに紐づいた辞書に保存
+        vmap_diff = vmap_cor - vmap_mis
+        vdiff_dic[ba]["vdiff"] = np.abs(vmap_diff[:, tgt_layer])
+        vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"])
+        # vdiff_dic[ba]["vdiff"]のi番目の値の順位がvdiff_dic[ba]["rank"]のi番目と等しいことを確認
+        for i, r in enumerate(vdiff_dic[ba]["rank"]):
+            assert return_rank(vdiff_dic[ba]["vdiff"], i) == r, f"Error: {i}, {r}"
+        print(f'({ba}) |vdiff| [min, max] = [{np.min(vdiff_dic[ba]["vdiff"])}, {np.max(vdiff_dic[ba]["vdiff"])}]')
+    # before,afterからtop n個ずつ，intermediateからtop 4n個を取得
+    top_idx_dic = defaultdict(list)
+    for ba, dic in vdiff_dic.items():
+        if ba == "intermediate":
+            topx = 4*n
+        else:
+            topx = n
+        top_idx_dic[ba] = np.where(dic["rank"] < topx)[0]
+        print(f"{ba}: {top_idx_dic[ba]}")
+    # before-intermediate, intermediate-afterの修正箇所を返す
+    pos_before = np.array(list(product(top_idx_dic["intermediate"], top_idx_dic["before"])))
+    pos_after = np.array(list(product(top_idx_dic["after"], top_idx_dic["intermediate"])))
+    return pos_before, pos_after
+
+
+def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair"):
+    return None
 
 class ViTFromLastLayer(nn.Module):
     def __init__(self, base_model):

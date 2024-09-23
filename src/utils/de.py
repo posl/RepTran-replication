@@ -27,7 +27,7 @@ class DE_searcher(object):
         num_label,
         indices_to_target_layers,
         device,
-        tgt_vdiff,
+        tgt_vdiff=None,
         mutation=(0.5, 1),
         recombination=0.7,
         max_search_num=100,
@@ -36,6 +36,11 @@ class DE_searcher(object):
         batch_size=None,
         is_multi_label=True,
         pop_size=50,
+        mode="neuron",
+        weight_before2med=None,
+        weight_med2after=None,
+        pos_before=None,
+        pos_after=None,
     ):
         super(DE_searcher, self).__init__()
         self.device = device
@@ -54,6 +59,7 @@ class DE_searcher(object):
         self.indices_to_sampled_correct = None
         self.tgt_pos = 0 # TODO: should not be hard coded
         self.pop_size = pop_size
+        self.mode = mode
 
         # ラベルの設定
         if is_multi_label:
@@ -93,9 +99,29 @@ class DE_searcher(object):
         # fitness
         self.patch_aggr = patch_aggr
 
+        # modeがweightの場合の処理
+        if mode == "weight":
+            self.weight_before2med = weight_before2med
+            self.weight_med2after = weight_med2after
+            logger.info(f"self.weight_before2med.shape: {self.weight_before2med.shape}")
+            logger.info(f"self.weight_med2after.shape: {self.weight_med2after.shape}")
+            # DEの初期値生成のために平均と標準偏差を出しておく
+            self.mean_b2m = np.mean(self.weight_before2med)
+            self.std_b2m = np.std(self.weight_before2med)
+            self.mean_m2a = np.mean(self.weight_med2after)
+            self.std_m2a = np.std(self.weight_med2after)
+            # pos_before, afterの長さを取得しておく
+            self.num_pos_before = len(pos_before)
+            self.num_pos_after = len(pos_after)
+            self.num_total_pos = self.num_pos_before + self.num_pos_after
+        
+        # modeがneuronでもweightでもない場合はエラー終了
+        if mode not in ["neuron", "weight"]:
+            NotImplementedError("mode should be either 'neuron' or 'weight'")
+
         logger.info("Finish Initializing DE_searcher...")
 
-    def eval(self, patch_candidate, places_to_fix, show_log=True):
+    def eval_neurons(self, patch_candidate, places_to_fix, show_log=True):
         # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
         # データの予測時は，places_to_fixの位置のニューロンをpatch_candidateの値に変更して予測する
         all_proba = []
@@ -103,6 +129,58 @@ class DE_searcher(object):
         loss_fn = torch.nn.CrossEntropyLoss(reduction="none") # NOTE: バッチ内の各サンプルずつのロスを出すため. デフォルトのreduction="mean"だとバッチ内の平均になってしまう
         for cached_state, y in zip(self.batch_hs_before_layernorm, self.batched_labels):
             logits = self.mdl(hidden_states_before_layernorm=cached_state, tgt_pos=self.tgt_pos, imp_pos=places_to_fix, imp_op=patch_candidate)
+            # 出力されたlogitsを確率に変換
+            proba = torch.nn.functional.softmax(logits, dim=-1)
+            all_proba.append(proba.detach().cpu().numpy())
+            # sampleごとのロスを計算
+            loss = loss_fn(proba, torch.from_numpy(y).to(self.device)).cpu().detach().numpy()
+            losses_of_all.append(loss)
+        losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
+        all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
+        all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
+
+        # 予測結果が合ってるかどうかを評価
+        is_correct = all_pred_laebls == self.ground_truth_labels
+        # 元々正解だったサンプルが変わらず正解だった数を取得
+        num_intact = sum(is_correct[self.indices_to_correct])
+        # 元々不正解だったサンプルが正解になった数を取得
+        num_patched = sum(is_correct[self.indices_to_wrong])
+        # 元々正解だったサンプルに対するロスの平均を取得
+        losses_of_correct = np.mean(losses_of_all[self.indices_to_correct])
+        # 元々不正解だったサンプルに対するロスの平均を取得
+        losses_of_wrong = np.mean(losses_of_all[self.indices_to_wrong])
+
+        fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (losses_of_correct + 1)
+        fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (losses_of_wrong + 1)
+        final_fitness = self.patch_aggr * fitness_for_correct + fitness_for_wrong
+
+        if show_log:
+            logger.info(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
+        return (final_fitness,)
+
+    def eval_weights(self, patch_candidate, pos_before, pos_after, show_log=True):
+        assert len(patch_candidate) == self.num_total_pos, "The length of patch_candidate should be equal to the number of total positions"
+        # patch_candidateの最初のself.num_pos_before個はbefore2medの重みの修正，その後のself.num_pos_after個はmed2afterの重みの修正
+        for ba, pos in enumerate([pos_before, pos_after]):
+            # patch_candidateのindexを設定
+            if ba == 0:
+                idx_patch_candidate = range(0, self.num_pos_before)
+                assert len(idx_patch_candidate) == self.num_pos_before, "The length of idx_patch_candidate should be equal to the number of positions before"
+                tgt_weight_data = self.mdl.base_model_last_layer.intermediate.dense.weight.data
+            else:
+                idx_patch_candidate = range(self.num_pos_before, self.num_total_pos)
+                assert len(idx_patch_candidate) == self.num_pos_after, "The length of idx_patch_candidate should be equal to the number of positions after"
+                tgt_weight_data = self.mdl.base_model_last_layer.output.dense.weight.data
+            # posで指定された位置のニューロンを書き換える
+            xi, yi = pos[:, 0], pos[:, 1]
+            tgt_weight_data[xi, yi] = torch.from_numpy(patch_candidate[idx_patch_candidate]).to(self.device)
+        
+        # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
+        all_proba = []
+        losses_of_all = []
+        loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
+        for cached_state, y in zip(self.batch_hs_before_layernorm, self.batched_labels):
+            logits = self.mdl(hidden_states_before_layernorm=cached_state, tgt_pos=self.tgt_pos)
             # 出力されたlogitsを確率に変換
             proba = torch.nn.functional.softmax(logits, dim=-1)
             all_proba.append(proba.detach().cpu().numpy())
@@ -156,26 +234,54 @@ class DE_searcher(object):
         else:
             return False
 
-    def search(self, places_to_fix, save_path):
-
-        # ターゲットとなるレイヤ達の重みの平均や分散を取得
-        num_places_to_fix = len(places_to_fix)  # the number of places to fix # NDIM of a patch candidate
-
+    def search(self, save_path, places_to_fix=None, pos_before=None, pos_after=None):
         # set search parameters
         pop_size = self.pop_size
         toolbox = self.base.Toolbox()
 
-        # 初期値はターゲットレイヤの重みの平均と分散を用いて正規分布からサンプリング (len(places_to_fix)個をサンプリング)
-        def init_indiv():
-            v_sample = lambda mean_v: np.random.normal(loc=mean_v, scale=1, size=1)[0]
+        # ニューロン修正の際の初期値生成 (ニューロンのx倍なので，初期値はN(1, 1)からサンプリング)
+        def init_indiv_neurons():
+            v_sample = lambda mean_v: np.random.normal(loc=mean_v, scale=1, size=1)[0] # N(mean_v, 1)からサンプリング
             ind = np.float32(list(map(v_sample, np.ones(num_places_to_fix, dtype=np.float32))))
             return ind
+        
+        # 初期値はターゲットレイヤの重みの平均と分散を用いて正規分布からサンプリング (len(places_to_fix)個をサンプリング)
+        def init_indiv_weights():
+            v_sample = lambda mean_v, std_v: np.random.normal(loc=mean_v, scale=std_v, size=1)[0] # N(mean_v, std_v)からサンプリング
+            ind = np.float32(list(map(v_sample, self.mean_values, self.std_values)))
+            return ind
+        
+        # DEのpop初期化関数を設定
+        if self.mode == "neuron":
+            assert places_to_fix is not None, "places_to_fix should be set"
+            args_for_eval = (places_to_fix,)
+            # ターゲットとなるレイヤ達の重みの平均や分散を取得
+            num_places_to_fix = len(places_to_fix)  # the number of places to fix # NDIM of a patch candidate
+            init_indiv = init_indiv_neurons
+            eval_func = self.eval_neurons
+        elif self.mode == "weight":
+            assert pos_before is not None, "pos_before should be set"
+            assert pos_after is not None, "pos_after should be set"
+            args_for_eval = (pos_before, pos_after)
+            self.mean_values = []
+            self.std_values = []
+            # self.mean_valuesとself.std_valuesはそれぞれ，最初のself.num_pos_before個についてはself.mean_b2m, その後のself.num_pos_after個についてはself.mean_m2a のようにする (標準偏差も同様)
+            for i in range(self.num_total_pos):
+                if i < self.num_pos_before:
+                    self.mean_values.append(self.mean_b2m)
+                    self.std_values.append(self.std_b2m)
+                else:
+                    self.mean_values.append(self.mean_m2a)
+                    self.std_values.append(self.std_m2a)
+            num_places_to_fix = self.num_total_pos
+            init_indiv = init_indiv_weights
+            eval_func = self.eval_weights
 
         # DEのためのパラメータ設定
         toolbox.register("individual", self.tools.initIterate, self.creator.Individual, init_indiv)
         toolbox.register("population", self.tools.initRepeat, list, toolbox.individual)
         toolbox.register("select", np.random.choice, size=3, replace=False)
-        toolbox.register("evaluate", self.eval)
+        toolbox.register("evaluate", eval_func)
 
         # set logbook
         stats = self.tools.Statistics(lambda ind: ind.fitness.values)
@@ -199,7 +305,7 @@ class DE_searcher(object):
         # 各個体のfitnessを計算
         logger.info("Evaluating initial population...")
         for ind in tqdm(pop, total=len(pop), desc=f"processing initial population"):
-            ind.fitness.values = toolbox.evaluate(ind, places_to_fix)
+            ind.fitness.values = toolbox.evaluate(ind, *args_for_eval)
             ind.model_name = None
 
         # 初期のベスト（暫定）を更新
@@ -241,7 +347,7 @@ class DE_searcher(object):
                         # y[i] = np.clip(a[i] + MU * (b[i] - c[i]), bounds[i][0], bounds[i][1])
                         y[i] = a[i] + MU * (b[i] - c[i])
 
-                y.fitness.values = toolbox.evaluate(y, places_to_fix)
+                y.fitness.values = toolbox.evaluate(y, *args_for_eval)
                 logger.info(f"[{new_model_name}] fitness: {y.fitness.values[0]}")
                 if y.fitness.values[0] >= ind.fitness.values[0]:  # better
                     pop[pop_idx] = y  # upddate
