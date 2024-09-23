@@ -387,20 +387,21 @@ class ViTLayer(nn.Module):
         outputs = self_attention_outputs[1:]  # add self attentions if we output attention weights
 
         # first residual connection
-        hidden_states = attention_output + hidden_states # XXX: ここの状態
+        hidden_states = attention_output + hidden_states # (batch_size, num_token, hidden_size)
         hidden_states_before_layernorm = hidden_states
 
         # in ViT, layernorm is also applied after self-attention
         layer_output = self.layernorm_after(hidden_states)
+        before_intermediate_outputs = layer_output[:, tgt_pos, :].to('cpu').detach().numpy().copy() # (batch_size, num_states)
         layer_output = self.intermediate(layer_output, tgt_pos=tgt_pos, tmp_score=tmp_score, imp_pos=imp_pos, imp_op=imp_op)
         # TODO:この時点での出力が欲しい！
-        intermediate_outputs = layer_output
-
+        intermediate_outputs = layer_output[:, tgt_pos, :].to('cpu').detach().numpy().copy() # (batch_size, num_states)
         # second residual connection is done here
         layer_output = self.output(layer_output, hidden_states)
+        after_intermediate_outputs = layer_output[:, tgt_pos, :].to('cpu').detach().numpy().copy() # (batch_size, num_states)
 
         if output_intermediate_states:
-            outputs = (layer_output,) + outputs + (intermediate_outputs,)
+            outputs = (layer_output,) + outputs + (before_intermediate_outputs, intermediate_outputs, after_intermediate_outputs)
         else:
             outputs = (layer_output,) + outputs
 
@@ -483,14 +484,16 @@ class ViTEncoder(nn.Module):
             
             if output_intermediate_states:
                 if not output_attentions:
-                    all_intermediate_states = all_intermediate_states + (layer_outputs[1],)
+                    all_intermediate_states = all_intermediate_states + (layer_outputs[1:4],)
                 else:
-                    all_intermediate_states = all_intermediate_states + (layer_outputs[2],)
+                    all_intermediate_states = all_intermediate_states + (layer_outputs[2:5],)
             
             if output_hidden_states_before_layernorm:
                 if output_attentions and output_intermediate_states:
-                    all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[3],)
-                elif output_attentions or output_intermediate_states:
+                    all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[5],)
+                elif not output_attentions and output_intermediate_states:
+                    all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[4],)
+                elif output_attentions and not output_intermediate_states:
                     all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[2],)
                 else:
                     all_hidden_states_before_layernorm = all_hidden_states_before_layernorm + (layer_outputs[1],)

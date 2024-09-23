@@ -66,7 +66,7 @@ if __name__ == "__main__":
         # loop for dataset batch
         for entry_dic in tqdm(ds_preprocessed[split].iter(batch_size=batch_size), total=len(ds_preprocessed[split])//batch_size+1):
             x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"]
-            output = model.forward(x, output_intermediate_states=True) # (batch_size, num_layers, num_neurons)
+            output = model.forward(x, output_intermediate_states=True)
             # CLSトークンに対応するintermediate statesを取得
             output_mid_states = np.array([mid_states_each_layer[:, tgt_pos, :].cpu().detach().numpy()
                                                 for mid_states_each_layer in output.intermediate_states])
