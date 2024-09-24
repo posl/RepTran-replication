@@ -653,11 +653,11 @@ class ViTModel(ViTPreTrainedModel):
         output_intermediate_states = (
             output_intermediate_states if output_intermediate_states is not None else self.config.output_intermediate_states
         )
-        output_hidden_states_before_layernorm = (
-            output_hidden_states_before_layernorm
-            if output_hidden_states_before_layernorm is not None
-            else self.config.output_hidden_states_before_layernorm
-        )
+        # output_hidden_states_before_layernorm = (
+        #     output_hidden_states_before_layernorm
+        #     if output_hidden_states_before_layernorm is not None
+        #     else self.config.output_hidden_states_before_layernorm
+        # )
 
         return_dict = return_dict if return_dict is not None else self.config.use_return_dict
 

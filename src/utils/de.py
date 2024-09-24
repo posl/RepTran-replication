@@ -188,26 +188,48 @@ class DE_searcher(object):
             loss = loss_fn(proba, torch.from_numpy(y).to(self.device)).cpu().detach().numpy()
             losses_of_all.append(loss)
         losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
+        losses_to_correct = losses_of_all[self.indices_to_correct]
+        losses_to_wrong = losses_of_all[self.indices_to_wrong]
         all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
         all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
-
         # 予測結果が合ってるかどうかを評価
         is_correct = all_pred_laebls == self.ground_truth_labels
-        # 元々正解だったサンプルが変わらず正解だった数を取得
-        num_intact = sum(is_correct[self.indices_to_correct])
-        # 元々不正解だったサンプルが正解になった数を取得
-        num_patched = sum(is_correct[self.indices_to_wrong])
-        # 元々正解だったサンプルに対するロスの平均を取得
-        losses_of_correct = np.mean(losses_of_all[self.indices_to_correct])
-        # 元々不正解だったサンプルに対するロスの平均を取得
-        losses_of_wrong = np.mean(losses_of_all[self.indices_to_wrong])
+        indices_to_correct_to_correct = is_correct[self.indices_to_correct]
+        indices_to_correct_to_wrong = ~indices_to_correct_to_correct
+        indices_to_wrong_to_correct = is_correct[self.indices_to_wrong]
+        indices_to_wrong_to_wrong = ~indices_to_wrong_to_correct
 
-        fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (losses_of_correct + 1)
-        fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (losses_of_wrong + 1)
-        final_fitness = self.patch_aggr * fitness_for_correct + fitness_for_wrong
+        # TODO: fitness_fnの形は微妙にバリエーションがあるのでカスタマイズできるようにしたい．
+        # 元々正解だったサンプルが変わらず正解だった数を取得
+        num_intact = sum(indices_to_correct_to_correct)
+        # 元々不正解だったサンプルが正解になった数を取得
+        num_patched = sum(indices_to_wrong_to_correct)
+        # 元々正解だったサンプルに対するロスの平均を取得
+        mean_of_losses_of_correct = np.mean(losses_of_all[self.indices_to_correct])
+        # 元々不正解だったサンプルに対するロスの平均を取得
+        mean_of_losses_of_wrong = np.mean(losses_of_all[self.indices_to_wrong])
+        # 元々正解だったサンプルのうち不正解に変わってしまったサンプルに対するロスの平均を取得
+        losses_of_correct_to_wrong = losses_to_correct[indices_to_correct_to_wrong]
+        # 元々不正解だったサンプルのうち変わらず不正解だったサンプルに対するロスの平均を取得
+        losses_of_wrong_to_wrong = losses_to_wrong[indices_to_wrong_to_wrong]
+
+        # fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (mean_of_losses_of_correct + 1)
+        # fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (mean_of_losses_of_wrong + 1)
+        # final_fitness = self.patch_aggr * fitness_for_correct + fitness_for_wrong
+        # terms for correct
+        term1 = num_intact / len(self.indices_to_correct)
+        term2 = np.mean(1 / (losses_of_correct_to_wrong + 1)) if len(losses_of_correct_to_wrong) > 0 else 0
+        fitness_for_correct = term1 + term2
+        # terms for wrong
+        term1 = num_patched / len(self.indices_to_wrong)
+        term2 = np.mean(1 / (losses_of_wrong_to_wrong + 1)) if len(losses_of_wrong_to_wrong) > 0 else 0
+        fitness_for_wrong = term1 + term2
+        # print(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
+        # print(f"fitness_for_correct: {fitness_for_correct}, fitness_for_wrong: {fitness_for_wrong}")
+        final_fitness = (1-self.patch_aggr) * fitness_for_correct + self.patch_aggr * fitness_for_wrong
 
         if show_log:
-            logger.info(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
+            logger.info(f"num_intact: {num_intact}/{len(self.indices_to_correct)} ({100*num_intact/len(self.indices_to_correct):.2f}%), num_patched: {num_patched}/{len(self.indices_to_wrong)} ({100*num_patched/len(self.indices_to_wrong):.2f}%)")
         return (final_fitness,)
 
     def is_the_performance_unchanged(self, curr_best_patch_candidate):
@@ -357,7 +379,7 @@ class DE_searcher(object):
                     if best.fitness.values[0] < pop[pop_idx].fitness.values[0]:
                         hof.update(pop)
                         best = hof[0]
-                        logger.info(f"New best one is set: {best}, fitness: {best.fitness.values[0]}, model_name: {best.model_name}")
+                        logger.info(f"New best one is set: fitness: {best.fitness.values[0]}, model_name: {best.model_name}")
 
             # 全population終わったらその世代でのベストのパッチ候補を表示
             hof.update(pop)

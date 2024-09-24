@@ -270,3 +270,23 @@ class ViTFromLastLayer(nn.Module):
 #         neuron_idx = np.random.randint(num_neurons)
 #         kn_list.append([layer_idx, neuron_idx])
 #     return kn_list
+
+def get_misclf_info(pred_labels, true_labels, num_classes):
+    # 誤分類の数をカウント
+    mis_matrix = np.zeros((num_classes, num_classes), dtype=int)
+    mis_indices = {i: {j: [] for j in range(num_classes) if i != j} for i in range(num_classes)}
+    for idx, (pred, true) in enumerate(zip(pred_labels, true_labels)):
+        if pred != true:
+            mis_matrix[pred, true] += 1
+            mis_indices[pred][true].append(idx)  # Track the indices where the misclassification occurred
+    # 誤分類のランキングを作成
+    mis_ranking = []
+    for i in range(num_classes):
+        for j in range(num_classes):
+            if i != j:
+                mis_ranking.append((i, j, mis_matrix[i, j]))
+    mis_ranking.sort(key=lambda x: x[2], reverse=True)
+    print("Top 10 misclassification:")
+    for i, j, mis in mis_ranking[:10]:
+        print(f"{i} -> {j}: {mis} / {mis_matrix.sum()} = {100 * mis / mis_matrix.sum():.2f} %")
+    return mis_matrix, mis_ranking, mis_indices

@@ -11,12 +11,14 @@ met_f1 = evaluate.load("f1")
 from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device
-from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, localize_neurons
+from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, localize_weights
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from logging import getLogger
 
 logger = getLogger("base_logger")
+
+n=10 # TODO: 絶対ダメ
 
 if __name__ == "__main__":
     # データセットをargparseで受け取る
@@ -59,7 +61,7 @@ if __name__ == "__main__":
     
     # pretrained modelのロード
     ori_pretrained_dir = getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR.format(k=k)
-    pretrained_dir = os.path.join(ori_pretrained_dir, "repair_neuron_by_de")
+    pretrained_dir = os.path.join(ori_pretrained_dir, "repair_weight_by_de")
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
@@ -93,19 +95,31 @@ if __name__ == "__main__":
     # deの出力したパッチをロード
     best_patch = np.load(os.path.join(pretrained_dir, patch_filename))
     # 修復対象の位置をロード
+    vscore_before_dir = os.path.join(ori_pretrained_dir, "vscores_before")
     vscore_dir = os.path.join(ori_pretrained_dir, "vscores")
-    vmap_dic = defaultdict(defaultdict)
-    for cor_mis in ["cor", "mis"]:
-        vmap_dic[cor_mis] = defaultdict(np.array)
-        vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_all_label_ori_repair_{cor_mis}.npy")
-        vscores = np.load(vscore_save_path)
-        vmap_dic[cor_mis] = vscores.T
-        logger.info(f"vscores shape ({cor_mis}): {vmap_dic[cor_mis].shape}")
-    places_to_fix, tgt_vdiff = localize_neurons(vmap_dic, tgt_layer)
-    logger.info(f"places_to_fix={places_to_fix}")
-    logger.info(f"num(location)={len(places_to_fix)}")
+    vscore_after_dir = os.path.join(ori_pretrained_dir, "vscores_after")
+    pos_before, pos_after = localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n)
+    logger.info(f"pos_before={pos_before}")
+    logger.info(f"pos_after={pos_after}")
+    logger.info(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
     logger.info(f"best_patch={best_patch}")
     logger.info(f"best_patch.shape: {best_patch.shape}")
+
+    # ===============================================
+    # patch setting
+    # ===============================================
+
+    for ba, pos in enumerate([pos_before, pos_after]):
+        # patch_candidateのindexを設定
+        if ba == 0:
+            idx_patch_candidate = range(0, len(pos_before))
+            tgt_weight_data = model.vit.encoder.layer[tgt_layer].intermediate.dense.weight.data
+        else:
+            idx_patch_candidate = range(len(pos_before), len(pos_before) + len(pos_after))
+            tgt_weight_data = model.vit.encoder.layer[tgt_layer].output.dense.weight.data
+        # posで指定された位置のニューロンを書き換える
+        xi, yi = pos[:, 0], pos[:, 1]
+        tgt_weight_data[xi, yi] = torch.from_numpy(best_patch[idx_patch_candidate]).to(device)
 
     # C10 or C100データセットに対する推論
     # ====================================================================
@@ -122,7 +136,7 @@ if __name__ == "__main__":
             # 各バッチに対する予測を実行
             for entry_dic in tqdm(ds_preprocessed[split].iter(batch_size=batch_size), total=len(ds_preprocessed[split])//batch_size+1):
                 x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"]
-                output = model.forward(x, tgt_layer=tgt_layer, imp_pos=places_to_fix, imp_op=best_patch, tgt_pos=tgt_pos, output_hidden_states_before_layernorm=False, output_intermediate_states=False)
+                output = model.forward(x, tgt_pos=tgt_pos, output_hidden_states_before_layernorm=False, output_intermediate_states=False)
                 proba = torch.nn.functional.softmax(output.logits, dim=-1).cpu().detach().numpy()
                 # 予測結果のラベルを取得
                 pred_labels = proba.argmax(axis=-1)
