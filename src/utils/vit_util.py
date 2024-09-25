@@ -2,7 +2,7 @@ import os
 import numpy as np
 import torch
 import torch.nn as nn
-from collections import defaultdict
+from collections import defaultdict, Counter
 from itertools import product
 from transformers import ViTImageProcessor
 import sys
@@ -203,7 +203,10 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair"):
+def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None):
+    # misclf_pairと，tgt_labelは同時に指定できない
+    assert (misclf_pair is None) or (tgt_label is None), f"Error: {misclf_pair}, {tgt_label}"
+
     vdiff_dic = defaultdict(defaultdict)
     # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
     for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
@@ -214,6 +217,14 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
             vmap_dic[cor_mis] = defaultdict(np.array)
             ds_type = f"ori_{tgt_split}"
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+            if misclf_pair is not None and cor_mis == "mis":
+                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
+                slabel, tlabel = misclf_pair
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
+            if tgt_label is not None and cor_mis == "mis":
+                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
             vscores = np.load(vscore_save_path)
             vmap_dic[cor_mis] = vscores.T
         vmap_cor = vmap_dic["cor"]
@@ -288,5 +299,50 @@ def get_misclf_info(pred_labels, true_labels, num_classes):
     mis_ranking.sort(key=lambda x: x[2], reverse=True)
     print("Top 10 misclassification:")
     for i, j, mis in mis_ranking[:10]:
-        print(f"{i} -> {j}: {mis} / {mis_matrix.sum()} = {100 * mis / mis_matrix.sum():.2f} %")
-    return mis_matrix, mis_ranking, mis_indices
+        print(f"pred {i} -> true {j}: {mis} / {mis_matrix.sum()} = {100 * mis / mis_matrix.sum():.2f} %")
+
+    # クラスごとのメトリクスを1つの辞書にまとめる
+    met_dict = defaultdict(np.array)
+    precision, recall, f1_metric = evaluate.load("precision"), evaluate.load("recall"), evaluate.load("f1")
+    precisions = precision.compute(predictions=pred_labels, references=true_labels, average=None) # {"metric_name": クラスごとのmetric valueのarray} の辞書形式
+    recalls = recall.compute(predictions=pred_labels, references=true_labels, average=None)
+    f1_scores = f1_metric.compute(predictions=pred_labels, references=true_labels, average=None)
+    for met_item in [precisions, recalls, f1_scores]:
+        met_dict.update(met_item)
+
+    # metricの悪い順にidxとmetricのペアを表示
+    for metric in met_dict.keys():
+        print(f"Top 10 worst {metric} scores:")
+        met_ranking = sorted(enumerate(met_dict[metric]), key=lambda x: x[1])
+        for idx, score in met_ranking[:10]:
+            print(f"label: {idx}, {metric}: {score}")
+
+    return mis_matrix, mis_ranking, mis_indices, met_dict
+
+def src_tgt_selection(mis_ranking, mis_indices, tgt_rank):
+    """
+    src-tgt型のrepairをしたい場合に使う
+    src-tgt型の誤分類において，tgt_rank番目の誤分類情報を取り出す．
+    具体的には予測ラベル，正解ラベル，該当サンプルのインデックスを取り出す．
+    """
+    # ランキングから対象の誤分類情報を取り出す
+    slabel, tlabel, mis_cnt = mis_ranking[tgt_rank-1]
+    tgt_mis_indices = mis_indices[slabel][tlabel]
+    return slabel, tlabel, tgt_mis_indices
+
+def tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1"):
+    """
+    tgt型のrepairをしたい場合に使う
+    tgt型の誤分類において，tgt_rank番目にused_metの悪いラベルを特定し，その情報を取り出す．
+    具体的には対象ラベル，該当サンプルのインデックスを取り出す．
+    """
+    metrics = met_dict[used_met]
+    num_labels = len(metrics)
+    met_ranking = sorted(enumerate(metrics), key=lambda x: x[1])
+    tgt_label = met_ranking[tgt_rank-1][0]
+    tgt_mis_indices = []
+    for pred_label in range(num_labels):
+        for true_label in range(num_labels):
+            if (pred_label == tgt_label or true_label == tgt_label) and pred_label != true_label:
+                tgt_mis_indices.extend(mis_indices[pred_label][true_label])
+    return tgt_label, np.array(tgt_mis_indices)

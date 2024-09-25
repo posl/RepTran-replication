@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100, get_vscore
+from utils.vit_util import transforms, transforms_c100, get_vscore, src_tgt_selection, tgt_selection
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
@@ -20,11 +20,14 @@ if __name__ == "__main__":
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     parser.add_argument('tgt_rank', type=int, help="the rank of the target misclassification type")
+    parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt)", default="tgt")
+    
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
     tgt_rank = args.tgt_rank
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}")
+    misclf_type = args.misclf_type
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}")
 
     # datasetごとに違う変数のセット
     if ds_name == "c10":
@@ -71,10 +74,19 @@ if __name__ == "__main__":
     # ランキングのロード
     with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_ranking.pkl"), "rb") as f:
         mis_ranking = pickle.load(f)
-    # ランキングから対象の誤分類情報を取り出す
-    slabel, tlabel, mis = mis_ranking[tgt_rank-1]
-    tgt_mis_indices = mis_indices[slabel][tlabel]
-    print(f"tgt_misclf: {slabel} -> {tlabel}, len(tgt_mis_indices): {len(tgt_mis_indices)}")
+    # metrics dictのロード
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_met_dict.pkl"), "rb") as f:
+        met_dict = pickle.load(f)
+
+    if misclf_type == "src_tgt":
+        slabel, tlabel, tgt_mis_indices = src_tgt_selection(mis_ranking, mis_indices, tgt_rank)
+        tgt_mis_indices = mis_indices[slabel][tlabel]
+        print(f"tgt_misclf: {slabel} -> {tlabel}, len(tgt_mis_indices): {len(tgt_mis_indices)}")
+    elif misclf_type == "tgt":
+        tlabel, tgt_mis_indices = tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1")
+        print(f"tgt_misclf: {tlabel}, len(tgt_mis_indices): {len(tgt_mis_indices)}")
+    else:
+        NotImplementedError, f"misclf_type: {misclf_type}"
 
     print(f"Process {tgt_split}...")
     # 必要なディレクトリがない場合は先に作っておく
@@ -117,8 +129,12 @@ if __name__ == "__main__":
         all_logits.append(logits)
     all_logits = np.concatenate(all_logits) # (num_samples, num_labels)
     all_pred_labels = np.argmax(all_logits, axis=-1) # (num_samples, )
-    # all_pred_labelsがすべてslabelになっていることを確認
-    assert all(all_pred_labels == slabel), f"all_pred_labels: {all_pred_labels}"
+    if misclf_type == "src_tgt":
+        # all_pred_labelsがすべてslabelになっていることを確認
+        assert all(all_pred_labels == slabel), f"all_pred_labels: {all_pred_labels}"
+    elif misclf_type == "tgt":
+        for pred_l, true_l in zip(all_pred_labels, labels[tgt_split][tgt_mis_indices]):
+            assert pred_l == tlabel or true_l == tlabel, f"pred_l: {pred_l}, true_l: {true_l}"
     all_bhs = np.concatenate(all_bhs)
     all_ahs = np.concatenate(all_ahs)
     all_mhs = np.concatenate(all_mhs)
@@ -138,7 +154,10 @@ if __name__ == "__main__":
         vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
         # vscoresを保存
         ds_type = f"ori_{tgt_split}"
-        vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_{slabel}to{tlabel}_{ds_type}_mis.npy")
+        if misclf_type == "src_tgt":
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_{slabel}to{tlabel}_{ds_type}_mis.npy")
+        elif misclf_type == "tgt":
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_{tlabel}_{ds_type}_mis.npy")
         np.save(vscore_save_path, vscores)
         print(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
     

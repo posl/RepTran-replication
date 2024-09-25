@@ -28,7 +28,8 @@ if __name__ == '__main__':
         pred_out = pickle.load(f)
     pred_labels = pred_out.predictions.argmax(-1)
     true_labels = pred_out.label_ids
-    mis_matrix, mis_ranking, mis_indices = get_misclf_info(pred_labels, true_labels, num_classes)
+    mis_matrix, mis_ranking, mis_indices, met_dict = get_misclf_info(pred_labels, true_labels, num_classes)
+
     # mis_matrixはnpyで，それ以外はpklで保存
     save_dir = os.path.join(pretrained_dir, "misclf_info")
     os.makedirs(save_dir, exist_ok=True)
@@ -37,9 +38,8 @@ if __name__ == '__main__':
         pickle.dump(mis_ranking, f)
     with open(os.path.join(save_dir, f"{tgt_split}_mis_indices.pkl"), "wb") as f:
         pickle.dump(mis_indices, f)
+    with open(os.path.join(save_dir, f"{tgt_split}_met_dict.pkl"), "wb") as f:
+        pickle.dump(met_dict, f)
     print("Summary of the misclassification info:")
     print(f"mis_matrix: {mis_matrix.shape}")
     print(f"total_mis: {mis_matrix.sum()}")
-    for i, j, mis in mis_ranking[:10]:
-        print(f"{i} -> {j}: {mis} / {mis_matrix.sum()} = {100 * mis / mis_matrix.sum():.2f} %")
-        print(f"mis_indices: {mis_indices[i][j]}")
