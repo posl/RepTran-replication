@@ -3,6 +3,7 @@ import argparse
 from tqdm import tqdm
 from collections import defaultdict
 import numpy as np
+import evaluate
 import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
@@ -13,6 +14,7 @@ from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from utils.de import DE_searcher
 from logging import getLogger
+from sklearn.metrics import confusion_matrix
 
 logger = getLogger("base_logger")
 
@@ -21,7 +23,7 @@ DEFAULT_SETTINGS = {
     "num_sampled_from_correct": 200,
     "max_search_num": 50,
     "pop_size": 100,
-    "alpha": 1
+    "alpha": 0.5
 }
 
 if __name__ == "__main__":
@@ -33,43 +35,58 @@ if __name__ == "__main__":
     parser.add_argument("--setting_path", type=str, help="path to the setting json file", default=None)
     parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt)", default="tgt")
+    parser.add_argument('--only_eval', action='store_true', help="if True, only evaluate the saved patch", default=False)
+    parser.add_argument("--custom_n", type=int, help="the custom n for the FL", default=None)
+    parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
     tgt_rank = args.tgt_rank
+    setting_path = args.setting_path
     fl_method = args.fl_method
     misclf_type = args.misclf_type
+    only_eval = args.only_eval
+    custom_n = args.custom_n
+    custom_alpha = args.custom_alpha
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
 
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
         NotImplementedError, "randomly weights selection is not implemented yet."
-    setting_path = args.setting_path
     # 設定のjsonファイルが指定された場合
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
         setting_dic = json2dict(setting_path)
         # setting_idは setting_{setting_id}.json というファイル名になる
         setting_id = os.path.basename(setting_path).split(".")[0].split("_")[-1]
-    # 設定のjsonファイルが指定されない場合はデフォルトの設定を使う
+    # 設定のjsonファイルが指定されない場合はnとalphaだけカスタムorデフォルトの設定を使う
     else:
         setting_dic = DEFAULT_SETTINGS
         setting_id = "default"
+        if custom_n is not None:
+            setting_dic["n"] = custom_n
+            setting_id = f"n{custom_n}"
+        if custom_alpha is not None:
+            setting_dic["alpha"] = custom_alpha
+            setting_id = f"alpha{custom_alpha}" if custom_n is None else f"n{custom_n}_alpha{custom_alpha}"
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
     if fl_method == "vdiff":
-        save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
+        patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
+        tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}.pkl")
     elif fl_method == "random":
-        save_path = os.path.join(save_dir, f"best_patch_{setting_id}_random.npy")
+        patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}_random.npy")
+        tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}_random.pkl")
     else:
         NotImplementedError
     os.makedirs(save_dir, exist_ok=True)
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
+    exp_name = f"{this_file_name}_{setting_id}"
     # loggerの設定をして設定情報を表示
-    logger = set_exp_logging(exp_dir=save_dir, exp_name=this_file_name)
+    logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, setting_path: {setting_path}")
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
@@ -166,6 +183,7 @@ if __name__ == "__main__":
         is_correct = is_correct & (labels[tgt_split] == tgt_label)
     indices_to_correct = np.where(is_correct)[0]
     indices_to_incorrect = tgt_mis_indices
+    ori_indices_to_correct, ori_indices_to_incorrect = indices_to_correct.copy(), indices_to_incorrect.copy()
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
     # 正解データからrepairに使う一定数だけランダムに取り出す
@@ -205,47 +223,53 @@ if __name__ == "__main__":
     linear_med2after = vit_from_last_layer.base_model_last_layer.output.dense # on GPU
     weight_med2after = linear_med2after.weight.cpu().detach().numpy() # on CPU
 
-    # DE_searcherの初期化
-    max_search_num = setting_dic["max_search_num"]
-    alpha = setting_dic["alpha"]
-    patch_aggr = alpha * len(indices_to_correct) / len(indices_to_incorrect)
-    logger.info(f"alpha of the fitness func.: {patch_aggr}")
-    pop_size = setting_dic["pop_size"]
-    num_labels = len(set(labels["train"]))
-    searcher = DE_searcher(
-        batch_hs_before_layernorm=batch_hs_before_layernorm,
-        labels=tgt_labels,
-        indices_to_correct=indices_to_correct,
-        indices_to_wrong=indices_to_incorrect,
-        num_label=num_labels,
-        indices_to_target_layers=[tgt_layer],
-        device=device,
-        mutation=(0.5, 1),
-        recombination=0.7,
-        max_search_num=max_search_num,
-        partial_model=vit_from_last_layer,
-        batch_size=batch_size,
-        patch_aggr=patch_aggr,
-        pop_size=pop_size,
-        mode="weight",
-        pos_before=pos_before,
-        pos_after=pos_after,
-        weight_before2med=weight_before2med,
-        weight_med2after=weight_med2after
-    )
+    if not only_eval:
+        # DE_searcherの初期化
+        max_search_num = setting_dic["max_search_num"]
+        alpha = setting_dic["alpha"] # [0, 1]の値で，fitnessの正しい分類に対する重み: 誤分類に対する重み = 1-alpha: alpha になる
+        assert 0 <= alpha <= 1, f"alpha should be in [0, 1]. alpha: {alpha}"
+        # patch_aggr = alpha * len(indices_to_incorrect) / len(indices_to_correct)
+        # patch_aggr = alpha * len(indices_to_correct) / len(indices_to_incorrect)
+        logger.info(f"alpha of the fitness func.: {alpha}")
+        pop_size = setting_dic["pop_size"]
+        num_labels = len(set(labels["train"]))
+        searcher = DE_searcher(
+            batch_hs_before_layernorm=batch_hs_before_layernorm,
+            labels=tgt_labels,
+            indices_to_correct=indices_to_correct,
+            indices_to_wrong=indices_to_incorrect,
+            num_label=num_labels,
+            indices_to_target_layers=[tgt_layer],
+            device=device,
+            mutation=(0.5, 1),
+            recombination=0.7,
+            max_search_num=max_search_num,
+            partial_model=vit_from_last_layer,
+            batch_size=batch_size,
+            alpha=alpha,
+            pop_size=pop_size,
+            mode="weight",
+            pos_before=pos_before,
+            pos_after=pos_after,
+            weight_before2med=weight_before2med,
+            weight_med2after=weight_med2after
+        )
 
-    logger.info(f"Start DE search...")
-    s = time.perf_counter()
-    searcher.search(save_path=save_path, pos_before=pos_before, pos_after=pos_after)
-    e = time.perf_counter()
-    tot_time = e - s
-    logger.info(f"Total execution time: {tot_time} sec.")
+        logger.info(f"Start DE search...")
+        s = time.perf_counter()
+        searcher.search(patch_save_path=patch_save_path, pos_before=pos_before, pos_after=pos_after, tracker_save_path=tracker_save_path)
+        e = time.perf_counter()
+        tot_time = e - s
+        logger.info(f"Total execution time: {tot_time} sec.")
+    else:
+        logger.info(f"Only evaluation mode is on. Skippping the DE search.")
+        tot_time = None
 
     # ===============================================
     # evaluation for the repair set
     # ===============================================
     # 保存したpatchを読み込む
-    patch = np.load(save_path)
+    patch = np.load(patch_save_path)
     # patchを適切な位置の重みにセットする
     for ba, pos in enumerate([pos_before, pos_after]):
         # patch_candidateのindexを設定
@@ -272,7 +296,7 @@ if __name__ == "__main__":
         proba = torch.nn.functional.softmax(logits, dim=-1)
         all_proba.append(proba.detach().cpu().numpy())
     all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
-    new_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
+    new_pred_labels = np.argmax(all_proba, axis=-1) # (num_of_data, )
 
     # old_pred_labels と new_pred_labels それぞれの違いから以下の3つのメトリクスを算出
     # 1. Δaccuracy: acc after repair - acc before repair
@@ -282,7 +306,7 @@ if __name__ == "__main__":
 
     # まずは修正履歴の正解/不正解の配列を作る
     is_correct_old = ori_pred_labels == ori_tgt_labels
-    is_correct_new = new_pred_laebls == ori_tgt_labels
+    is_correct_new = new_pred_labels == ori_tgt_labels
     # 修正前後の正解率を計算
     acc_old = np.mean(is_correct_old)
     acc_new = np.mean(is_correct_new)
@@ -292,6 +316,23 @@ if __name__ == "__main__":
     repair_rate = np.mean(~is_correct_old & is_correct_new)
     break_rate = np.mean(is_correct_old & ~is_correct_new)
 
+    # tgt_mis_indicesに対しては全部不正解なことを保証
+    assert sum(is_correct_old[np.array(tgt_mis_indices)]) == 0, "There is a correct data in the misclassified data."
+
+    if misclf_type == "tgt":
+        # tgt_labelへのf1を計算
+        f1_score =  evaluate.load("f1")
+        tgt_f1_old = f1_score.compute(predictions=ori_pred_labels, references=ori_tgt_labels, average=None)["f1"][tgt_label]
+        tgt_f1_new = f1_score.compute(predictions=new_pred_labels, references=ori_tgt_labels, average=None)["f1"][tgt_label]
+        delta_f1 = tgt_f1_new - tgt_f1_old
+        # repairに使ったデータの予測結果がどう変わったか？
+        assert sum(is_correct_old[ori_indices_to_correct]) == len(ori_indices_to_correct), f"sum(is_correct_old): {sum(is_correct_old)}, len(ori_indices_to_correct): {len(ori_indices_to_correct)}"
+        assert sum(is_correct_old[ori_indices_to_incorrect]) == 0, f"sum(is_correct_new): {sum(is_correct_new)}"
+        is_correct_new_tgt_mis = is_correct_new[np.array(tgt_mis_indices)]
+        tgt_rep_rate = np.mean(is_correct_new[ori_indices_to_incorrect])
+        tgt_brk_rate = np.mean(is_correct_new[ori_indices_to_correct])
+        
+
     # メトリクスを保存
     metrics = {
         "delta_acc": delta_acc,
@@ -299,9 +340,14 @@ if __name__ == "__main__":
         "break_rate": break_rate,
         "tot_time": tot_time,
         "acc_old": acc_old,
-        "acc_new": acc_new
+        "acc_new": acc_new,
+        "tgt_rep_rate": tgt_rep_rate,
+        "tgt_brk_rate": tgt_brk_rate,
+        "delta_f1": delta_f1,
+        "tgt_f1_old": tgt_f1_old,
+        "tgt_f1_new": tgt_f1_new
     }
-    logger.info(f"delta_acc: {delta_acc}, repair_rate: {repair_rate}, break_rate: {break_rate}")
+    logger.info(f"delta_acc: {delta_acc}, repair_rate: {repair_rate}, break_rate: {break_rate}, tgt_rep_rate: {tgt_rep_rate}, tgt_brk_rate: {tgt_brk_rate}, tgt_f1_old: {tgt_f1_old}, tgt_f1_new: {tgt_f1_new}")
     if fl_method == "vdiff":
         metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")
     elif fl_method == "random":

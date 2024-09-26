@@ -32,7 +32,7 @@ class DE_searcher(object):
         recombination=0.7,
         max_search_num=100,
         partial_model=None,
-        patch_aggr=None,
+        alpha=None,
         batch_size=None,
         is_multi_label=True,
         pop_size=50,
@@ -97,7 +97,7 @@ class DE_searcher(object):
         self.recombination = recombination
 
         # fitness
-        self.patch_aggr = patch_aggr
+        self.alpha = alpha
 
         # modeがweightの場合の処理
         if mode == "weight":
@@ -152,7 +152,7 @@ class DE_searcher(object):
 
         fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (losses_of_correct + 1)
         fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (losses_of_wrong + 1)
-        final_fitness = self.patch_aggr * fitness_for_correct + fitness_for_wrong
+        final_fitness = self.alpha * fitness_for_correct + fitness_for_wrong
 
         if show_log:
             logger.info(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
@@ -193,11 +193,13 @@ class DE_searcher(object):
         all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
         all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
         # 予測結果が合ってるかどうかを評価
-        is_correct = all_pred_laebls == self.ground_truth_labels
-        indices_to_correct_to_correct = is_correct[self.indices_to_correct]
-        indices_to_correct_to_wrong = ~indices_to_correct_to_correct
-        indices_to_wrong_to_correct = is_correct[self.indices_to_wrong]
-        indices_to_wrong_to_wrong = ~indices_to_wrong_to_correct
+        is_correct = all_pred_laebls == self.ground_truth_labels # 修正後モデルで正しい予測のデータインデックス
+        indices_to_correct_to_correct = is_correct[self.indices_to_correct] # 元々正解だったサンプルが変わらず正解だったサンプルのインデックス
+        indices_to_correct_to_wrong = ~indices_to_correct_to_correct # 元々正解だったサンプルが不正解に変わったサンプルのインデックス
+        indices_to_wrong_to_correct = is_correct[self.indices_to_wrong] # 元々不正解だったサンプルが正解に変わったサンプルのインデックス
+        indices_to_wrong_to_wrong = ~indices_to_wrong_to_correct # 元々不正解だったサンプルが変わらず不正解だったサンプルのインデックス
+        assert sum(indices_to_correct_to_correct) + sum(indices_to_correct_to_wrong) == len(self.indices_to_correct), f"The sum of indices_to_correct_to_correct and indices_to_correct_to_wrong should be equal to the length of indices_to_correct (sum(indices_to_correct_to_correct): {sum(indices_to_correct_to_correct)}, sum(indices_to_correct_to_wrong): {sum(indices_to_correct_to_wrong)}, len(self.indices_to_correct): {len(self.indices_to_correct)}"
+        assert sum(indices_to_wrong_to_correct) + sum(indices_to_wrong_to_wrong) == len(self.indices_to_wrong), f"The sum of indices_to_wrong_to_correct and indices_to_wrong_to_wrong should be equal to the length of indices_to_wrong (sum(indices_to_wrong_to_correct): {sum(indices_to_wrong_to_correct)}, sum(indices_to_wrong_to_wrong): {sum(indices_to_wrong_to_wrong)}, len(self.indices_to_wrong): {len(self.indices_to_wrong)}"
 
         # TODO: fitness_fnの形は微妙にバリエーションがあるのでカスタマイズできるようにしたい．
         # 元々正解だったサンプルが変わらず正解だった数を取得
@@ -208,29 +210,44 @@ class DE_searcher(object):
         mean_of_losses_of_correct = np.mean(losses_of_all[self.indices_to_correct])
         # 元々不正解だったサンプルに対するロスの平均を取得
         mean_of_losses_of_wrong = np.mean(losses_of_all[self.indices_to_wrong])
-        # 元々正解だったサンプルのうち不正解に変わってしまったサンプルに対するロスの平均を取得
+        # 元々正解だったサンプルのうち不正解に変わってしまったサンプルに対するロス
         losses_of_correct_to_wrong = losses_to_correct[indices_to_correct_to_wrong]
-        # 元々不正解だったサンプルのうち変わらず不正解だったサンプルに対するロスの平均を取得
+        # 元々不正解だったサンプルのうち変わらず不正解だったサンプルに対するロス
         losses_of_wrong_to_wrong = losses_to_wrong[indices_to_wrong_to_wrong]
 
         # fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (mean_of_losses_of_correct + 1)
         # fitness_for_wrong = (num_patched / len(self.indices_to_wrong) + 1) / (mean_of_losses_of_wrong + 1)
-        # final_fitness = self.patch_aggr * fitness_for_correct + fitness_for_wrong
+        # final_fitness = self.alpha * fitness_for_correct + fitness_for_wrong
         # terms for correct
-        term1 = num_intact / len(self.indices_to_correct)
-        term2 = np.mean(1 / (losses_of_correct_to_wrong + 1)) if len(losses_of_correct_to_wrong) > 0 else 0
-        fitness_for_correct = term1 + term2
-        # terms for wrong
-        term1 = num_patched / len(self.indices_to_wrong)
-        term2 = np.mean(1 / (losses_of_wrong_to_wrong + 1)) if len(losses_of_wrong_to_wrong) > 0 else 0
-        fitness_for_wrong = term1 + term2
+
+        # below is the same as Arachne-v2
+        term1_pos = num_intact
+        term2_pos = np.sum(1 / (losses_of_correct_to_wrong + 1)) if len(losses_of_correct_to_wrong) > 0 else 0
+        fitness_for_correct = (term1_pos + term2_pos) / len(self.indices_to_correct)
+        term1_neg = num_patched
+        term2_neg = np.sum(1 / (losses_of_wrong_to_wrong + 1)) if len(losses_of_wrong_to_wrong) > 0 else 0
+        fitness_for_wrong = (term1_neg + term2_neg) / len(self.indices_to_wrong)
+        # fitness_for_correct, fitness_for_wrongはどちらも[0, 1]の範囲に収まる
+        assert 0 <= fitness_for_correct <= 1, f"fitness_for_correct should be in [0, 1] (fitness_for_correct: {fitness_for_correct})"
+        assert 0 <= fitness_for_wrong <= 1, f"fitness_for_wrong should be in [0, 1] (fitness_for_wrong: {fitness_for_wrong})"
         # print(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
         # print(f"fitness_for_correct: {fitness_for_correct}, fitness_for_wrong: {fitness_for_wrong}")
-        final_fitness = (1-self.patch_aggr) * fitness_for_correct + self.patch_aggr * fitness_for_wrong
-
+        final_fitness = (1-self.alpha) * fitness_for_correct + self.alpha *  fitness_for_wrong
+        # 思い切ってintact_rateとpatched_rateだけにしちゃう
+        # final_fitness = num_intact / len(self.indices_to_correct) + self.alpha * num_patched / len(self.indices_to_wrong)
+        
         if show_log:
             logger.info(f"num_intact: {num_intact}/{len(self.indices_to_correct)} ({100*num_intact/len(self.indices_to_correct):.2f}%), num_patched: {num_patched}/{len(self.indices_to_wrong)} ({100*num_patched/len(self.indices_to_wrong):.2f}%)")
-        return (final_fitness,)
+        tracking_dict = {
+            "fitness": final_fitness,
+            "fitness_for_correct": fitness_for_correct,
+            "fitness_for_wrong": fitness_for_wrong,
+            "term1_pos": term1_pos,
+            "term2_pos": term2_pos,
+            "term1_neg": term1_neg,
+            "term2_neg": term2_neg,
+        }
+        return final_fitness, tracking_dict
 
     def is_the_performance_unchanged(self, curr_best_patch_candidate):
         """
@@ -256,10 +273,21 @@ class DE_searcher(object):
         else:
             return False
 
-    def search(self, save_path, places_to_fix=None, pos_before=None, pos_after=None):
+    def search(self, patch_save_path, places_to_fix=None, pos_before=None, pos_after=None, tracker_save_path=None):
         # set search parameters
         pop_size = self.pop_size
         toolbox = self.base.Toolbox()
+
+        # DEの経過観察用のデータ
+        fitness_tracker = {
+            "fitness": [],
+            "fitness_for_correct": [],
+            "fitness_for_wrong": [],
+            "term1_pos": [],
+            "term2_pos": [],
+            "term1_neg": [],
+            "term2_neg": [],
+        }
 
         # ニューロン修正の際の初期値生成 (ニューロンのx倍なので，初期値はN(1, 1)からサンプリング)
         def init_indiv_neurons():
@@ -327,7 +355,9 @@ class DE_searcher(object):
         # 各個体のfitnessを計算
         logger.info("Evaluating initial population...")
         for ind in tqdm(pop, total=len(pop), desc=f"processing initial population"):
-            ind.fitness.values = toolbox.evaluate(ind, *args_for_eval)
+            eval_ret = toolbox.evaluate(ind, *args_for_eval)
+            ind.fitness.values = (eval_ret[0], )
+            ind.tracking_dict = eval_ret[1]
             ind.model_name = None
 
         # 初期のベスト（暫定）を更新
@@ -369,7 +399,9 @@ class DE_searcher(object):
                         # y[i] = np.clip(a[i] + MU * (b[i] - c[i]), bounds[i][0], bounds[i][1])
                         y[i] = a[i] + MU * (b[i] - c[i])
 
-                y.fitness.values = toolbox.evaluate(y, *args_for_eval)
+                eval_ret = toolbox.evaluate(ind, *args_for_eval)
+                y.fitness.values = (eval_ret[0], )
+                y.tracking_dict = eval_ret[1]
                 logger.info(f"[{new_model_name}] fitness: {y.fitness.values[0]}")
                 if y.fitness.values[0] >= ind.fitness.values[0]:  # better
                     pop[pop_idx] = y  # upddate
@@ -387,6 +419,10 @@ class DE_searcher(object):
             logger.info(
                 f"[The best at Gen {iter_idx}] fitness={best.fitness.values[0]} at X_best={best}, model_name: {best.model_name}"
             )
+            # その時点でのbestのfitnessなどを更新する
+            for key, value in best.tracking_dict.items():
+                fitness_tracker[key].append(value)
+            logger.info(f"fitness_tracker: {fitness_tracker}")
 
             # logging for this generation
             record = stats.compile(pop)
@@ -403,5 +439,10 @@ class DE_searcher(object):
         logger.info(f"best ind.: {best}, fitness: {best.fitness.values[0]}")
 
         # bestをnpyで保存
-        np.save(save_path, best)
-        logger.info("The model is saved to {}".format(save_path))
+        np.save(patch_save_path, best)
+        logger.info("The model is saved to {}".format(patch_save_path))
+        # tracker_save_pathが指定されている場合はpklで保存
+        if tracker_save_path is not None:
+            with open(tracker_save_path, "wb") as f:
+                pickle.dump(fitness_tracker, f)
+            logger.info(f"The tracker is saved to {tracker_save_path}")
