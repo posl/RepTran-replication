@@ -105,7 +105,7 @@ if __name__ == "__main__":
     device = get_device()
     # datasetをロード (初回の読み込みだけやや時間かかる)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    # ラベルの取得
+    # ラベルの取得 (shuffleされない)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
@@ -178,22 +178,26 @@ if __name__ == "__main__":
     pred_logits = pred_res.predictions
     ori_pred_labels = np.argmax(pred_logits, axis=-1)
     is_correct = ori_pred_labels == labels[tgt_split]
+    ori_acc = np.mean(is_correct)
     # misclf_type == "tgt"の場合は，tgt_labelで正解したものだけをcorrectとして扱う
     if misclf_type == "tgt":
         is_correct = is_correct & (labels[tgt_split] == tgt_label)
     indices_to_correct = np.where(is_correct)[0]
     indices_to_incorrect = tgt_mis_indices
-    ori_indices_to_correct, ori_indices_to_incorrect = indices_to_correct.copy(), indices_to_incorrect.copy()
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
     # 正解データからrepairに使う一定数だけランダムに取り出す
     num_sampled_from_correct = setting_dic["num_sampled_from_correct"]
-    if num_sampled_from_correct > len(indices_to_correct):
-        num_sampled_from_correct = len(indices_to_correct)
-    indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
+    if num_sampled_from_correct < len(indices_to_correct):
+        indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
+    ori_indices_to_correct, ori_indices_to_incorrect = indices_to_correct.copy(), indices_to_incorrect.copy()
     # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
-    tgt_ds = ori_tgt_ds.select(indices_to_correct.tolist() + indices_to_incorrect.tolist())
-    tgt_labels = ori_tgt_labels[indices_to_correct.tolist() + indices_to_incorrect.tolist()]
+    tgt_indices = indices_to_correct.tolist() + indices_to_incorrect.tolist()
+    logger.info(f"tgt_indices: {tgt_indices} (len: {len(tgt_indices)})")
+    tgt_ds = ori_tgt_ds.select(tgt_indices)
+    tgt_labels = ori_tgt_labels[tgt_indices]
+    logger.info(f"ori_pred_labels[tgt_indices]: {ori_pred_labels[tgt_indices]} (len: {len(ori_pred_labels[tgt_indices])})")
+    logger.info(f"tgt_labels: {tgt_labels} (len: {len(tgt_labels)})")
     
     # repair setに対するhidden_states_before_layernormを取得
     hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
@@ -202,20 +206,34 @@ if __name__ == "__main__":
     hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
     logger.info(f"hs_before_layernorm is loaded. shape: {hs_before_layernorm.shape}")
     # 使うインデックスに対する状態だけを取り出す
-    hs_before_layernorm = hs_before_layernorm[indices_to_correct.tolist() + indices_to_incorrect.tolist()]
-    logger.info(f"hs_before_layernorm is sliced. shape: {hs_before_layernorm.shape}")
+    hs_before_layernorm_tgt = hs_before_layernorm[tgt_indices]
+    logger.info(f"hs_before_layernorm is sliced. shape: {hs_before_layernorm_tgt.shape}")
     # hidden_states_before_layernormを32個ずつにバッチ化
-    num_batches = (hs_before_layernorm.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
-    batch_hs_before_layernorm = np.array_split(hs_before_layernorm, num_batches)
-    
-    # correct, incorrect indicesを更新
-    indices_to_correct = np.arange(num_sampled_from_correct)
-    indices_to_incorrect = np.arange(num_sampled_from_correct, num_sampled_from_correct + len(indices_to_incorrect))
-    logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
-    logger.info(f"len(tgt_ds): {len(tgt_ds)}, len(tgt_labels): {len(tgt_labels)}")
+    num_batches = (hs_before_layernorm_tgt.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
+    batch_hs_before_layernorm = np.array_split(hs_before_layernorm_tgt, num_batches)
+    batch_tgt_labels = np.array_split(tgt_labels, num_batches)
 
     # 最終層だけのモデルを準備
     vit_from_last_layer = ViTFromLastLayer(model)
+    vit_from_last_layer.eval()
+
+    # all_pred_labels = []
+    # all_true_labels = []
+    # for cache_state, y in zip(batch_hs_before_layernorm, batch_tgt_labels):
+    #     logits = vit_from_last_layer(hidden_states_before_layernorm=cache_state, tgt_pos=tgt_pos)
+    #     # 出力されたlogitsを確率に変換
+    #     proba = torch.nn.functional.softmax(logits, dim=-1)
+    #     pred_label = torch.argmax(proba, dim=-1)
+    #     for pl, tl in zip(pred_label, y):
+    #         assert pl==tlabel or tl==tlabel, f"pl: {pl}, tl: {tl}"
+    #         all_pred_labels.append(pl.item())
+    #         all_true_labels.append(tl)
+    # all_pred_labels = np.array(all_pred_labels)
+    # all_true_labels = np.array(all_true_labels)
+    # isc = all_pred_labels == all_true_labels
+    # print(sum(isc), len(isc))
+    # print(isc) # 最初の len(indices_to_correct) はTrue, それ以降はFalse
+    # exit()
 
     # TODO: pos_before, pos_afterの位置の重みを最適化の変数にする
     linear_before2med = vit_from_last_layer.base_model_last_layer.intermediate.dense # on GPU
@@ -223,54 +241,57 @@ if __name__ == "__main__":
     linear_med2after = vit_from_last_layer.base_model_last_layer.output.dense # on GPU
     weight_med2after = linear_med2after.weight.cpu().detach().numpy() # on CPU
 
-    if not only_eval:
-        # DE_searcherの初期化
-        max_search_num = setting_dic["max_search_num"]
-        alpha = setting_dic["alpha"] # [0, 1]の値で，fitnessの正しい分類に対する重み: 誤分類に対する重み = 1-alpha: alpha になる
-        assert 0 <= alpha <= 1, f"alpha should be in [0, 1]. alpha: {alpha}"
-        # patch_aggr = alpha * len(indices_to_incorrect) / len(indices_to_correct)
-        # patch_aggr = alpha * len(indices_to_correct) / len(indices_to_incorrect)
-        logger.info(f"alpha of the fitness func.: {alpha}")
-        pop_size = setting_dic["pop_size"]
-        num_labels = len(set(labels["train"]))
-        searcher = DE_searcher(
-            batch_hs_before_layernorm=batch_hs_before_layernorm,
-            labels=tgt_labels,
-            indices_to_correct=indices_to_correct,
-            indices_to_wrong=indices_to_incorrect,
-            num_label=num_labels,
-            indices_to_target_layers=[tgt_layer],
-            device=device,
-            mutation=(0.5, 1),
-            recombination=0.7,
-            max_search_num=max_search_num,
-            partial_model=vit_from_last_layer,
-            batch_size=batch_size,
-            alpha=alpha,
-            pop_size=pop_size,
-            mode="weight",
-            pos_before=pos_before,
-            pos_after=pos_after,
-            weight_before2med=weight_before2med,
-            weight_med2after=weight_med2after
-        )
+    # DE_searcherの初期化
+    max_search_num = setting_dic["max_search_num"]
+    alpha = setting_dic["alpha"] # [0, 1]の値で，fitnessの正しい分類に対する重み: 誤分類に対する重み = 1-alpha: alpha になる
+    assert 0 <= alpha <= 1, f"alpha should be in [0, 1]. alpha: {alpha}"
+    logger.info(f"alpha of the fitness func.: {alpha}")
+    pop_size = setting_dic["pop_size"]
+    num_labels = len(set(labels["train"]))
+    # correct, incorrect indicesを更新
+    indices_to_correct_for_de_searcher = np.arange(len(indices_to_correct))
+    indices_to_incorrect_for_de_searcher = np.arange(len(indices_to_correct), len(indices_to_correct) + len(indices_to_incorrect))
 
+    # DE_searcherの初期化
+    searcher = DE_searcher(
+        batch_hs_before_layernorm=batch_hs_before_layernorm,
+        labels=tgt_labels,
+        indices_to_correct=indices_to_correct_for_de_searcher,
+        indices_to_wrong=indices_to_incorrect_for_de_searcher,
+        num_label=num_labels,
+        indices_to_target_layers=[tgt_layer],
+        device=device,
+        mutation=(0.5, 1),
+        recombination=0.7,
+        max_search_num=max_search_num,
+        partial_model=vit_from_last_layer,
+        batch_size=batch_size,
+        alpha=alpha,
+        pop_size=pop_size,
+        mode="weight",
+        pos_before=pos_before,
+        pos_after=pos_after,
+        weight_before2med=weight_before2med,
+        weight_med2after=weight_med2after
+    )
+    if not only_eval:
         logger.info(f"Start DE search...")
         s = time.perf_counter()
-        searcher.search(patch_save_path=patch_save_path, pos_before=pos_before, pos_after=pos_after, tracker_save_path=tracker_save_path)
+        patch, fitness_tracker = searcher.search(patch_save_path=patch_save_path, pos_before=pos_before, pos_after=pos_after, tracker_save_path=tracker_save_path)
         e = time.perf_counter()
         tot_time = e - s
         logger.info(f"Total execution time: {tot_time} sec.")
     else:
         logger.info(f"Only evaluation mode is on. Skippping the DE search.")
         tot_time = None
+        # 保存したpatchを読み込む
+        patch = np.load(patch_save_path)
 
     # ===============================================
     # evaluation for the repair set
     # ===============================================
-    # 保存したpatchを読み込む
-    patch = np.load(patch_save_path)
-    # patchを適切な位置の重みにセットする
+    assert len(patch) == len(pos_before) + len(pos_after), f"len(patch): {len(patch)}, len(pos_before)+len(pos_after): {len(pos_before)+len(pos_after)}"
+    # patchを適切な位置の重みにセットする)
     for ba, pos in enumerate([pos_before, pos_after]):
         # patch_candidateのindexを設定
         if ba == 0:
@@ -282,8 +303,6 @@ if __name__ == "__main__":
         # posで指定された位置のニューロンを書き換える
         xi, yi = pos[:, 0], pos[:, 1]
         tgt_weight_data[xi, yi] = torch.from_numpy(patch[idx_patch_candidate]).to(device)
-    # repair setの全サンプルに対する中間状態とラベルを再ロード
-    hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
     # 中間状態とラベルをバッチ化
     num_batches = (hs_before_layernorm.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
     batch_hs_before_layernorm = np.array_split(hs_before_layernorm, num_batches)
@@ -312,26 +331,40 @@ if __name__ == "__main__":
     acc_new = np.mean(is_correct_new)
     # 修正前後の正解率の差を計算
     delta_acc = acc_new - acc_old
-    # 修正前後の正解率の差を計算
-    repair_rate = np.mean(~is_correct_old & is_correct_new)
-    break_rate = np.mean(is_correct_old & ~is_correct_new)
-
-    # tgt_mis_indicesに対しては全部不正解なことを保証
-    assert sum(is_correct_old[np.array(tgt_mis_indices)]) == 0, "There is a correct data in the misclassified data."
+    # 修正率 (repair_rate) と破壊率 (break_rate) を計算
+    repair_cnt = np.sum(~is_correct_old & is_correct_new) # 不正解 -> 正解のcnt
+    break_cnt = np.sum(is_correct_old & ~is_correct_new) # 正解 -> 不正解のcnt
+    repair_rate = repair_cnt / np.sum(~is_correct_old) # 不正解 -> 正解のcnt / 不正解のcnt
+    break_rate = break_cnt / np.sum(is_correct_old) # 正解 -> 不正解のcnt / 正解のcnt
+    logger.info(f"[Overall] repair_rate: {repair_rate} ({repair_cnt} / {np.sum(~is_correct_old)}), break_rate: {break_rate} ({break_cnt} / {np.sum(is_correct_old)})")
+    # Below two are should be the same
 
     if misclf_type == "tgt":
+        print(f"new_pred_labels = {new_pred_labels[tgt_indices]}")
+        if not only_eval:
+            print(f"fitness_tracker[all_pred_labels] = {fitness_tracker['all_pred_labels']}")
+        # 元々の予測はori_indices_to_correctに対しては全部正解なことを保証
+        assert sum(is_correct_old[ori_indices_to_correct]) == len(ori_indices_to_correct), f"sum(is_correct_old): {sum(is_correct_old)}, len(ori_indices_to_correct): {len(ori_indices_to_correct)}"
+        # 元々の予測はtgt_mis_indicesに対しては全部不正解なことを保証
+        assert sum(is_correct_old[ori_indices_to_incorrect]) == 0, f"sum(is_correct_new): {sum(is_correct_new)}"
+        # repairに使ったデータの予測結果がどう変わったか？
+        is_correct_new_tgt_to_correct = is_correct_new[ori_indices_to_correct]
+        is_correct_new_tgt_to_incorrect = is_correct_new[ori_indices_to_incorrect]
+
+        # 修正率 (repair_rate) と破壊率 (break_rate) を計算
+        tgt_repair_cnt = np.sum(is_correct_new_tgt_to_incorrect)
+        tgt_break_cnt = np.sum(~is_correct_new_tgt_to_correct)
+        tgt_repair_rate = tgt_repair_cnt / np.sum(~is_correct_old[ori_indices_to_incorrect])
+        tgt_break_rate = tgt_break_cnt / np.sum(is_correct_old[ori_indices_to_correct])
+
+        logger.info(f"[Target] repair_rate: {tgt_repair_rate} ({tgt_repair_cnt} / {np.sum(~is_correct_old[ori_indices_to_incorrect])}), break_rate: {tgt_break_rate} ({tgt_break_cnt} / {np.sum(is_correct_old[ori_indices_to_correct])})")
+        # searcher.eval_weights(patch, pos_before, pos_after) # 確認用
+        
         # tgt_labelへのf1を計算
         f1_score =  evaluate.load("f1")
         tgt_f1_old = f1_score.compute(predictions=ori_pred_labels, references=ori_tgt_labels, average=None)["f1"][tgt_label]
         tgt_f1_new = f1_score.compute(predictions=new_pred_labels, references=ori_tgt_labels, average=None)["f1"][tgt_label]
         delta_f1 = tgt_f1_new - tgt_f1_old
-        # repairに使ったデータの予測結果がどう変わったか？
-        assert sum(is_correct_old[ori_indices_to_correct]) == len(ori_indices_to_correct), f"sum(is_correct_old): {sum(is_correct_old)}, len(ori_indices_to_correct): {len(ori_indices_to_correct)}"
-        assert sum(is_correct_old[ori_indices_to_incorrect]) == 0, f"sum(is_correct_new): {sum(is_correct_new)}"
-        is_correct_new_tgt_mis = is_correct_new[np.array(tgt_mis_indices)]
-        tgt_rep_rate = np.mean(is_correct_new[ori_indices_to_incorrect])
-        tgt_brk_rate = np.mean(is_correct_new[ori_indices_to_correct])
-        
 
     # メトリクスを保存
     metrics = {
@@ -341,18 +374,21 @@ if __name__ == "__main__":
         "tot_time": tot_time,
         "acc_old": acc_old,
         "acc_new": acc_new,
-        "tgt_rep_rate": tgt_rep_rate,
-        "tgt_brk_rate": tgt_brk_rate,
+        "tgt_rep_rate": tgt_repair_rate,
+        "tgt_brk_rate": tgt_break_rate,
         "delta_f1": delta_f1,
         "tgt_f1_old": tgt_f1_old,
         "tgt_f1_new": tgt_f1_new
     }
-    logger.info(f"delta_acc: {delta_acc}, repair_rate: {repair_rate}, break_rate: {break_rate}, tgt_rep_rate: {tgt_rep_rate}, tgt_brk_rate: {tgt_brk_rate}, tgt_f1_old: {tgt_f1_old}, tgt_f1_new: {tgt_f1_new}")
+    logger.info(metrics)
+    print(metrics)
     if fl_method == "vdiff":
         metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")
     elif fl_method == "random":
         metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}_random.json")
     else:
         NotImplementedError
-    with open(metrics_dir, "w") as f:
-        json.dump(metrics, f)
+    # only_eval時は保存しない (一度only_evalなしで実行して保存されている前提なので)
+    if not only_eval:
+        with open(metrics_dir, "w") as f:
+            json.dump(metrics, f)

@@ -191,9 +191,9 @@ class DE_searcher(object):
         losses_to_correct = losses_of_all[self.indices_to_correct]
         losses_to_wrong = losses_of_all[self.indices_to_wrong]
         all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
-        all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
+        all_pred_labels = np.argmax(all_proba, axis=-1) # (num_of_data, )
         # 予測結果が合ってるかどうかを評価
-        is_correct = all_pred_laebls == self.ground_truth_labels # 修正後モデルで正しい予測のデータインデックス
+        is_correct = all_pred_labels == self.ground_truth_labels # 修正後モデルで正しい予測のデータインデックス
         indices_to_correct_to_correct = is_correct[self.indices_to_correct] # 元々正解だったサンプルが変わらず正解だったサンプルのインデックス
         indices_to_correct_to_wrong = ~indices_to_correct_to_correct # 元々正解だったサンプルが不正解に変わったサンプルのインデックス
         indices_to_wrong_to_correct = is_correct[self.indices_to_wrong] # 元々不正解だったサンプルが正解に変わったサンプルのインデックス
@@ -246,6 +246,7 @@ class DE_searcher(object):
             "term2_pos": term2_pos,
             "term1_neg": term1_neg,
             "term2_neg": term2_neg,
+            "all_pred_labels": all_pred_labels,
         }
         return final_fitness, tracking_dict
 
@@ -287,6 +288,7 @@ class DE_searcher(object):
             "term2_pos": [],
             "term1_neg": [],
             "term2_neg": [],
+            "all_pred_labels": [],
         }
 
         # ニューロン修正の際の初期値生成 (ニューロンのx倍なので，初期値はN(1, 1)からサンプリング)
@@ -446,3 +448,5 @@ class DE_searcher(object):
             with open(tracker_save_path, "wb") as f:
                 pickle.dump(fitness_tracker, f)
             logger.info(f"The tracker is saved to {tracker_save_path}")
+
+        return best, fitness_tracker
