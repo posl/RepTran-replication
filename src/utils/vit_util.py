@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import pickle
 import torch
 import torch.nn as nn
 from collections import defaultdict, Counter
@@ -236,7 +237,7 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
         # vdiff_dic[ba]["vdiff"]のi番目の値の順位がvdiff_dic[ba]["rank"]のi番目と等しいことを確認
         for i, r in enumerate(vdiff_dic[ba]["rank"]):
             assert return_rank(vdiff_dic[ba]["vdiff"], i) == r, f"Error: {i}, {r}"
-        print(f'({ba}) |vdiff| [min, max] = [{np.min(vdiff_dic[ba]["vdiff"])}, {np.max(vdiff_dic[ba]["vdiff"])}]')
+        # print(f'({ba}) |vdiff| [min, max] = [{np.min(vdiff_dic[ba]["vdiff"])}, {np.max(vdiff_dic[ba]["vdiff"])}]')
     # before,afterからtop n個ずつ，intermediateからtop 4n個を取得
     top_idx_dic = defaultdict(list)
     for ba, dic in vdiff_dic.items():
@@ -245,7 +246,7 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
         else:
             topx = n
         top_idx_dic[ba] = np.where(dic["rank"] < topx)[0]
-        print(f"{ba}: {top_idx_dic[ba]}")
+        # print(f"{ba}: {top_idx_dic[ba]}")
     # before-intermediate, intermediate-afterの修正箇所を返す
     pos_before = np.array(list(product(top_idx_dic["intermediate"], top_idx_dic["before"])))
     pos_after = np.array(list(product(top_idx_dic["after"], top_idx_dic["intermediate"])))
@@ -346,3 +347,26 @@ def tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1"):
             if (pred_label == tgt_label or true_label == tgt_label) and pred_label != true_label:
                 tgt_mis_indices.extend(mis_indices[pred_label][true_label])
     return tgt_label, np.array(tgt_mis_indices)
+
+def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", tgt_rank=1):
+    # インデックスのロード
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_indices.pkl"), "rb") as f:
+        mis_indices = pickle.load(f)
+    # ランキングのロード
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_ranking.pkl"), "rb") as f:
+        mis_ranking = pickle.load(f)
+    # metrics dictのロード
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_met_dict.pkl"), "rb") as f:
+        met_dict = pickle.load(f)
+    if misclf_type == "src_tgt":
+        slabel, tlabel, tgt_mis_indices = src_tgt_selection(mis_ranking, mis_indices, tgt_rank)
+        tgt_mis_indices = mis_indices[slabel][tlabel]
+        misclf_pair = (slabel, tlabel)
+        tgt_label = None
+    elif misclf_type == "tgt":
+        tlabel, tgt_mis_indices = tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1")
+        tgt_label = tlabel
+        misclf_pair = None
+    else:
+        NotImplementedError, f"misclf_type: {misclf_type}"
+    return misclf_pair, tgt_label, tgt_mis_indices

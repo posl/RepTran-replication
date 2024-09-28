@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     for n, alpha in product(n_list, alpha_list):
         print(f"{'='*60}\nn={n}, alpha={alpha}\n{'='*60}")
-        cmd = ["python", "007d_change_ffn_weights.py", "c100", str(k), str(tgt_rank), "--custom_n", str(n), "--custom_alpha", str(alpha)]
+        cmd = ["python", "007e_change_ffn_weights.py", "c100", str(k), str(tgt_rank), "--custom_n", str(n), "--custom_alpha", str(alpha)]
         print(f"executing the following cmd: {cmd}")
         result = subprocess.run(cmd)
         if result.returncode != 0:

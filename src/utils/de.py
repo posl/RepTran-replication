@@ -1,4 +1,4 @@
-import pickle, os, sys, time, math
+import pickle, os, sys, time, math, copy
 # utilsをインポートできるようにパスを追加
 import torch
 import numpy as np
@@ -9,6 +9,24 @@ from utils.data_util import format_label, make_batch_of_label
 from logging import getLogger
 
 logger = getLogger("base_logger")
+
+def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cuda")):
+    # patchの最初のlen(pos_before)個はintermediateのpos_beforeの重み，それ以降のlen(pos_after)個はoutputのpos_afterの重み
+    assert len(patch) == len(pos_before) + len(pos_after), "The length of patch should be equal to the sum of the lengths of pos_before and pos_after"
+    num_pos_before = len(pos_before)
+    num_pos_after = len(pos_after)
+    # pos_before, afterそれぞれの繰り返し
+    for ba, pos in enumerate([pos_before, pos_after]):
+        # patch_candidateのindexを設定
+        if ba == 0:
+            idx_patch_candidate = range(0, num_pos_before)
+            tgt_weight_data = model.base_model_last_layer.intermediate.dense.weight.data # これは破壊的な変更
+        else:
+            idx_patch_candidate = range(num_pos_before, num_pos_before + num_pos_after)
+            tgt_weight_data = model.base_model_last_layer.output.dense.weight.data
+        # posで指定された位置のニューロンを書き換える
+        xi, yi = pos[:, 0], pos[:, 1]
+        tgt_weight_data[xi, yi] = torch.from_numpy(patch[idx_patch_candidate]).to(device)
 
 class DE_searcher(object):
     random = __import__("random")
@@ -21,7 +39,7 @@ class DE_searcher(object):
     def __init__(
         self,
         batch_hs_before_layernorm,
-        labels,
+        batch_labels,
         indices_to_correct,
         indices_to_wrong,
         num_label,
@@ -33,7 +51,6 @@ class DE_searcher(object):
         max_search_num=100,
         partial_model=None,
         alpha=None,
-        batch_size=None,
         is_multi_label=True,
         pop_size=50,
         mode="neuron",
@@ -51,30 +68,17 @@ class DE_searcher(object):
         self.indices_to_target_layers = indices_to_target_layers
         self.targeted_layer_names = None
         self.tgt_vdiff = tgt_vdiff
-        self.batch_size = batch_size
         self.is_multi_label = is_multi_label
         self.maximum_fitness = 0.0  # the maximum fitness value
-        self.mdl = partial_model
+        self.mdl = copy.deepcopy(partial_model) # DE_searcher内でいくらモデルをいじっても元のモデルは変わらないようにする
         self.max_search_num = max_search_num
         self.indices_to_sampled_correct = None
         self.tgt_pos = 0 # TODO: should not be hard coded
         self.pop_size = pop_size
         self.mode = mode
-
         # ラベルの設定
-        if is_multi_label:
-            # ラベルが1次元配列になっているのでonehotベクトル化(2次元になる)
-            if not isinstance(labels[0], Iterable):
-                self.ground_truth_labels = labels
-                self.labels = format_label(labels, self.num_label)
-            # ラベルは2次元配列
-            else:
-                self.labels = labels
-                self.ground_truth_labels = np.argmax(self.labels, axis=1)
-        else:
-            self.labels = labels
-            self.ground_truth_labels = labels
-        self.batched_labels = make_batch_of_label(labels, batch_size)
+        self.batched_labels = batch_labels
+        self.ground_truth_labels = np.concatenate(batch_labels, axis=0)
 
         # fitness computation related initialisation
         self.fitness = 0.0
@@ -160,21 +164,7 @@ class DE_searcher(object):
 
     def eval_weights(self, patch_candidate, pos_before, pos_after, show_log=True):
         assert len(patch_candidate) == self.num_total_pos, "The length of patch_candidate should be equal to the number of total positions"
-        # patch_candidateの最初のself.num_pos_before個はbefore2medの重みの修正，その後のself.num_pos_after個はmed2afterの重みの修正
-        for ba, pos in enumerate([pos_before, pos_after]):
-            # patch_candidateのindexを設定
-            if ba == 0:
-                idx_patch_candidate = range(0, self.num_pos_before)
-                assert len(idx_patch_candidate) == self.num_pos_before, "The length of idx_patch_candidate should be equal to the number of positions before"
-                tgt_weight_data = self.mdl.base_model_last_layer.intermediate.dense.weight.data
-            else:
-                idx_patch_candidate = range(self.num_pos_before, self.num_total_pos)
-                assert len(idx_patch_candidate) == self.num_pos_after, "The length of idx_patch_candidate should be equal to the number of positions after"
-                tgt_weight_data = self.mdl.base_model_last_layer.output.dense.weight.data
-            # posで指定された位置のニューロンを書き換える
-            xi, yi = pos[:, 0], pos[:, 1]
-            tgt_weight_data[xi, yi] = torch.from_numpy(patch_candidate[idx_patch_candidate]).to(self.device)
-        
+        set_new_weights(patch=patch_candidate, pos_before=pos_before, pos_after=pos_after, model=self.mdl, device=self.device)
         # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
         all_proba = []
         losses_of_all = []
@@ -367,6 +357,8 @@ class DE_searcher(object):
         best = hof[0]
         best.model_name = "initial"
         logger.info(f"Initial fitness: {best.fitness.values[0]} at X_best: {best}, model_name: {best.model_name}")
+        for key, value in best.tracking_dict.items():
+                fitness_tracker[key].append(value)
 
         record = stats.compile(pop)
         logbook.record(gen=0, evals=len(pop), **record)
@@ -383,6 +375,7 @@ class DE_searcher(object):
             for pop_idx, ind in tqdm(enumerate(pop), total=len(pop), desc=f"iter_idx: {iter_idx}"):
                 # set model name
                 new_model_name = "iter{}-pop{}".format(iter_idx, pop_idx)
+                logger.info(f"Processing {new_model_name}...")
 
                 # select
                 target_indices = [_i for _i in range(pop_size) if _i != pop_idx]
@@ -391,7 +384,7 @@ class DE_searcher(object):
                 b = pop[b_idx]
                 c = pop[c_idx]
 
-                y = toolbox.clone(ind)
+                y = toolbox.clone(ind) # 値渡し
 
                 index = self.random.randrange(num_places_to_fix)
                 for i, value in enumerate(ind):
@@ -401,12 +394,15 @@ class DE_searcher(object):
                         # y[i] = np.clip(a[i] + MU * (b[i] - c[i]), bounds[i][0], bounds[i][1])
                         y[i] = a[i] + MU * (b[i] - c[i])
 
-                eval_ret = toolbox.evaluate(ind, *args_for_eval)
+                # eval_ret = toolbox.evaluate(ind, *args_for_eval) # (*) BUG: ind だと変異させた y で評価してなくない? 
+                eval_ret = toolbox.evaluate(y, *args_for_eval) # NOTE: こっちが正しい?
                 y.fitness.values = (eval_ret[0], )
                 y.tracking_dict = eval_ret[1]
                 logger.info(f"[{new_model_name}] fitness: {y.fitness.values[0]}")
                 if y.fitness.values[0] >= ind.fitness.values[0]:  # better
-                    pop[pop_idx] = y  # upddate
+                    # (*) BUG: (*) だと絶対ここに入る (上の判定が==なので).
+                    logger.info(f"[{new_model_name}] y.fitness.values[0] ({y.fitness.values[0]}) >= ind.fitness.values[0] ({ind.fitness.values[0]}) is TRUE")
+                    pop[pop_idx] = y  # upddate # (*) BUG: (*) だと絶対ここで個体が更新されてしまう
                     # set new model name
                     pop[pop_idx].model_name = new_model_name
                     # update best
@@ -424,7 +420,16 @@ class DE_searcher(object):
             # その時点でのbestのfitnessなどを更新する
             for key, value in best.tracking_dict.items():
                 fitness_tracker[key].append(value)
-            logger.info(f"fitness_tracker: {fitness_tracker}")
+            # fitness_trackerのキーに対応する値をログ表示
+            for key in fitness_tracker.keys():
+                    logger.info(f"{key}: {fitness_tracker[key]}")
+            # この時点でのbestで予測した結果が, fitness_tracker["term1_pos"][-1]やfitness_tracker["term1_neg"]との一貫性確認
+            logger.info("Evaluating the best model at this generation...")
+            _, tmp_tracker_dict = eval_func(best, *args_for_eval, show_log=True)
+            tmp_num_intact, tmp_num_patched = tmp_tracker_dict["term1_pos"], tmp_tracker_dict["term1_neg"]
+            logger.info(f"tmp_num_intact, tmp_num_patched: {tmp_num_intact}, {tmp_num_patched}")
+            assert tmp_num_intact == best.tracking_dict["term1_pos"], f"tmp_num_intact: {tmp_num_intact}, best.tracking_dict['term1_pos']: {best.tracking_dict['term1_pos']}"
+            assert tmp_num_patched == best.tracking_dict["term1_neg"], f"tmp_num_patched: {tmp_num_patched}, best.tracking_dict['term1_neg']: {best.tracking_dict['term1_neg']}"
 
             # logging for this generation
             record = stats.compile(pop)
