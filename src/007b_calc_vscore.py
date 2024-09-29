@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100, get_vscore, src_tgt_selection, tgt_selection
+from utils.vit_util import transforms, transforms_c100, get_vscore, identfy_tgt_misclf
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
@@ -68,25 +68,11 @@ if __name__ == "__main__":
     # tgt_rankの誤分類情報を取り出す
     tgt_split = "repair"
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-    # インデックスのロード
-    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_indices.pkl"), "rb") as f:
-        mis_indices = pickle.load(f)
-    # ランキングのロード
-    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_ranking.pkl"), "rb") as f:
-        mis_ranking = pickle.load(f)
-    # metrics dictのロード
-    with open(os.path.join(misclf_info_dir, f"{tgt_split}_met_dict.pkl"), "rb") as f:
-        met_dict = pickle.load(f)
-
+    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
     if misclf_type == "src_tgt":
-        slabel, tlabel, tgt_mis_indices = src_tgt_selection(mis_ranking, mis_indices, tgt_rank)
-        tgt_mis_indices = mis_indices[slabel][tlabel]
-        print(f"tgt_misclf: {slabel} -> {tlabel}, len(tgt_mis_indices): {len(tgt_mis_indices)}")
+        slabel, tlabel = misclf_pair
     elif misclf_type == "tgt":
-        tlabel, tgt_mis_indices = tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1")
-        print(f"tgt_misclf: {tlabel}, len(tgt_mis_indices): {len(tgt_mis_indices)}")
-    else:
-        NotImplementedError, f"misclf_type: {misclf_type}"
+        tlabel = tgt_label
 
     print(f"Process {tgt_split}...")
     # 必要なディレクトリがない場合は先に作っておく

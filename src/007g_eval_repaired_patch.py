@@ -133,6 +133,12 @@ def draw_weight_change(wi_old_tgt, wo_old_tgt, wi_new_tgt, wo_new_tgt, save_dir,
         # plt.title(f"{tgt_name} weight distribution (old vs new)")
         # plt.savefig(dist_save_path)
 
+def log_info_preds(pred_labels, true_labels, is_correct):
+    logger.info(f"pred_labels (len(pred_labels)={len(pred_labels)}):\n{pred_labels}")
+    logger.info(f"true_labels (len(true_labels)={len(true_labels)}):\n{true_labels}")
+    logger.info(f"is_correct (len(is_correct)={len(is_correct)}):\n{is_correct}")
+    logger.info(f"correct rate: {sum(is_correct) / len(is_correct):.4f}")
+
 if __name__ == "__main__":
     # データセットをargparseで受け取る
     parser = argparse.ArgumentParser()
@@ -141,7 +147,7 @@ if __name__ == "__main__":
     parser.add_argument('tgt_rank', type=int, help="the rank of the target misclassification type")
     parser.add_argument("--setting_path", type=str, help="path to the setting json file", default=None)
     parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
-    parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt)", default="tgt")
+    parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
     parser.add_argument("--custom_n", type=int, help="the custom n for the FL", default=None)
     parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
     args = parser.parse_args()
@@ -154,6 +160,7 @@ if __name__ == "__main__":
     custom_n = args.custom_n
     custom_alpha = args.custom_alpha
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
+    logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
 
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
@@ -178,6 +185,8 @@ if __name__ == "__main__":
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
+    if misclf_type == "all":
+        save_dir = os.path.join(pretrained_dir, f"all_repair_weight_by_de")
     if fl_method == "vdiff":
         patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
         tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}.pkl")
@@ -231,6 +240,8 @@ if __name__ == "__main__":
 
     # FLの結果の情報をロード
     location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
+    if misclf_type == "all":
+        location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     location_save_path = os.path.join(location_save_dir, f"location_n{setting_dic['n']}_{fl_method}.npy")
     pos_before, pos_after = np.load(location_save_path, allow_pickle=True)
     
@@ -250,7 +261,7 @@ if __name__ == "__main__":
     wo_old = wo_old.cpu().numpy().copy() # (d, 4d)
 
     # repair setに対するhidden_states_before_layernormを取得
-    tgt_indices = np.load(os.path.join(save_dir, f"tgt_indices.npy"))
+    tgt_indices = np.load(os.path.join(save_dir, f"tgt_indices_{setting_id}.npy"))
     hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     hs_save_path = os.path.join(hs_save_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     assert os.path.exists(hs_save_path), f"{hs_save_path} does not exist."
@@ -260,42 +271,88 @@ if __name__ == "__main__":
     batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
 
-    print(f"{'='*60}\nPredictions before the repair\n{'='*60}")
+    logger.info("Predictions before the repair")
     # 修正前モデルでの予測 (repair set全体)
     pred_labels_old, true_labels_old = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=0)
     is_correct_old = pred_labels_old == true_labels_old
-    print(f"pred_labels_old (len(pred_labels_old)={len(pred_labels_old)}):\n{pred_labels_old}")
-    print(f"true_labels_old (len(true_labels_old)={len(true_labels_old)}):\n{true_labels_old}")
-    print(f"is_correct_old (len(is_correct_old)={len(is_correct_old)}):\n{is_correct_old}")
-    print(sum(is_correct_old), len(is_correct_old))
+    logger.info("Model: old, Target: all")
+    log_info_preds(pred_labels_old, true_labels_old, is_correct_old)
 
     # 修正前モデルでの予測 (repair に使ったデータだけ)
     pred_labels_old_tgt, true_labels_old_tgt = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm_tgt, batch_labels_tgt, tgt_pos=0)
     is_correct_old_tgt = pred_labels_old_tgt == true_labels_old_tgt
-    print(f"pred_labels_old_tgt (len(pred_labels_old_tgt)={len(pred_labels_old_tgt)}):\n{pred_labels_old_tgt}")
-    print(f"true_labels_old_tgt (len(true_labels_old_tgt)={len(true_labels_old_tgt)}):\n{true_labels_old_tgt}")
-    print(f"is_correct_old_tgt (len(is_correct_oldv)={len(is_correct_old_tgt)}):\n{is_correct_old_tgt}")
-    print(sum(is_correct_old_tgt), len(is_correct_old_tgt))
+    logger.info("Model: old, Target: repair target")
+    log_info_preds(pred_labels_old_tgt, true_labels_old_tgt, is_correct_old_tgt)
     
     # 新しい重みをセット
     set_new_weights(patch=patch, model=vit_from_last_layer, pos_before=pos_before, pos_after=pos_after, device=device)
 
-    print(f"{'='*60}\nPredictions after the repair\n{'='*60}")
+    logger.info("Predictions after the repair")
     # 修正後モデルでの予測 (repair set全体)
     pred_labels_new, true_labels_new = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=0)
     is_correct_new = pred_labels_new == true_labels_new
-    print(f"pred_labels_new (len(pred_labels_new)={len(pred_labels_new)}):\n{pred_labels_new}")
-    print(f"true_labels_new (len(true_labels_new)={len(true_labels_new)}):\n{true_labels_new}")
-    print(f"is_correct_new (len(is_correct_new)={len(is_correct_new)}):\n{is_correct_new}")
-    print(sum(is_correct_new), len(is_correct_new))
+    logger.info("Model: new, Target: all")
+    log_info_preds(pred_labels_new, true_labels_new, is_correct_new)
 
     # 修正後モデルでの予測 (repair に使ったデータだけ)
     pred_labels_new_tgt, true_labels_new_tgt = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm_tgt, batch_labels_tgt, tgt_pos=0)
     is_correct_new_tgt = pred_labels_new_tgt == true_labels_new_tgt
-    print(f"pred_labels_new_tgt (len(pred_labels_new_tgt)={len(pred_labels_new_tgt)}):\n{pred_labels_new_tgt}")
-    print(f"true_labels_new_tgt (len(true_labels_new_tgt)={len(true_labels_new_tgt)}):\n{true_labels_new_tgt}")
-    print(f"is_correct_new_tgt (len(is_correct_newv)={len(is_correct_new_tgt)}):\n{is_correct_new_tgt}")
-    print(sum(is_correct_new_tgt), len(is_correct_new_tgt))
+    logger.info("Model: new, Target: repair target")
+    log_info_preds(pred_labels_new_tgt, true_labels_new_tgt, is_correct_new_tgt)
+
+    # 全体的なaccの変化
+    acc_old = sum(is_correct_old) / len(is_correct_old)
+    acc_new = sum(is_correct_new) / len(is_correct_new)
+    delta_acc = acc_new - acc_old
+    logger.info(f"acc_old: {acc_old:.4f}, acc_new: {acc_new:.4f}, delta_acc: {delta_acc:.4f}")
+
+    # repair set 全体に対するrepair, brokenを記録 (RRoverall, BRoverall)
+    repair_cnt_overall = np.sum(~is_correct_old & is_correct_new)
+    break_cnt_overall = np.sum(is_correct_old & ~is_correct_new)
+    repair_rate_overall = repair_cnt_overall / np.sum(~is_correct_old) # 不正解 -> 正解のcnt / 不正解のcnt
+    break_rate_overall = break_cnt_overall / np.sum(is_correct_old) # 正解 -> 不正解のcnt / 正解のcnt
+    logger.info(f"[Overall] repair_rate: {repair_rate_overall} ({repair_cnt_overall} / {np.sum(~is_correct_old)}), break_rate: {break_rate_overall} ({break_cnt_overall} / {np.sum(is_correct_old)})")
+
+    # repair target だけに対するrepair, brokenを記録 (RRtgt, BRtgt)
+    repair_cnt_tgt = np.sum(~is_correct_old_tgt & is_correct_new_tgt)
+    break_cnt_tgt = np.sum(is_correct_old_tgt & ~is_correct_new_tgt)
+    repair_rate_tgt = repair_cnt_tgt / np.sum(~is_correct_old_tgt) # 不正解 -> 正解のcnt / 不正解のcnt
+    break_rate_tgt = break_cnt_tgt / np.sum(is_correct_old_tgt) # 正解 -> 不正解のcnt / 正解のcnt
+    logger.info(f"[Target] repair_rate: {repair_rate_tgt} ({repair_cnt_tgt} / {np.sum(~is_correct_old_tgt)}), break_rate: {break_rate_tgt} ({break_cnt_tgt} / {np.sum(is_correct_old_tgt)})")
+
+    # cnt系の変数は全てint()する (np.intのままだとjson.dumpでこけるため)
+    repair_cnt_overall = int(repair_cnt_overall)
+    break_cnt_overall = int(break_cnt_overall)
+    repair_cnt_tgt = int(repair_cnt_tgt)
+    break_cnt_tgt = int(break_cnt_tgt)
+
+    # 上記のメトリクスをjsonで保存
+    # 007eの段階でtot_timeだけはjsonに保存されている前提
+    if fl_method == "vdiff":
+        metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")
+    elif fl_method == "random":
+        metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}_random.json")
+    else:
+        NotImplementedError
+    metrics_dic = json2dict(metrics_dir)
+    assert "tot_time" in metrics_dic, f"tot_time should be in {metrics_dir}"
+    # tot_time以外のmetricを追加
+    metrics_dic["acc_old"] = acc_old
+    metrics_dic["acc_new"] = acc_new
+    metrics_dic["delta_acc"] = delta_acc
+    metrics_dic["repair_rate_overall"] = repair_rate_overall
+    metrics_dic["repair_cnt_overall"] = repair_cnt_overall
+    metrics_dic["break_rate_overall"] = break_rate_overall
+    metrics_dic["break_cnt_overall"] = break_cnt_overall
+    metrics_dic["repair_rate_tgt"] = repair_rate_tgt
+    metrics_dic["repair_cnt_tgt"] = repair_cnt_tgt
+    metrics_dic["break_rate_tgt"] = break_rate_tgt
+    metrics_dic["break_cnt_tgt"] = break_cnt_tgt
+    logger.info(f"metrics_dic:\n{metrics_dic}")
+    # metricsを保存
+    with open(metrics_dir, "w") as f:
+        json.dump(metrics_dic, f, indent=4)
+    logger.info(f"metrics are saved in {metrics_dir}")
 
     # 変更後の対象重み
     wi_new = vit_from_last_layer.base_model_last_layer.intermediate.dense.weight.data

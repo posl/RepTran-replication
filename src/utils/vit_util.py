@@ -205,8 +205,6 @@ def return_rank(x, i, order="desc"):
         raise NotImplementedError
 
 def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None):
-    # misclf_pairと，tgt_labelは同時に指定できない
-    assert (misclf_pair is None) or (tgt_label is None), f"Error: {misclf_pair}, {tgt_label}"
 
     vdiff_dic = defaultdict(defaultdict)
     # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
@@ -329,7 +327,7 @@ def src_tgt_selection(mis_ranking, mis_indices, tgt_rank):
     # ランキングから対象の誤分類情報を取り出す
     slabel, tlabel, mis_cnt = mis_ranking[tgt_rank-1]
     tgt_mis_indices = mis_indices[slabel][tlabel]
-    return slabel, tlabel, tgt_mis_indices
+    return slabel, tlabel, np.array(tgt_mis_indices)
 
 def tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1"):
     """
@@ -348,6 +346,18 @@ def tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1"):
                 tgt_mis_indices.extend(mis_indices[pred_label][true_label])
     return tgt_label, np.array(tgt_mis_indices)
 
+def all_selection(mis_indices):
+    """
+    all型のrepairをする場合に使う.
+    mis_indices[i][j]に格納されているすべてのリストを1次元にして結合する.
+    """
+    tgt_mis_indices = []
+    for mi in mis_indices.values():
+        for mij in mi.values():
+            if len(mij) > 0:
+                tgt_mis_indices.extend(mij)
+    return np.array(tgt_mis_indices)
+
 def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", tgt_rank=1):
     # インデックスのロード
     with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_indices.pkl"), "rb") as f:
@@ -360,12 +370,15 @@ def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", t
         met_dict = pickle.load(f)
     if misclf_type == "src_tgt":
         slabel, tlabel, tgt_mis_indices = src_tgt_selection(mis_ranking, mis_indices, tgt_rank)
-        tgt_mis_indices = mis_indices[slabel][tlabel]
         misclf_pair = (slabel, tlabel)
         tgt_label = None
     elif misclf_type == "tgt":
         tlabel, tgt_mis_indices = tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1")
         tgt_label = tlabel
+        misclf_pair = None
+    elif misclf_type == "all":
+        tgt_mis_indices = all_selection(mis_indices)
+        tgt_label = None
         misclf_pair = None
     else:
         NotImplementedError, f"misclf_type: {misclf_type}"
