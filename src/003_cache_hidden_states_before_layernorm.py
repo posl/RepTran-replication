@@ -21,9 +21,11 @@ if __name__ == "__main__":
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     # cache処理をするかどうかのフラグ
     parser.add_argument('--no_cache', action='store_true', help="whether to cache hidden states before layernorm or not")
+    parser.add_argument("--tgt_split", type=str, default="repair", help="the target split for the cache")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
+    tgt_split = args.tgt_split
     do_not_cache = args.no_cache # default: False
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # このpythonのファイル名を取得
@@ -60,7 +62,6 @@ if __name__ == "__main__":
     # configuration
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
-    tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_ds = ds_preprocessed[tgt_split]
     tgt_labels = labels[tgt_split]
     tgt_layer = 11 # NOTE: we only use the last layer for repairing

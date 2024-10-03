@@ -8,8 +8,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
-from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, localize_weights, localize_weights_random, src_tgt_selection, tgt_selection, identfy_tgt_misclf
-from utils.data_util import make_batch_of_label
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, identfy_tgt_misclf, get_ori_model_predictions, get_new_model_predictions, get_batched_hs, get_batched_labels
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from utils.de import DE_searcher
@@ -26,66 +25,12 @@ DEFAULT_SETTINGS = {
     "alpha": 0.5
 }
 
-def get_ori_model_predictions(pred_res_dir, labels, tgt_split="repair", misclf_type="tgt", tgt_label=None):
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
-    pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    with open(os.path.join(pred_res_dir, f"{tgt_split}_pred.pkl"), "rb") as f:
-        pred_res = pickle.load(f)
-    pred_logits = pred_res.predictions
-    ori_pred_labels = np.argmax(pred_logits, axis=-1)
-    is_correct = ori_pred_labels == labels[tgt_split]
-    # misclf_type == "tgt"の場合は，tgt_labelで正解したものだけをcorrectとして扱う
-    if misclf_type == "tgt":
-        assert tgt_label is not None, f"tgt_label should be specified when misclf_type is tgt."
-        is_correct = is_correct & (labels[tgt_split] == tgt_label)
-    indices_to_correct = np.where(is_correct)[0]
-    return ori_pred_labels, is_correct, indices_to_correct
-
 def sample_from_correct_samples(num_sampled_from_correct, indices_to_correct):
     if num_sampled_from_correct < len(indices_to_correct):
         sampled_indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
     else:
         sampled_indices_to_correct = indices_to_correct
     return sampled_indices_to_correct
-
-def get_batched_hs(hs_save_path, batch_size, tgt_indices=None, device=torch.device("cuda")):
-    hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
-    logger.info(f"hs_before_layernorm is loaded. shape: {hs_before_layernorm.shape}")
-    if tgt_indices is not None:
-        # 使うインデックスに対する状態だけを取り出す
-        hs_before_layernorm_tgt = hs_before_layernorm[tgt_indices]
-    else:
-        hs_before_layernorm_tgt = hs_before_layernorm
-    logger.info(f"hs_before_layernorm is sliced. shape: {hs_before_layernorm_tgt.shape}")
-    num_batches = (hs_before_layernorm_tgt.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
-    batch_hs_before_layernorm_tgt = np.array_split(hs_before_layernorm_tgt, num_batches)
-    return batch_hs_before_layernorm_tgt
-
-def get_batched_labels(labels, batch_size, tgt_indices=None):
-    logger.info(f"labels.shape: {labels.shape}")
-    if tgt_indices is not None:
-        labels_tgt = labels[tgt_indices]
-    else:
-        labels_tgt = labels
-    logger.info(f"labels is sliced. shape: {labels_tgt.shape}")
-    num_batches = (len(labels_tgt) + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
-    batch_labels = np.array_split(labels_tgt, num_batches)
-    return batch_labels
-
-def get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=0):
-    all_pred_labels = []
-    all_true_labels = []
-    for cache_state, y in zip(batch_hs_before_layernorm, batch_labels):
-        logits = vit_from_last_layer(hidden_states_before_layernorm=cache_state, tgt_pos=tgt_pos)
-        # 出力されたlogitsを確率に変換  
-        proba = torch.nn.functional.softmax(logits, dim=-1)
-        pred_label = torch.argmax(proba, dim=-1)
-        for pl, tl in zip(pred_label, y):
-            all_pred_labels.append(pl.item())
-            all_true_labels.append(tl)
-    all_pred_labels = np.array(all_pred_labels)
-    all_true_labels = np.array(all_true_labels)
-    return all_pred_labels, all_true_labels
 
 if __name__ == "__main__":
     # データセットをargparseで受け取る

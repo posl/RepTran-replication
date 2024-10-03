@@ -10,12 +10,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
+    parser.add_argument('--tgt_split', type=str, help="the target split name", default="repair")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
-    print(f"ds_name: {ds_name}, fold_id: {k}")
+    tgt_split = args.tgt_split
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_split: {tgt_split}")
 
-    tgt_split = "repair"
     if ds_name == "c100":
         num_classes = 100
     else:

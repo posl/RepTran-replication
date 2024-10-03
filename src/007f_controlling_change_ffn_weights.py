@@ -12,13 +12,13 @@ def get_nlist():
             nlist.append(n)
             rlist.append(r)
     # 1, 5, 10x% (x=1,..,9)に最も近くなるnを取得
-    # target_ratios = np.array([1, 2, 3, 4, 5, 10, 15, 20]) # NOTE: hard coded
-    target_ratios = np.array([1]) # NOTE: hard coded
+    target_ratios = np.array([1, 2, 3, 4, 5, 10, 15, 20]) # NOTE: hard coded
+    # target_ratios = np.array([1]) # NOTE: hard coded
     tgt_nlist = []
     for target in target_ratios:
         closest_n = min(zip(nlist, rlist), key=lambda x: abs(x[1] - target)) # keyはminの計算の際の大きい小さいの基準
         tgt_nlist.append(closest_n[0])
-        print(f"target ratio: {target}%, closest n: {closest_n[0]}, ratio: {closest_n[1]}%")
+        print(f"target ratio: {target}%, closest n: {closest_n[0]}, ratio: {closest_n[1]}%, num_weights: {8*closest_n[0]*closest_n[0]}")
     return tgt_nlist
 
 if __name__ == "__main__":
