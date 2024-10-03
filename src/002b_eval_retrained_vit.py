@@ -18,10 +18,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
+    parser.add_argument("--use_whole", action="store_true", help="use the whole dataset for evaluation")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
-    print(f"ds_name: {ds_name}, fold_id: {k}")
+    use_whole = args.use_whole
+    print(f"ds_name: {ds_name}, fold_id: {k}, use_whole: {use_whole}")
     
     # デバイス (cuda, or cpu) の取得
     device = get_device()
@@ -53,7 +55,8 @@ if __name__ == "__main__":
     
     # pretrained modelのロード
     ori_pretrained_dir = getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR.format(k=k)
-    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set")
+    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, "retraining_with_only_repair_target")
+    print(f"retrained model dir: {pretrained_dir}")
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)

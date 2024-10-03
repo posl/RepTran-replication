@@ -22,22 +22,25 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
-    parser.add_argument('misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
+    parser.add_argument('misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)")
     parser.add_argument('--tgt_rank', type=int, help="the rank of the target misclassification type", default=None)
     parser.add_argument('--tgt_split', type=str, help="the split to evaluate the target misclassification type", default="test")
+    parser.add_argument("--use_whole", action="store_true", help="use the whole dataset for evaluation")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
     tgt_rank = args.tgt_rank
     misclf_type = args.misclf_type
     tgt_split = args.tgt_split
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, tgt_split: {tgt_split}")
+    use_whole = args.use_whole
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, use_whole: {use_whole}")
     # misclf_typeがtgtかsrc_tgtの場合はtgt_rankが必要
     if misclf_type in ["tgt", "src_tgt"]:
         assert tgt_rank is not None, "tgt_rank is required for tgt or src_tgt misclf_type."
 
     ori_pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set")
+    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, "retraining_with_only_repair_target")
+    print(f"retrained model dir: {pretrained_dir}")
     # 結果とかログの保存先を先に作っておく
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
