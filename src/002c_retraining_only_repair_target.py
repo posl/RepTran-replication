@@ -5,11 +5,12 @@ but we use the part of repair set used for the repair in 002c.
 
 import os
 import torch
+import numpy as np
 import argparse
 from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device, get_corruption_types
-from utils.vit_util import processor, transforms, transforms_c100, compute_metrics, identfy_tgt_misclf
+from utils.vit_util import processor, transforms, transforms_c100, compute_metrics, identfy_tgt_misclf, get_ori_model_predictions
 from utils.constant import ViTExperiment
 
 def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split):
@@ -35,13 +36,24 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split):
     ds_preprocessed = ds.with_transform(tf_func)
     ds_train, ds_repair, ds_test = ds_preprocessed["train"], ds_preprocessed["repair"], ds_preprocessed["test"]
 
+    labels = {
+        "train": np.array(ds["train"][label_col]),
+        "repair": np.array(ds["repair"][label_col]),
+        "test": np.array(ds["test"][label_col])
+    }
+
     # pretrained modelのロード
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
+    pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
+    ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type)
+    # indices_to_correctから200件サンプリング
+    tgt_cor_indices = np.random.choice(indices_to_correct, 200, replace=False) # NOTE: repairの設定と紐付けたいが現在は200をhard coding
     # repair に使ったサンプルのindexを取得
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     _, _, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
     # tgt_indicesに対応するサンプルだけ取り出す
-    ds_tgt = ds_repair.select(indices=tgt_mis_indices)
+    tgt_indices = np.concatenate((tgt_cor_indices, tgt_mis_indices))
+    ds_tgt = ds_repair.select(indices=tgt_indices)
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # オリジナルモデルの学習時の設定をロード
