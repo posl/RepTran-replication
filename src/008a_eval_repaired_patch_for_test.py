@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
-from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, get_new_model_predictions, get_batched_hs, get_batched_labels, identfy_tgt_misclf
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, get_new_model_predictions, get_batched_hs, get_batched_labels, identfy_tgt_misclf, get_misclf_info
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from utils.de import set_new_weights
@@ -44,6 +44,7 @@ if __name__ == "__main__":
     parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
     parser.add_argument("--custom_n", type=int, help="the custom n for the FL", default=None)
     parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
+    parser.add_argument("--tgt_split", type=str, help="the split to evaluate the target misclassification type", default="test")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
@@ -51,6 +52,7 @@ if __name__ == "__main__":
     setting_path = args.setting_path
     fl_method = args.fl_method
     misclf_type = args.misclf_type
+    tgt_split = args.tgt_split
     custom_n = args.custom_n
     custom_alpha = args.custom_alpha
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
@@ -107,6 +109,7 @@ if __name__ == "__main__":
     elif ds_name == "c100":
         tf_func = transforms_c100
         label_col = "fine_label"
+        num_classes = 100
     else:
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
@@ -128,7 +131,6 @@ if __name__ == "__main__":
     model.eval()
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
-    tgt_split = "test" # NOTE: we only use test split for evaluation
     ori_tgt_ds = ds_preprocessed[tgt_split]
     ori_tgt_labels = labels[tgt_split]
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
@@ -248,3 +250,18 @@ if __name__ == "__main__":
     with open(metrics_dir, "w") as f:
         json.dump(metrics_dic, f, indent=4)
     logger.info(f"metrics are saved in {metrics_dir}")
+
+    # 修正後モデルの誤分類情報の保存
+    misclf_info_dir = os.path.join(save_dir, f"misclf_info_{setting_id}")
+    os.makedirs(misclf_info_dir, exist_ok=True)
+    mis_matrix, mis_ranking, mis_indices, met_dict = get_misclf_info(pred_labels_new, true_labels_new, num_classes=num_classes)
+    np.save(os.path.join(misclf_info_dir, f"{tgt_split}_mis_matrix.npy"), mis_matrix)
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_ranking.pkl"), "wb") as f:
+        pickle.dump(mis_ranking, f)
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_indices.pkl"), "wb") as f:
+        pickle.dump(mis_indices, f)
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_met_dict.pkl"), "wb") as f:
+        pickle.dump(met_dict, f)
+    print("Summary of the misclassification info:")
+    print(f"mis_matrix: {mis_matrix.shape}")
+    print(f"total_mis: {mis_matrix.sum()}")

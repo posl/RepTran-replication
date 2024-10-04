@@ -47,7 +47,7 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split):
     # オリジナルモデルの学習時の設定をロード
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
     # オリジナルの学習から設定を少し変える
-    adapt_out_dir = os.path.join(pretrained_dir, "retraining_with_only_repair_target")
+    adapt_out_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "retraining_with_only_repair_target")
     os.makedirs(adapt_out_dir, exist_ok=True)
     training_args.output_dir = adapt_out_dir
     # print(training_args.num_epochs)

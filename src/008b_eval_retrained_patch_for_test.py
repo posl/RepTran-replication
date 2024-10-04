@@ -11,7 +11,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100, get_ori_model_predictions, identfy_tgt_misclf
+from utils.vit_util import transforms, transforms_c100, get_ori_model_predictions, identfy_tgt_misclf, get_misclf_info
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from logging import getLogger
@@ -39,7 +39,7 @@ if __name__ == "__main__":
         assert tgt_rank is not None, "tgt_rank is required for tgt or src_tgt misclf_type."
 
     ori_pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, "retraining_with_only_repair_target")
+    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", "retraining_with_only_repair_target")
     print(f"retrained model dir: {pretrained_dir}")
     # 結果とかログの保存先を先に作っておく
     # このpythonのファイル名を取得
@@ -56,6 +56,7 @@ if __name__ == "__main__":
     elif ds_name == "c100":
         tf_func = transforms_c100
         label_col = "fine_label"
+        num_classes = 100
     else:
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
@@ -165,3 +166,18 @@ if __name__ == "__main__":
     with open(metrics_dir, "w") as f:
         json.dump(metrics_dic, f, indent=4)
     logger.info(f"metrics are saved in {metrics_dir}")
+
+    # 再学習後モデルの誤分類情報の保存
+    misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
+    os.makedirs(misclf_info_dir, exist_ok=True)
+    mis_matrix, mis_ranking, mis_indices, met_dict = get_misclf_info(pred_labels_new, labels[tgt_split], num_classes=num_classes)
+    np.save(os.path.join(misclf_info_dir, f"{tgt_split}_mis_matrix.npy"), mis_matrix)
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_ranking.pkl"), "wb") as f:
+        pickle.dump(mis_ranking, f)
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_indices.pkl"), "wb") as f:
+        pickle.dump(mis_indices, f)
+    with open(os.path.join(misclf_info_dir, f"{tgt_split}_met_dict.pkl"), "wb") as f:
+        pickle.dump(met_dict, f)
+    print("Summary of the misclassification info:")
+    print(f"mis_matrix: {mis_matrix.shape}")
+    print(f"total_mis: {mis_matrix.sum()}")
