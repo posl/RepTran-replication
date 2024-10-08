@@ -10,10 +10,10 @@ import argparse
 from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device, get_corruption_types
-from utils.vit_util import processor, transforms, transforms_c100, compute_metrics, identfy_tgt_misclf, get_ori_model_predictions
+from utils.vit_util import processor, transforms, transforms_c100, compute_metrics, identfy_tgt_misclf, get_ori_model_predictions, sample_from_correct_samples, sample_true_positive_indices_per_class
 from utils.constant import ViTExperiment
 
-def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split):
+def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, num_sampled_from_correct=200, include_other_TP_for_fitness=True):
     # datasetごとに違う変数のセット
     if ds_name == "c10":
         tf_func = transforms
@@ -44,26 +44,42 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split):
 
     # pretrained modelのロード
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type)
-    # indices_to_correctから200件サンプリング
-    tgt_cor_indices = np.random.choice(indices_to_correct, 200, replace=False) # NOTE: repairの設定と紐付けたいが現在は200をhard coding
-    # repair に使ったサンプルのindexを取得
+    # tgt_rankの誤分類情報を取り出す
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-    _, _, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
-    # tgt_indicesに対応するサンプルだけ取り出す
-    tgt_indices = np.concatenate((tgt_cor_indices, tgt_mis_indices))
+    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
+    indices_to_incorrect = tgt_mis_indices
+    # NOTE: indices_to_incorrectからはsampleしなくてよい？今のところ全部使うのでランダム性が入るのはcorrectのsamplingだけ
+    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
+    if misclf_type == "tgt":
+        ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
+    else:
+        ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
+
+    # 正解データからrepairに使う一定数だけランダムに取り出す
+    sampled_indices_to_correct = sample_from_correct_samples(num_sampled_from_correct, indices_to_correct)
+    if include_other_TP_for_fitness and misclf_type == "tgt":
+        for pl, tl in zip(ori_pred_labels[indices_to_correct_others], labels[tgt_split][indices_to_correct_others]):
+            assert pl != tgt_label, f"pl: {pl}, tgt_label: {tgt_label}"
+            assert tl != tgt_label, f"tl: {tl}, tgt_label: {tgt_label}"
+            assert pl == tl, f"pl: {pl}, tl: {tl}"
+        other_TP_indices = sample_true_positive_indices_per_class(num_sampled_from_correct, indices_to_correct_others, ori_pred_labels)
+        sampled_indices_to_correct = np.concatenate([sampled_indices_to_correct, other_TP_indices])
+    print(f"len(indices_to_correct): {len(sampled_indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
+    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
+    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() は 非破壊的method
+    print(f"len(tgt_indices): {len(tgt_indices)}")
     ds_tgt = ds_repair.select(indices=tgt_indices)
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # オリジナルモデルの学習時の設定をロード
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
     # オリジナルの学習から設定を少し変える
-    adapt_out_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "retraining_with_only_repair_target")
+    adapt_out_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_retraining_with_only_repair_target")
     os.makedirs(adapt_out_dir, exist_ok=True)
     training_args.output_dir = adapt_out_dir
     # print(training_args.num_epochs)
-    if misclf_type == "src_tgt":
+    if misclf_type == "src_tgt" or misclf_type == "tgt":
         training_args.num_train_epochs = 1 # NOTE: これは対象誤分類のデータの数によるが, src_tgtの場合はデータが少ないので1epochで十分
     else:
         training_args.num_train_epochs = 2

@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_style("ticks")
-import torch
+import evaluate
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
@@ -34,12 +34,9 @@ if __name__ == "__main__":
     tgt_split = args.tgt_split
     use_whole = args.use_whole
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, use_whole: {use_whole}")
-    # misclf_typeがtgtかsrc_tgtの場合はtgt_rankが必要
-    if misclf_type in ["tgt", "src_tgt"]:
-        assert tgt_rank is not None, "tgt_rank is required for tgt or src_tgt misclf_type."
 
     ori_pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", "retraining_with_only_repair_target")
+    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_retraining_with_only_repair_target")
     print(f"retrained model dir: {pretrained_dir}")
     # 結果とかログの保存先を先に作っておく
     # このpythonのファイル名を取得
@@ -89,12 +86,30 @@ if __name__ == "__main__":
 
     # original modelsの予測結果の保存パス
     original_pred_out_dir = os.path.join(ori_pretrained_dir, "pred_results", "PredictionOutput")
-    # 予測結果を取得
-    pred_labels_old, is_correct_old, indices_to_correct_old = get_ori_model_predictions(original_pred_out_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type)
-    # retrained modelsの予測結果の保存パス
     retrained_pred_out_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
+
+    # misclf_typeがtgtかsrc_tgtの場合はtgt_rankが必要
+    if misclf_type in ["tgt", "src_tgt"]:
+        assert tgt_rank is not None, "tgt_rank is required for tgt or src_tgt misclf_type."
+        misclf_info_dir = os.path.join(ori_pretrained_dir, "misclf_info")
+        # repair setで多かった間違いの種類を取り出す
+        misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", tgt_rank=tgt_rank, misclf_type=misclf_type)
+
     # 予測結果を取得
-    pred_labels_new, is_correct_new, indices_to_correct_new = get_ori_model_predictions(retrained_pred_out_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type)
+    if misclf_type == "tgt":
+        # ori model
+        pred_labels_old, is_correct_tgt, indices_to_correct_tgt, is_correct_others, indices_to_correct_others = get_ori_model_predictions(original_pred_out_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
+        is_correct_old = is_correct_tgt | is_correct_others
+        indices_to_correct_old = np.concatenate([indices_to_correct_tgt, indices_to_correct_others])
+        # retrained model
+        pred_labels_new, is_correct_tgt, indices_to_correct_tgt, is_correct_others, indices_to_correct_others = get_ori_model_predictions(retrained_pred_out_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
+        is_correct_new = is_correct_tgt | is_correct_others
+        indices_to_correct_new = np.concatenate([indices_to_correct_tgt, indices_to_correct_others])
+    else: # src_tgt or all
+        # ori model
+        pred_labels_old, is_correct_old, indices_to_correct_old = get_ori_model_predictions(original_pred_out_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type)
+        # retrained model
+        pred_labels_new, is_correct_new, indices_to_correct_new = get_ori_model_predictions(retrained_pred_out_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type)
 
     # 全体的なaccの変化
     acc_old = sum(is_correct_old) / len(is_correct_old)
@@ -120,9 +135,6 @@ if __name__ == "__main__":
     # misclf_typeがallの場合はここで終わり
     # ただ，tgtやsrc_tgtの場合は，tgt_rankの間違いに対するrepair rateも記録する
     if misclf_type == "src_tgt" or misclf_type == "tgt":
-        misclf_info_dir = os.path.join(ori_pretrained_dir, "misclf_info")
-        # original model の repair set での間違い方をロード
-        misclf_pair, tgt_label, _ = identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", tgt_rank=tgt_rank, misclf_type=misclf_type)
         # misclf_typeがsrc_tgtの場合は，slabel, tlabelを取得してその間違えかたをしたindexを取得
         if misclf_type == "src_tgt":
             slabel, tlabel = misclf_pair
@@ -141,7 +153,26 @@ if __name__ == "__main__":
                     if idx not in tgt_mis_indices:
                         new_injected_faults += 1 # repair 前と違うサンプルに対してs->tの間違い方をした
         elif misclf_type == "tgt":
-            NotImplementedError
+            tgt_mis_indices = []
+            for idx, (pl, tl) in enumerate(zip(pred_labels_old, labels[tgt_split])):
+                if (pl == tgt_label or tl == tgt_label) and pl != tl:
+                    tgt_mis_indices.append(idx)
+            tgt_misclf_cnt_old = len(tgt_mis_indices)
+            tgt_misclf_cnt_new = 0
+            new_injected_faults = 0
+            for idx, (pl, tl) in enumerate(zip(pred_labels_new, labels[tgt_split])):
+                if (pl == tgt_label or tl == tgt_label) and pl != tl:
+                    tgt_misclf_cnt_new += 1
+                    if idx not in tgt_mis_indices:
+                        new_injected_faults += 1
+            # tgt_labelに対するf1も計算してmetric_dictに追加
+            f1_metric = evaluate.load("f1")
+            f1_tgt_old = f1_metric.compute(predictions=pred_labels_old, references=labels[tgt_split], average=None)["f1"][tgt_label]
+            f1_tgt_new = f1_metric.compute(predictions=pred_labels_new, references=labels[tgt_split], average=None)["f1"][tgt_label]
+            print(f1_tgt_old, f1_tgt_new)
+            metrics_dic["f1_tgt_old"] = f1_tgt_old
+            metrics_dic["f1_tgt_new"] = f1_tgt_new
+            metrics_dic["delta_f1_tgt"] = f1_tgt_new - f1_tgt_old
         
         # tgt_mis_indicesに対するpred_labels, true_labels, is_correctを取得
         is_correct_old_tgt = is_correct_old[tgt_mis_indices]
@@ -154,12 +185,11 @@ if __name__ == "__main__":
         logger.info(f"[Target] repair_rate: {repair_rate_tgt} ({repair_cnt_tgt} / {np.sum(~is_correct_old_tgt)})")
         metrics_dic["repair_rate_tgt"] = repair_rate_tgt
         metrics_dic["repair_cnt_tgt"] = int(repair_cnt_tgt)
-        if misclf_type == "src_tgt":
-            metrics_dic["tgt_misclf_cnt_old"] = tgt_misclf_cnt_old
-            metrics_dic["tgt_misclf_cnt_new"] = tgt_misclf_cnt_new
-            metrics_dic["diff_tgt_misclf_cnt"] = tgt_misclf_cnt_new - tgt_misclf_cnt_old
-            metrics_dic["new_injected_faults"] = new_injected_faults
-            # NOTE: s->t の誤分類サンプルの予測が変わる = 治るではない．s,t以外->tになることもあり，これは誤分類タイプの変化を示す
+        metrics_dic["tgt_misclf_cnt_old"] = tgt_misclf_cnt_old
+        metrics_dic["tgt_misclf_cnt_new"] = tgt_misclf_cnt_new
+        metrics_dic["diff_tgt_misclf_cnt"] = tgt_misclf_cnt_new - tgt_misclf_cnt_old
+        metrics_dic["new_injected_faults"] = new_injected_faults
+        # NOTE: s->t の誤分類サンプルの予測が変わる = 治るではない．s,t以外->tになることもあり，これは誤分類タイプの変化を示す
 
     # metricsを保存
     logger.info(f"metrics_dic:\n{metrics_dic}")

@@ -204,7 +204,7 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None):
+def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None):
 
     vdiff_dic = defaultdict(defaultdict)
     # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
@@ -224,6 +224,8 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
             if tgt_label is not None and cor_mis == "mis":
                 # tgt_labelが指定されている場合は，その対象のデータのみを取得
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
+                if fpfn is not None:
+                    vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
             vscores = np.load(vscore_save_path)
             vmap_dic[cor_mis] = vscores.T
         vmap_cor = vmap_dic["cor"]
@@ -342,7 +344,16 @@ def tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1"):
     tgt_mis_indices = []
     for pred_label in range(num_labels):
         for true_label in range(num_labels):
-            if (pred_label == tgt_label or true_label == tgt_label) and pred_label != true_label:
+            # used_metによって誤分類の定義を変える
+            if used_met == "f1": # false positive and false negative
+                cond_fpfn = (pred_label == tgt_label or true_label == tgt_label)
+            elif used_met == "precision": # false positive
+                cond_fpfn = (pred_label == tgt_label)
+            elif used_met == "recall": # false negative
+                cond_fpfn = (true_label == tgt_label)
+            # pred_label != true_labelなので誤分類サンプル
+            # pred_label == tgt_labelはFalse positive, true_label == tgt_labelはFalse negative
+            if cond_fpfn and pred_label != true_label:
                 tgt_mis_indices.extend(mis_indices[pred_label][true_label])
     return tgt_label, np.array(tgt_mis_indices)
 
@@ -358,7 +369,7 @@ def all_selection(mis_indices):
                 tgt_mis_indices.extend(mij)
     return np.array(tgt_mis_indices)
 
-def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", tgt_rank=1):
+def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", tgt_rank=1, fpfn=None):
     # インデックスのロード
     with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_indices.pkl"), "rb") as f:
         mis_indices = pickle.load(f)
@@ -373,7 +384,15 @@ def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", t
         misclf_pair = (slabel, tlabel)
         tgt_label = None
     elif misclf_type == "tgt":
-        tlabel, tgt_mis_indices = tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1")
+        if fpfn is None:
+            used_met = "f1"
+        elif fpfn == "fp":
+            used_met = "precision"
+        elif fpfn == "fn":
+            used_met = "recall"
+        else:
+            NotImplementedError, f"fpfn: {fpfn}"
+        tlabel, tgt_mis_indices = tgt_selection(met_dict, mis_indices, tgt_rank, used_met=used_met)
         tgt_label = tlabel
         misclf_pair = None
     elif misclf_type == "all":
@@ -394,11 +413,16 @@ def get_ori_model_predictions(pred_res_dir, labels, tgt_split="repair", misclf_t
     pred_logits = pred_res.predictions
     ori_pred_labels = np.argmax(pred_logits, axis=-1)
     is_correct = ori_pred_labels == labels[tgt_split]
-    # misclf_type == "tgt"の場合は，tgt_labelで正解したものだけをcorrectとして扱う
+    indices_to_correct = np.where(is_correct)[0]
     if misclf_type == "tgt":
         assert tgt_label is not None, f"tgt_label should be specified when misclf_type is tgt."
-        is_correct = is_correct & (labels[tgt_split] == tgt_label)
-    indices_to_correct = np.where(is_correct)[0]
+        # misclf_type == "tgt"の場合は，tgt_labelで正解したものだけをcorrectとして扱う
+        is_correct_tgt = is_correct & (labels[tgt_split] == tgt_label)
+        indices_to_correct_tgt = np.where(is_correct_tgt)[0]
+        # is_correctのリストからis_correct_for_tgtを除外したものをis_correctにする
+        is_correct_others = is_correct & (labels[tgt_split] != tgt_label)
+        indices_to_correct_others = np.where(is_correct_others)[0]
+        return ori_pred_labels, is_correct_tgt, indices_to_correct_tgt, is_correct_others, indices_to_correct_others
     return ori_pred_labels, is_correct, indices_to_correct
 
 def get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=0):
@@ -438,3 +462,24 @@ def get_batched_labels(labels, batch_size, tgt_indices=None):
     num_batches = (len(labels_tgt) + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
     batch_labels = np.array_split(labels_tgt, num_batches)
     return batch_labels
+
+def sample_from_correct_samples(num_sampled_from_correct, indices_to_correct):
+    if num_sampled_from_correct < len(indices_to_correct):
+        sampled_indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
+    else:
+        sampled_indices_to_correct = indices_to_correct
+    return sampled_indices_to_correct
+
+def sample_true_positive_indices_per_class(num_sampled_from_correct, indices_to_correct, ori_pred_labels):
+    # 予測ラベルごとにTrue Positiveのインデックスを取得
+    true_positive_indices_per_class = defaultdict(list)
+    for i, pred_label in enumerate(ori_pred_labels):
+        if i in indices_to_correct:
+            true_positive_indices_per_class[pred_label].append(i)
+    # num_sampled_from_correctは合計のサンプル数なのでnum_classで割る
+    num_sampled_from_correct_per_class = num_sampled_from_correct // len(true_positive_indices_per_class.keys())
+    # 各クラスからnum_sampled_from_correct個ずつサンプリング
+    sampled_indices = []
+    for label, idx_list in true_positive_indices_per_class.items():
+        sampled_indices += np.random.choice(idx_list, num_sampled_from_correct_per_class, replace=False).tolist()
+    return np.array(sampled_indices)

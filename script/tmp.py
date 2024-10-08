@@ -1,15 +1,16 @@
 import os, sys, subprocess
 sys.path.append("../src")
+# n_list = [5, 77, 109, 133, 154, 172, 243]
+n_list = [5, 77, 109]
+alpha_list = [0.2, 0.4, 0.6, 0.8]
 
 if __name__ == "__main__":
     os.chdir("../src")
-    for i in range(1, 5, 1):
-        result = subprocess.run(["python", "001_fine_tune_vit.py", "c100", str(i)])
-        if result.returncode != 0:
-            exit(1)
-        result = subprocess.run(["python", "002_retraining_repair_set.py", "c100", str(i)])
-        if result.returncode != 0:
-            exit(1)
-        result = subprocess.run(["python", "003a_cache_intermediate_states.py", "c100", str(i)])
-        if result.returncode != 0:
-            exit(1)
+    for n in n_list:
+        for alpha in alpha_list:
+            for rt in ["repair", "test"]:
+                # result = subprocess.run(["python", "008a_eval_repaired_patch_for_test.py", "c100", str(0), "tgt", "--tgt_rank", str(1), "--custom_n", str(n), "--custom_alpha", str(alpha), "--tgt_split", rt])
+                command_string = f"python 007e_change_ffn_weights.py c100 0 1 --misclf_type tgt --custom_n {n} --custom_alpha {alpha} --include_other_TP_for_fitness --fpfn fn"
+                result = subprocess.run(command_string.split())
+                if result.returncode != 0:
+                    exit(1)

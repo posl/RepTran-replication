@@ -7,7 +7,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 sns.set_style("ticks")
-import torch
+import evaluate
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
@@ -57,9 +57,6 @@ if __name__ == "__main__":
     custom_alpha = args.custom_alpha
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
-    # misclf_typeがtgtかsrc_tgtの場合はtgt_rankが必要
-    if misclf_type in ["tgt", "src_tgt"]:
-        assert tgt_rank is not None, "tgt_rank is required for tgt or src_tgt misclf_type."
 
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
@@ -143,7 +140,12 @@ if __name__ == "__main__":
         metrics_dir = os.path.join(save_dir, f"{tgt_split}_metrics_for_repair_{setting_id}_random.json")
     else:
         NotImplementedError
-    metrics_dic = {}
+    
+    if tgt_split == "repair":
+        metrics_dic = json2dict(os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json"))
+        assert "tot_time" in metrics_dic, f"tot_time should be in {metrics_dir}"
+    else:
+        metrics_dic = {}
 
     # {tgt_split} setに対するhidden_states_before_layernormを取得
     hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
@@ -206,6 +208,8 @@ if __name__ == "__main__":
     # misclf_typeがallの場合はここで終わり
     # ただ，tgtやsrc_tgtの場合は，tgt_rankの間違いに対するrepair rateも記録する
     if misclf_type == "src_tgt" or misclf_type == "tgt":
+        # misclf_typeがtgtかsrc_tgtの場合はtgt_rankが必要
+        assert tgt_rank is not None, "tgt_rank is required for tgt or src_tgt misclf_type."
         misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
         # repair setに対する間違い情報を取得
         misclf_pair, tgt_label, _ = identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", tgt_rank=tgt_rank, misclf_type=misclf_type)
@@ -228,7 +232,26 @@ if __name__ == "__main__":
                     if idx not in tgt_mis_indices:
                         new_injected_faults += 1 # repair 前と違うサンプルに対してs->tの間違い方をした
         elif misclf_type == "tgt":
-            NotImplementedError
+            tgt_mis_indices = []
+            for idx, (pl, tl) in enumerate(zip(pred_labels_old, true_labels_old)):
+                if (pl == tgt_label or tl == tgt_label) and pl != tl:
+                    tgt_mis_indices.append(idx)
+            tgt_misclf_cnt_old = len(tgt_mis_indices)
+            tgt_misclf_cnt_new = 0
+            new_injected_faults = 0
+            for idx, (pl, tl) in enumerate(zip(pred_labels_new, true_labels_new)):
+                if (pl == tgt_label or tl == tgt_label) and pl != tl:
+                    tgt_misclf_cnt_new += 1
+                    if idx not in tgt_mis_indices:
+                        new_injected_faults += 1
+            # tgt_labelに対するf1も計算してmetric_dictに追加
+            f1_metric = evaluate.load("f1")
+            f1_tgt_old = f1_metric.compute(predictions=pred_labels_old, references=labels[tgt_split], average=None)["f1"][tgt_label]
+            f1_tgt_new = f1_metric.compute(predictions=pred_labels_new, references=labels[tgt_split], average=None)["f1"][tgt_label]
+            print(f1_tgt_old, f1_tgt_new)
+            metrics_dic["f1_tgt_old"] = f1_tgt_old
+            metrics_dic["f1_tgt_new"] = f1_tgt_new
+            metrics_dic["delta_f1_tgt"] = f1_tgt_new - f1_tgt_old
         
         # tgt_mis_indicesに対するpred_labels, true_labels, is_correctを取得
         is_correct_old_tgt = is_correct_old[tgt_mis_indices]
@@ -239,12 +262,11 @@ if __name__ == "__main__":
         logger.info(f"[Target] repair_rate: {repair_rate_tgt} ({repair_cnt_tgt} / {np.sum(~is_correct_old_tgt)})")
         metrics_dic["repair_rate_tgt"] = repair_rate_tgt
         metrics_dic["repair_cnt_tgt"] = int(repair_cnt_tgt)
-        if misclf_type == "src_tgt":
-            metrics_dic["tgt_misclf_cnt_old"] = tgt_misclf_cnt_old
-            metrics_dic["tgt_misclf_cnt_new"] = tgt_misclf_cnt_new
-            metrics_dic["diff_tgt_misclf_cnt"] = tgt_misclf_cnt_new - tgt_misclf_cnt_old
-            metrics_dic["new_injected_faults"] = new_injected_faults
-            # NOTE: s->t の誤分類サンプルの予測が変わる = 治るではない．s,t以外->tになることもあり，これは誤分類タイプの変化を示す
+        metrics_dic["tgt_misclf_cnt_old"] = tgt_misclf_cnt_old
+        metrics_dic["tgt_misclf_cnt_new"] = tgt_misclf_cnt_new
+        metrics_dic["diff_tgt_misclf_cnt"] = tgt_misclf_cnt_new - tgt_misclf_cnt_old
+        metrics_dic["new_injected_faults"] = new_injected_faults
+        # NOTE: s->t の誤分類サンプルの予測が変わる = 治るではない．s,t以外->tになることもあり，これは誤分類タイプの変化を示す
     # metricsを保存
     logger.info(f"metrics_dic:\n{metrics_dic}")
     with open(metrics_dir, "w") as f:

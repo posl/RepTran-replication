@@ -18,11 +18,13 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
+    parser.add_argument('misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)")
     parser.add_argument("--use_whole", action="store_true", help="use the whole dataset for evaluation")
     parser.add_argument('--tgt_rank', type=int, help="the rank of the target misclassification type", default=None)
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
+    misclf_type = args.misclf_type
     tgt_rank = args.tgt_rank
     use_whole = args.use_whole
     # use_wholeがFalseの時はtgt_rankが指定されてないといけない
@@ -60,7 +62,7 @@ if __name__ == "__main__":
     
     # pretrained modelのロード
     ori_pretrained_dir = getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR.format(k=k)
-    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", "retraining_with_only_repair_target")
+    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_retraining_with_only_repair_target")
     print(f"retrained model dir: {pretrained_dir}")
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]

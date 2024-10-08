@@ -8,7 +8,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
-from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, identfy_tgt_misclf, get_ori_model_predictions, get_new_model_predictions, get_batched_hs, get_batched_labels
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, identfy_tgt_misclf, get_ori_model_predictions, get_new_model_predictions, get_batched_hs, get_batched_labels, sample_from_correct_samples, sample_true_positive_indices_per_class
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from utils.de import DE_searcher
@@ -25,12 +25,6 @@ DEFAULT_SETTINGS = {
     "alpha": 0.5
 }
 
-def sample_from_correct_samples(num_sampled_from_correct, indices_to_correct):
-    if num_sampled_from_correct < len(indices_to_correct):
-        sampled_indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
-    else:
-        sampled_indices_to_correct = indices_to_correct
-    return sampled_indices_to_correct
 
 if __name__ == "__main__":
     # データセットをargparseで受け取る
@@ -44,6 +38,8 @@ if __name__ == "__main__":
     parser.add_argument('--only_eval', action='store_true', help="if True, only evaluate the saved patch", default=False)
     parser.add_argument("--custom_n", type=int, help="the custom n for the FL", default=None)
     parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
+    parser.add_argument("--include_other_TP_for_fitness", action="store_true", help="if True, include other TP samples for fitness calculation", default=False)
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
@@ -54,6 +50,8 @@ if __name__ == "__main__":
     only_eval = args.only_eval
     custom_n = args.custom_n
     custom_alpha = args.custom_alpha
+    include_other_TP_for_fitness = args.include_other_TP_for_fitness
+    fpfn = args.fpfn
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
 
     # TODO: あとでrandomly weights selectionも実装
@@ -78,7 +76,10 @@ if __name__ == "__main__":
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
-    save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
+    if fpfn is not None and misclf_type == "tgt":
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
+    else:
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
     if misclf_type == "all":
         save_dir = os.path.join(pretrained_dir, f"{misclf_type}_repair_weight_by_de")
     if fl_method == "vdiff":
@@ -136,7 +137,10 @@ if __name__ == "__main__":
     # localization phase
     # ===============================================
 
-    location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
+    if fpfn is not None and misclf_type == "tgt":
+        location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
+    else:
+        location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     location_save_path = os.path.join(location_save_dir, f"location_n{setting_dic['n']}_{fl_method}.npy")
@@ -152,17 +156,27 @@ if __name__ == "__main__":
 
     # tgt_rankの誤分類情報を取り出す
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
+    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
     # NOTE: indices_to_incorrectからはsampleしなくてよい？今のところ全部使うのでランダム性が入るのはcorrectのsamplingだけ
 
     # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
+    if misclf_type == "tgt":
+        ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
+    else:
+        ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
     # 正解データからrepairに使う一定数だけランダムに取り出す
     sampled_indices_to_correct = sample_from_correct_samples(setting_dic["num_sampled_from_correct"], indices_to_correct)
+    if include_other_TP_for_fitness and misclf_type == "tgt":
+        for pl, tl in zip(ori_pred_labels[indices_to_correct_others], labels[tgt_split][indices_to_correct_others]):
+            assert pl != tgt_label, f"pl: {pl}, tgt_label: {tgt_label}"
+            assert tl != tgt_label, f"tl: {tl}, tgt_label: {tgt_label}"
+            assert pl == tl, f"pl: {pl}, tl: {tl}"
+        other_TP_indices = sample_true_positive_indices_per_class(setting_dic["num_sampled_from_correct"], indices_to_correct_others, ori_pred_labels)
+        sampled_indices_to_correct = np.concatenate([sampled_indices_to_correct, other_TP_indices])
     ori_sampled_indices_to_correct, ori_indices_to_incorrect = sampled_indices_to_correct.copy(), indices_to_incorrect.copy()
     # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
     tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() は 非破壊的method

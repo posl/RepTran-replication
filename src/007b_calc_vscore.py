@@ -21,13 +21,15 @@ if __name__ == "__main__":
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     parser.add_argument('tgt_rank', type=int, help="the rank of the target misclassification type")
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt)", default="tgt")
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
     tgt_rank = args.tgt_rank
     misclf_type = args.misclf_type
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}")
+    fpfn = args.fpfn
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
 
     # datasetごとに違う変数のセット
     if ds_name == "c10":
@@ -68,7 +70,8 @@ if __name__ == "__main__":
     # tgt_rankの誤分類情報を取り出す
     tgt_split = "repair"
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
+    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
+    print(f"misclf_pair: {misclf_pair}, tgt_label: {tgt_label}, len(tgt_mis_indices): {len(tgt_mis_indices)}")
     if misclf_type == "src_tgt":
         slabel, tlabel = misclf_pair
     elif misclf_type == "tgt":
@@ -120,7 +123,10 @@ if __name__ == "__main__":
         assert all(all_pred_labels == slabel), f"all_pred_labels: {all_pred_labels}"
     elif misclf_type == "tgt":
         for pred_l, true_l in zip(all_pred_labels, labels[tgt_split][tgt_mis_indices]):
-            assert pred_l == tlabel or true_l == tlabel, f"pred_l: {pred_l}, true_l: {true_l}"
+            # pred_lとtrue_lが異なることを保証
+            assert pred_l != true_l, f"pred_l: {pred_l}, true_l: {true_l}"
+            # # pred_lかtrue_lがtlabelであることを保証
+            # assert pred_l == tlabel or true_l == tlabel, f"pred_l: {pred_l}, true_l: {true_l}"
     all_bhs = np.concatenate(all_bhs)
     all_ahs = np.concatenate(all_ahs)
     all_mhs = np.concatenate(all_mhs)
@@ -139,7 +145,7 @@ if __name__ == "__main__":
             vscore_per_layer.append(vscore)
         vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
         # vscoresを保存
-        ds_type = f"ori_{tgt_split}"
+        ds_type = f"ori_{tgt_split}" if fpfn is None else f"ori_{tgt_split}_{fpfn}"
         if misclf_type == "src_tgt":
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_{slabel}to{tlabel}_{ds_type}_mis.npy")
         elif misclf_type == "tgt":

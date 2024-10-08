@@ -20,7 +20,8 @@ if __name__ == "__main__":
     parser.add_argument('n', type=int, help="the factor for the number of neurons to fix")
     parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
-    
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
+
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
@@ -28,7 +29,8 @@ if __name__ == "__main__":
     n = args.n
     fl_method = args.fl_method
     misclf_type = args.misclf_type
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}")
+    fpfn = args.fpfn
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}, fpfn: {fpfn}")
 
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
@@ -40,6 +42,8 @@ if __name__ == "__main__":
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
         save_dir = os.path.join(pretrained_dir, f"all_weights_location")
+    if fpfn is not None and misclf_type == "tgt":
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     location_save_path = os.path.join(save_dir, f"location_n{n}_{fl_method}.npy")
     os.makedirs(save_dir, exist_ok=True)
     # このpythonのファイル名を取得
@@ -55,7 +59,8 @@ if __name__ == "__main__":
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
+    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
+    logger.info(f"misclf_pair: {misclf_pair}, tgt_label: {tgt_label}, len(tgt_mis_indices): {len(tgt_mis_indices)}")
     
     # ===============================================
     # localization phase
@@ -78,7 +83,7 @@ if __name__ == "__main__":
     logger.info(f"vscore_dir: {vscore_dir}")
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
     # localizationを実行
-    pos_before, pos_after = localizer(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, misclf_pair=misclf_pair, tgt_label=tgt_label)
+    pos_before, pos_after = localizer(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
     # log表示
     logger.info(f"pos_before={pos_before}")
     logger.info(f"pos_after={pos_after}")
