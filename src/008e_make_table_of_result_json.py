@@ -12,13 +12,15 @@ if __name__ == "__main__":
     parser.add_argument('misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
     parser.add_argument("mode", type=str, help="the mode of the experiment (repair or retrain)", choices=["repair", "retrain"])
     parser.add_argument('--tgt_rank', type=int, help="the rank of the target misclassification type", default=None)
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
     tgt_rank = args.tgt_rank
     misclf_type = args.misclf_type
     mode = args.mode
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, mode: {mode}")
+    fpfn = args.fpfn
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, mode: {mode}, fpfn: {fpfn}")
     
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
@@ -30,6 +32,8 @@ if __name__ == "__main__":
         # src_tgt or tgt repair
         else:
             save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
+            if fpfn is not None:
+                save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
         # n_listとalpha_listとtgt_splitを作成
         n_list = [5, 77, 109]
         # n_list = [77]

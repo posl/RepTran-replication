@@ -45,6 +45,7 @@ if __name__ == "__main__":
     parser.add_argument("--custom_n", type=int, help="the custom n for the FL", default=None)
     parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
     parser.add_argument("--tgt_split", type=str, help="the split to evaluate the target misclassification type", default="test")
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
@@ -55,8 +56,9 @@ if __name__ == "__main__":
     tgt_split = args.tgt_split
     custom_n = args.custom_n
     custom_alpha = args.custom_alpha
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
-    logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
+    fpfn = args.fpfn
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, fpfn: {fpfn}")
+    logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, fpfn: {fpfn}")
 
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
@@ -80,9 +82,12 @@ if __name__ == "__main__":
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
-    save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
-    if misclf_type == "all":
-        save_dir = os.path.join(pretrained_dir, f"all_repair_weight_by_de")
+    if fpfn is not None and misclf_type == "tgt":
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
+    elif misclf_type == "all":
+        save_dir = os.path.join(pretrained_dir, f"{misclf_type}_repair_weight_by_de")
+    else:
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
     if fl_method == "vdiff":
         patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
         tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}.pkl")
@@ -155,9 +160,12 @@ if __name__ == "__main__":
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
 
     # FLの結果の情報をロード
-    location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    if misclf_type == "all":
+    if fpfn is not None and misclf_type == "tgt":
+        location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
+    elif misclf_type == "all":
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
+    else:
+        location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     location_save_path = os.path.join(location_save_dir, f"location_n{setting_dic['n']}_{fl_method}.npy")
     pos_before, pos_after = np.load(location_save_path, allow_pickle=True)
     
@@ -212,7 +220,7 @@ if __name__ == "__main__":
         assert tgt_rank is not None, "tgt_rank is required for tgt or src_tgt misclf_type."
         misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
         # repair setに対する間違い情報を取得
-        misclf_pair, tgt_label, _ = identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", tgt_rank=tgt_rank, misclf_type=misclf_type)
+        misclf_pair, tgt_label, _ = identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
         logger.info(f"misclf_pair: {misclf_pair}, tgt_label: {tgt_label}")
         # misclf_typeがsrc_tgtの場合は，slabel, tlabelを取得してその間違えかたをしたindexを取得
         if misclf_type == "src_tgt":
@@ -233,25 +241,44 @@ if __name__ == "__main__":
                         new_injected_faults += 1 # repair 前と違うサンプルに対してs->tの間違い方をした
         elif misclf_type == "tgt":
             tgt_mis_indices = []
+            if fpfn is None:
+                used_met = "f1"
+            elif fpfn == "fp":
+                used_met = "precision"
+            elif fpfn == "fn":
+                used_met = "recall"
             for idx, (pl, tl) in enumerate(zip(pred_labels_old, true_labels_old)):
-                if (pl == tgt_label or tl == tgt_label) and pl != tl:
+                if used_met == "f1":
+                    cond_fpfn = (pl == tgt_label or tl == tgt_label)
+                elif used_met == "precision":
+                    cond_fpfn = (pl == tgt_label)
+                elif used_met == "recall":
+                    cond_fpfn = (tl == tgt_label)
+                if cond_fpfn and pl != tl:
                     tgt_mis_indices.append(idx)
             tgt_misclf_cnt_old = len(tgt_mis_indices)
+            # 修正後
             tgt_misclf_cnt_new = 0
             new_injected_faults = 0
             for idx, (pl, tl) in enumerate(zip(pred_labels_new, true_labels_new)):
-                if (pl == tgt_label or tl == tgt_label) and pl != tl:
+                if used_met == "f1":
+                    cond_fpfn = (pl == tgt_label or tl == tgt_label)
+                elif used_met == "precision":
+                    cond_fpfn = (pl == tgt_label)
+                elif used_met == "recall":
+                    cond_fpfn = (tl == tgt_label)
+                if cond_fpfn and pl != tl:
                     tgt_misclf_cnt_new += 1
                     if idx not in tgt_mis_indices:
                         new_injected_faults += 1
             # tgt_labelに対するf1も計算してmetric_dictに追加
-            f1_metric = evaluate.load("f1")
-            f1_tgt_old = f1_metric.compute(predictions=pred_labels_old, references=labels[tgt_split], average=None)["f1"][tgt_label]
-            f1_tgt_new = f1_metric.compute(predictions=pred_labels_new, references=labels[tgt_split], average=None)["f1"][tgt_label]
-            print(f1_tgt_old, f1_tgt_new)
-            metrics_dic["f1_tgt_old"] = f1_tgt_old
-            metrics_dic["f1_tgt_new"] = f1_tgt_new
-            metrics_dic["delta_f1_tgt"] = f1_tgt_new - f1_tgt_old
+            metric = evaluate.load(used_met)
+            metric_tgt_old = metric.compute(predictions=pred_labels_old, references=labels[tgt_split], average=None)[used_met][tgt_label]
+            metric_tgt_new = metric.compute(predictions=pred_labels_new, references=labels[tgt_split], average=None)[used_met][tgt_label]
+            print(metric_tgt_old, metric_tgt_new)
+            metrics_dic[f"{used_met}_tgt_old"] = metric_tgt_old
+            metrics_dic[f"{used_met}_tgt_new"] = metric_tgt_new
+            metrics_dic[f"delta_{used_met}_tgt"] = metric_tgt_new - metric_tgt_old
         
         # tgt_mis_indicesに対するpred_labels, true_labels, is_correctを取得
         is_correct_old_tgt = is_correct_old[tgt_mis_indices]

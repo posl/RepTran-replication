@@ -78,10 +78,10 @@ if __name__ == "__main__":
     # 結果とかログの保存先を先に作っておく
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
+    elif misclf_type == "all":
+        save_dir = os.path.join(pretrained_dir, f"{misclf_type}_repair_weight_by_de")
     else:
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
-    if misclf_type == "all":
-        save_dir = os.path.join(pretrained_dir, f"{misclf_type}_repair_weight_by_de")
     if fl_method == "vdiff":
         patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
         tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}.pkl")
@@ -139,10 +139,10 @@ if __name__ == "__main__":
 
     if fpfn is not None and misclf_type == "tgt":
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
+    elif misclf_type == "all":
+        location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    if misclf_type == "all":
-        location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     location_save_path = os.path.join(location_save_dir, f"location_n{setting_dic['n']}_{fl_method}.npy")
     pos_before, pos_after = np.load(location_save_path, allow_pickle=True)
     # log表示

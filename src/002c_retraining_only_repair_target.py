@@ -13,7 +13,7 @@ from utils.helper import get_device, get_corruption_types
 from utils.vit_util import processor, transforms, transforms_c100, compute_metrics, identfy_tgt_misclf, get_ori_model_predictions, sample_from_correct_samples, sample_true_positive_indices_per_class
 from utils.constant import ViTExperiment
 
-def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, num_sampled_from_correct=200, include_other_TP_for_fitness=True):
+def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpfn, num_sampled_from_correct=200, include_other_TP_for_fitness=True):
     # datasetごとに違う変数のセット
     if ds_name == "c10":
         tf_func = transforms
@@ -46,7 +46,7 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, num
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # tgt_rankの誤分類情報を取り出す
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type)
+    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
     # NOTE: indices_to_incorrectからはsampleしなくてよい？今のところ全部使うのでランダム性が入るのはcorrectのsamplingだけ
     # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
@@ -75,7 +75,10 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, num
     # オリジナルモデルの学習時の設定をロード
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
     # オリジナルの学習から設定を少し変える
-    adapt_out_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_retraining_with_only_repair_target")
+    if fpfn is None:
+        adapt_out_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_retraining_with_only_repair_target")
+    else:
+        adapt_out_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_retraining_with_only_repair_target")
     os.makedirs(adapt_out_dir, exist_ok=True)
     training_args.output_dir = adapt_out_dir
     # print(training_args.num_epochs)
@@ -108,10 +111,12 @@ if __name__ == "__main__":
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     parser.add_argument('--tgt_rank', type=int, help="the rank of the target misclassification type", default=1)
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="src_tgt")
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
     tgt_rank = args.tgt_rank
+    fpfn = args.fpfn
     misclf_type = args.misclf_type
     print(f"ds_name: {ds_name}, fold_id: {k}")
-    retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split="repair")
+    retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split="repair", fpfn=fpfn)
