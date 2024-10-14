@@ -21,16 +21,18 @@ if __name__ == "__main__":
     parser.add_argument('misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)")
     parser.add_argument("--use_whole", action="store_true", help="use the whole dataset for evaluation")
     parser.add_argument('--tgt_rank', type=int, help="the rank of the target misclassification type", default=None)
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
     misclf_type = args.misclf_type
     tgt_rank = args.tgt_rank
     use_whole = args.use_whole
+    fpfn = args.fpfn
     # use_wholeがFalseの時はtgt_rankが指定されてないといけない
     if not use_whole:
         assert tgt_rank is not None, "tgt_rank is required when use_whole is False."
-    print(f"ds_name: {ds_name}, fold_id: {k}, use_whole: {use_whole}")
+    print(f"ds_name: {ds_name}, fold_id: {k}, use_whole: {use_whole}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
     
     # デバイス (cuda, or cpu) の取得
     device = get_device()
@@ -62,7 +64,12 @@ if __name__ == "__main__":
     
     # pretrained modelのロード
     ori_pretrained_dir = getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR.format(k=k)
-    pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set") if use_whole else os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_retraining_with_only_repair_target")
+    if use_whole:
+        pretrained_dir = os.path.join(ori_pretrained_dir, "retraining_with_repair_set")
+    elif fpfn is not None:
+        pretrained_dir = os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_retraining_with_only_repair_target")
+    else:
+        pretrained_dir = os.path.join(ori_pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_retraining_with_only_repair_target")
     print(f"retrained model dir: {pretrained_dir}")
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]

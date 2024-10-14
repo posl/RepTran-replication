@@ -29,11 +29,13 @@ if __name__ == "__main__":
         # overall repair
         if misclf_type == "all":
             save_dir = os.path.join(pretrained_dir, f"all_repair_weight_by_de")
+            used_met = "f1"
         # src_tgt or tgt repair
         else:
             save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
             if fpfn is not None:
                 save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
+                used_met = "recall" if fpfn == "fn" else "precision"
         # n_listとalpha_listとtgt_splitを作成
         n_list = [5, 77, 109]
         # n_list = [77]
@@ -41,7 +43,7 @@ if __name__ == "__main__":
         tgt_split = ["repair", "test"]
         # 結果を保存するarr
         if misclf_type == "tgt":
-            metrics_list = ["delta_f1_tgt", "repair_rate_tgt", "repair_rate_overall", "break_rate_overall", "delta_acc"]
+            metrics_list = [f"{used_met}_tgt_old", f"{used_met}_tgt_new", f"delta_{used_met}_tgt", "repair_rate_tgt", "repair_rate_overall", "break_rate_overall", "delta_acc"]
         elif misclf_type == "src_tgt":
             metrics_list = ["repair_rate_tgt", "repair_rate_overall", "break_rate_overall", "delta_acc"]
         result_arr = np.zeros((len(n_list) * len(alpha_list), len(metrics_list) * len(tgt_split)))
