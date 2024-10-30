@@ -13,11 +13,20 @@ make uc # run container and enter the shell of the container
 
 All the following steps are done within this container.
 
+To clarify the order of the execution, a prefix is set to the name of the program.
+
+The meaning of the prefix is as follows:
+- `000`: preparing the target datasets.
+- `001`: fine-tuning the pre-trained transformer models (e.g., ViT).
+- `002`: evaluating the fine-tuned models.
+- `003`: collecting the hidden states of the target models as the cache for the further steps.
+
+
 ## Experiments for ViT/C10
 ### Prepare dataset
 ```bash
 cd /src/dataset
-python save_dataset.py $ds
+python 000_save_dataset.py $ds
 cd /src/src
 ```
 - `$ds` is either `c10`, `c10c`, `c100`, or `c100c`.
@@ -26,16 +35,16 @@ cd /src/src
 
 #### Training
 ```bash
-python fine_tune_vit.py $ds
+python 001a_fine_tune_vit.py $ds
 ```
 - It takes time to learn 2 epochs (this number can be changed in `constant.py`).
 - `$ds` is either `c10` or `c100`.
 
 #### Inference
 ```bash
-python forward_vit.py $ds
+python 001b_eval_initial_vit.py $ds
 ```
-- Inference is performed using the model trained in `fine_tune_vit.py`.
+- Inference is performed using the model trained in `001a_fine_tune_vit.py`.
 - `$ds` is either `c10`, `c10c`, `c100`, or `c100c`.
     - If `$ds` is `c10` or `c100`, use original train and test set for inferences.
     - If `$ds` is `c10c` or `c100c`, use corruption datasets for inferences (taking long time).
