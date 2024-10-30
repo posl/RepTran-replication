@@ -24,21 +24,23 @@ def get_nlist():
 if __name__ == "__main__":
     alpha_list = [0.2, 0.4, 0.6, 0.8]
     n_list = get_nlist()
+    bounds_list = ["ContrRep", "Arachne"]
     ds = "c100"
     k = 0
     tgt_rank = 1
-    misclf_type = "src_tgt"
-    do_localize = True
+    misclf_type = "tgt"
+    do_localize = False
+    fpfn = "fn"
 
-    for n, alpha in product(n_list, alpha_list):
-        print(f"{'='*60}\nn={n}, alpha={alpha}\n{'='*60}")
+    for n, alpha, bounds in product(n_list, alpha_list, bounds_list):
+        print(f"{'='*60}\nn={n}, alpha={alpha}, bounds={bounds}\n{'='*60}")
         if do_localize:
             cmd = ["python", "007d_localize_weights.py", ds, str(k), str(tgt_rank), str(n), "--misclf_type", misclf_type]
             print(f"executing the following cmd: {cmd}")
             result = subprocess.run(cmd)
             if result.returncode != 0:
                 exit(1)
-        cmd = ["python", "007e_change_ffn_weights.py", "c100", str(k), str(tgt_rank), "--custom_n", str(n), "--custom_alpha", str(alpha), "--misclf_type", misclf_type]
+        cmd = ["python", "007e_change_ffn_weights.py", "c100", str(k), str(tgt_rank), "--custom_n", str(n), "--custom_alpha", str(alpha), "--misclf_type", misclf_type, "--custom_bounds", bounds, "--fpfn", fpfn]
         print(f"executing the following cmd: {cmd}")
         result = subprocess.run(cmd)
         if result.returncode != 0:

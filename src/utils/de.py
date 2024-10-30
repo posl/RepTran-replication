@@ -58,6 +58,7 @@ class DE_searcher(object):
         weight_med2after=None,
         pos_before=None,
         pos_after=None,
+        custom_bounds=None
     ):
         super(DE_searcher, self).__init__()
         self.device = device
@@ -76,6 +77,7 @@ class DE_searcher(object):
         self.tgt_pos = 0 # TODO: should not be hard coded
         self.pop_size = pop_size
         self.mode = mode
+        self.custom_bounds = custom_bounds
         # ラベルの設定
         self.batched_labels = batch_labels
         self.ground_truth_labels = np.concatenate(batch_labels, axis=0)
@@ -107,8 +109,9 @@ class DE_searcher(object):
         if mode == "weight":
             self.weight_before2med = weight_before2med
             self.weight_med2after = weight_med2after
-            logger.info(f"self.weight_before2med.shape: {self.weight_before2med.shape}")
-            logger.info(f"self.weight_med2after.shape: {self.weight_med2after.shape}")
+            # minとmaxも表示
+            logger.info(f"self.weight_before2med.shape: {self.weight_before2med.shape}, min: {np.min(self.weight_before2med)}, max: {np.max(self.weight_before2med)}")
+            logger.info(f"self.weight_med2after.shape: {self.weight_med2after.shape}, min: {np.min(self.weight_med2after)}, max: {np.max(self.weight_med2after)}")
             # DEの初期値生成のために平均と標準偏差を出しておく
             self.mean_b2m = np.mean(self.weight_before2med)
             self.std_b2m = np.std(self.weight_before2med)
@@ -124,6 +127,33 @@ class DE_searcher(object):
             NotImplementedError("mode should be either 'neuron' or 'weight'")
 
         logger.info("Finish Initializing DE_searcher...")
+
+    def set_bounds(self, init_weight_values, custom_bounds="Arachne", v_orig=None):
+        """
+        Set the bounds for the search space.
+        NOTE: The bounds set in this method are shared for one layer. We can set bounds for each weight by adopting different approach.
+        """
+        assert custom_bounds is not None, "custom_bounds should be set"
+        if custom_bounds == "Arachne":
+            min_v = np.min(init_weight_values)
+            min_v = min_v * 2 if min_v < 0 else min_v / 2
+
+            max_v = np.max(init_weight_values)
+            max_v = max_v * 2 if max_v > 0 else max_v / 2
+
+            bounds = (min_v, max_v)
+            return bounds
+        
+        elif custom_bounds == "ContrRep":
+            assert v_orig is not None, "v_orig should be set when custom_bounds is 'ContrRep'"
+            
+            min_v = v_orig * 2 if v_orig < 0 else v_orig / 2
+            max_v = v_orig * 2 if v_orig > 0 else v_orig / 2
+
+            bounds = (min_v, max_v)
+            return bounds
+        else:
+            NotImplementedError(f"{custom_bounds} is not supported yet")
 
     def eval_neurons(self, patch_candidate, places_to_fix, show_log=True):
         # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
@@ -307,14 +337,24 @@ class DE_searcher(object):
             args_for_eval = (pos_before, pos_after)
             self.mean_values = []
             self.std_values = []
+            bounds = []
             # self.mean_valuesとself.std_valuesはそれぞれ，最初のself.num_pos_before個についてはself.mean_b2m, その後のself.num_pos_after個についてはself.mean_m2a のようにする (標準偏差も同様)
             for i in range(self.num_total_pos):
                 if i < self.num_pos_before:
                     self.mean_values.append(self.mean_b2m)
                     self.std_values.append(self.std_b2m)
+                    if self.custom_bounds is None:
+                        bounds.append((None, None))
+                    else:
+                        bounds.append(self.set_bounds(self.weight_before2med, custom_bounds=self.custom_bounds, v_orig=self.weight_before2med[pos_before[i][0], pos_before[i][1]]))
                 else:
                     self.mean_values.append(self.mean_m2a)
                     self.std_values.append(self.std_m2a)
+                    if self.custom_bounds is None:
+                        bounds.append((None, None))
+                    else:
+                        bounds.append(self.set_bounds(self.weight_med2after, custom_bounds=self.custom_bounds, v_orig=self.weight_med2after[pos_after[i-self.num_pos_before][0], pos_after[i-self.num_pos_before][1]]))
+            assert len(bounds) == self.num_total_pos, f"len(bounds): {len(bounds)}, self.num_total_pos: {self.num_total_pos}"
             num_places_to_fix = self.num_total_pos
             init_indiv = init_indiv_weights
             eval_func = self.eval_weights
@@ -391,8 +431,8 @@ class DE_searcher(object):
                     # 一部を変異させる
                     if i == index or self.random.random() < self.recombination:
                         # パッチ候補の値は対象レイヤの重みから計算したバウンドに収める
-                        # y[i] = np.clip(a[i] + MU * (b[i] - c[i]), bounds[i][0], bounds[i][1])
-                        y[i] = a[i] + MU * (b[i] - c[i])
+                        y[i] = np.clip(a[i] + MU * (b[i] - c[i]), bounds[i][0], bounds[i][1])
+                        # y[i] = a[i] + MU * (b[i] - c[i])
 
                 # eval_ret = toolbox.evaluate(ind, *args_for_eval) # (*) BUG: ind だと変異させた y で評価してなくない? 
                 eval_ret = toolbox.evaluate(y, *args_for_eval) # NOTE: こっちが正しい?
