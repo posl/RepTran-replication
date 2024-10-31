@@ -62,6 +62,8 @@ if __name__ == "__main__":
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
     parser.add_argument("--custom_n", type=int, help="the custom n for the FL", default=None)
     parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
+    parser.add_argument("--custom_bounds", type=str, help="the type of bound for the DE search space", default=None)
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
@@ -71,6 +73,8 @@ if __name__ == "__main__":
     misclf_type = args.misclf_type
     custom_n = args.custom_n
     custom_alpha = args.custom_alpha
+    custom_bounds = args.custom_bounds
+    fpfn = args.fpfn
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
 
@@ -86,20 +90,31 @@ if __name__ == "__main__":
     # 設定のjsonファイルが指定されない場合はnとalphaだけカスタムorデフォルトの設定を使う
     else:
         setting_dic = DEFAULT_SETTINGS
-        setting_id = "default"
+        # custom_n, custom_alpha, custom_boundsが1つでも指定されている場合はいったん空文字にする
+        setting_id = "default" if (custom_n is None) and (custom_alpha is None) and (custom_bounds is None) else ""
+        is_first = True
         if custom_n is not None:
             setting_dic["n"] = custom_n
-            setting_id = f"n{custom_n}"
+            setting_id += f"n{custom_n}"
+            is_first = False
         if custom_alpha is not None:
             setting_dic["alpha"] = custom_alpha
-            setting_id = f"alpha{custom_alpha}" if custom_n is None else f"n{custom_n}_alpha{custom_alpha}"
+            setting_id += f"alpha{custom_alpha}" if is_first else f"_alpha{custom_alpha}"
+            is_first = False
+        if custom_bounds is not None:
+            setting_dic["bounds"] = custom_bounds
+            setting_id += f"bounds{custom_bounds}" if is_first else f"_bounds{custom_bounds}"
+            is_first = False
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     retrained_dir = os.path.join(pretrained_dir, "retraining_with_repair_set")
     # 結果とかログの保存先を先に作っておく
-    save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
-    if misclf_type == "all":
-        save_dir = os.path.join(pretrained_dir, f"all_repair_weight_by_de")
+    if fpfn is not None and misclf_type == "tgt":
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
+    elif misclf_type == "all":
+        save_dir = os.path.join(pretrained_dir, f"{misclf_type}_repair_weight_by_de")
+    else:
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
     if fl_method == "vdiff":
         patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
         tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}.pkl")

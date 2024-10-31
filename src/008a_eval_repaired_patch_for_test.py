@@ -57,6 +57,7 @@ if __name__ == "__main__":
     custom_n = args.custom_n
     custom_alpha = args.custom_alpha
     fpfn = args.fpfn
+    custom_bounds = args.custom_bounds
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, fpfn: {fpfn}")
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, fpfn: {fpfn}")
 
@@ -72,13 +73,21 @@ if __name__ == "__main__":
     # 設定のjsonファイルが指定されない場合はnとalphaだけカスタムorデフォルトの設定を使う
     else:
         setting_dic = DEFAULT_SETTINGS
-        setting_id = "default"
+        # custom_n, custom_alpha, custom_boundsが1つでも指定されている場合はいったん空文字にする
+        setting_id = "default" if (custom_n is None) and (custom_alpha is None) and (custom_bounds is None) else ""
+        is_first = True
         if custom_n is not None:
             setting_dic["n"] = custom_n
-            setting_id = f"n{custom_n}"
+            setting_id += f"n{custom_n}"
+            is_first = False
         if custom_alpha is not None:
             setting_dic["alpha"] = custom_alpha
-            setting_id = f"alpha{custom_alpha}" if custom_n is None else f"n{custom_n}_alpha{custom_alpha}"
+            setting_id += f"alpha{custom_alpha}" if is_first else f"_alpha{custom_alpha}"
+            is_first = False
+        if custom_bounds is not None:
+            setting_dic["bounds"] = custom_bounds
+            setting_id += f"bounds{custom_bounds}" if is_first else f"_bounds{custom_bounds}"
+            is_first = False
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく

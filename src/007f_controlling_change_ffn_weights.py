@@ -23,7 +23,8 @@ def get_nlist():
 
 if __name__ == "__main__":
     alpha_list = [0.2, 0.4, 0.6, 0.8]
-    n_list = get_nlist()
+    # n_list = get_nlist()
+    n_list = [5]
     bounds_list = ["ContrRep", "Arachne"]
     ds = "c100"
     k = 0
