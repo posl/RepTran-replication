@@ -35,7 +35,9 @@ def draw_weight_change(w_dict, save_dir, setting_id, all_weight=False):
             df.append({"layer": layer, "model": model, "val": v})
     df = pd.DataFrame(df)
     plt.figure(figsize=(12, 8))
-    sns.violinplot(data=df, x="layer", y="val", hue="model", split=False, inner="quart")
+    # sns.violinplot(data=df, x="layer", y="val", hue="model", split=False, inner="quart")
+    # sns.swarmplot(data=df, x="layer", y="val", hue="model", dodge=True, color=".3", size=3)
+    sns.boxplot(data=df, x="layer", y="val", hue="model")
     plt.grid(True, axis='y')  # axis='y' で横軸の罫線を表示、axis='x' で縦軸は非表示
     plt.grid(False, axis='x')  # 縦軸の罫線を無効にする場合は、こちらでFalseを設定
     # x軸ラベルを消す

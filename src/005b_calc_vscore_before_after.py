@@ -8,15 +8,12 @@ from transformers import ViTForImageClassification
 from utils.helper import get_device
 from utils.vit_util import transforms, transforms_c100, get_vscore
 from utils.constant import ViTExperiment
+from utils.log import set_exp_logging
+from logging import getLogger
 
-if __name__ == "__main__":
-    # データセットをargparseで受け取る
-    parser = argparse.ArgumentParser()
-    parser.add_argument("ds", type=str)
-    parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
-    args = parser.parse_args()
-    ds_name = args.ds
-    k = args.k
+logger = getLogger("base_logger")
+
+def main(ds_name, k):
     print(f"ds_name: {ds_name}, fold_id: {k}")
 
     # datasetごとに違う変数のセット
@@ -50,20 +47,27 @@ if __name__ == "__main__":
     ds_preprocessed = ds.with_transform(tf_func)
     # pretrained modelのロード
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
+    this_file_name = os.path.basename(__file__).split(".")[0]
+    logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
+    logger.info(f"ds_name: {ds_name}, fold_id: {k}")
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
 
     for split in target_split_names:
-        print(f"Process {split}...")
+        logger.info(f"Process {split}...")
+        t1 = time.perf_counter()
         # 必要なディレクトリがない場合は先に作っておく
         vscore_before_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), "vscores_before")
         vscore_after_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), "vscores_after")
+        vscore_mid_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), "vscores")
         os.makedirs(vscore_before_dir, exist_ok=True)
         os.makedirs(vscore_after_dir, exist_ok=True)
+        os.makedirs(vscore_mid_dir, exist_ok=True)
         all_bhs = []
         all_ahs = []
+        all_mhs = []
         all_logits = []
         # loop for dataset batch
         for entry_dic in tqdm(ds_preprocessed[split].iter(batch_size=batch_size), total=len(ds_preprocessed[split])//batch_size+1):
@@ -71,42 +75,50 @@ if __name__ == "__main__":
             output = model.forward(x, tgt_pos=tgt_pos, output_hidden_states_before_layernorm=False, output_intermediate_states=True)
             # CLSトークンに対応するintermediate statesを取得
             num_layer = len(output.intermediate_states)
-            bhs, ahs = [], []
+            bhs, ahs, mhs = [], [], []
             for i in range(num_layer):
                 # output.intermediate_states[i]はiレイヤめの(中間ニューロンの前のニューロン, 中間ニューロン，中間ニューロンの後のニューロン)がタプルで入っている
                 bhs.append(output.intermediate_states[i][0])
+                mhs.append(output.intermediate_states[i][1])
                 ahs.append(output.intermediate_states[i][2]) # ここの時点ではレイヤの次元が先に来る
             bhs = np.array(bhs).transpose(1, 0, 2) # (batch_size, num_layers, num_neurons)
+            mhs = np.array(mhs).transpose(1, 0, 2)
             ahs = np.array(ahs).transpose(1, 0, 2) # (batch_size, num_layers, num_neurons)
             all_bhs.append(bhs)
+            all_mhs.append(mhs)
             all_ahs.append(ahs)
             logits = output.logits.cpu().detach().numpy()
             all_logits.append(logits)
         all_logits = np.concatenate(all_logits) # (num_samples, num_labels)
         all_pred_labels = np.argmax(all_logits, axis=-1) # (num_samples, )
         all_bhs = np.concatenate(all_bhs)
+        all_mhs = np.concatenate(all_mhs)
         all_ahs = np.concatenate(all_ahs)
         # サンプルごとの予測の正解不正解の配列を作る
         is_correct = all_pred_labels == labels[split]
         # あっていたか否かでmid_statesを分ける
         correct_bhs = all_bhs[is_correct]
         incorrect_bhs = all_bhs[~is_correct]
+        correct_mhs = all_mhs[is_correct]
+        incorrect_mhs = all_mhs[~is_correct]
         correct_ahs = all_ahs[is_correct]
         incorrect_ahs = all_ahs[~is_correct]
-        print(f"len(correct_bhs), len(incorrect_bhs) = {len(correct_bhs), len(incorrect_bhs)}")
-        print(f"len(correct_ahs), len(incorrect_ahs) = {len(correct_ahs), len(incorrect_ahs)}")
+        logger.info(f"len(correct_bhs), len(incorrect_bhs) = {len(correct_bhs), len(incorrect_bhs)}")
+        logger.info(f"len(correct_mhs), len(incorrect_mhs) = {len(correct_mhs), len(incorrect_mhs)}")
+        logger.info(f"len(correct_ahs), len(incorrect_ahs) = {len(correct_ahs), len(incorrect_ahs)}")
         assert len(correct_bhs) == len(correct_ahs), f"len(correct_bhs) != len(correct_ahs)"
         assert len(incorrect_bhs) == len(incorrect_ahs), f"len(incorrect_bhs) != len(incorrect_ahs)"
+        t2 = time.perf_counter()
 
         # 正解/不正解データに対するv-scoreの計算を行い，保存する
-        for correct_mid_states, incorrect_mid_states, vscore_dir in zip([correct_bhs, correct_ahs], [incorrect_bhs, incorrect_ahs], [vscore_before_dir, vscore_after_dir]): # bhs, ahs での繰り返し
+        for correct_mid_states, incorrect_mid_states, vscore_dir in zip([correct_bhs, correct_ahs, correct_mhs], [incorrect_bhs, incorrect_ahs, incorrect_mhs], [vscore_before_dir, vscore_after_dir, vscore_mid_dir]): # bhs, ahs での繰り返し
             for cor_mis, mid_states in zip(["cor", "mis"], [correct_mid_states, incorrect_mid_states]):
-                print(f"cor_mis: {cor_mis}, len({cor_mis}_states): {len(mid_states)}") # correct, incorrectでの繰り返し
+                logger.info(f"cor_mis: {cor_mis}, len({cor_mis}_states): {len(mid_states)}") # correct, incorrectでの繰り返し
                 # 対象のレイヤに対してvscoreを計算
                 # =================================
                 vscore_per_layer = []
                 for tgt_layer in range(end_li):
-                    print(f"tgt_layer: {tgt_layer}")
+                    logger.info(f"tgt_layer: {tgt_layer}")
                     tgt_mid_state = mid_states[:, tgt_layer, :] # (num_samples, num_neurons)
                     # vscoreを計算
                     vscore = get_vscore(tgt_mid_state)
@@ -116,7 +128,9 @@ if __name__ == "__main__":
                 ds_type = f"ori_{split}"
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_all_label_{ds_type}_{cor_mis}.npy")
                 np.save(vscore_save_path, vscores)
-                print(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
+                logger.info(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
+        t3 = time.perf_counter()
+        logger.info(f"elapsed time: {t3-t1} sec (vscore: {t3-t2} sec)")
         
         # NOTE: 中間ニューロン状態自体の保存は必要そうになったら実装する
         # # 各サンプルに対するレイヤごとの隠れ状態を保存していく
@@ -129,3 +143,14 @@ if __name__ == "__main__":
         #     intermediate_save_path = os.path.join(cache_dir, f"intermediate_states_l{l_idx}.pt")
         #     torch.save(tgt_mid_states, intermediate_save_path)
         #     print(f"tgt_mid_states: {tgt_mid_states.shape} is saved at {intermediate_save_path}")
+
+if __name__ == "__main__":
+    # データセットをargparseで受け取る
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ds", type=str)
+    parser.add_argument('k_list', type=int, nargs="*", default=[0, 1, 2, 3, 4], help="the fold id(s) to run (default: 0 1 2 3 4)")
+    args = parser.parse_args()
+    ds_name = args.ds
+    k_list = args.k_list
+    for k in k_list:
+        main(ds_name, k)

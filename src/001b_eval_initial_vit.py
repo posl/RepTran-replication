@@ -1,4 +1,4 @@
-import os, sys, math
+import os, sys, math, time
 import numpy as np
 import argparse
 import torch
@@ -8,16 +8,12 @@ from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device
 from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, pred_to_proba
 from utils.constant import ViTExperiment
+from utils.log import set_exp_logging
+from logging import getLogger
 
+logger = getLogger("base_logger")
 
-if __name__ == "__main__":
-    # データセットをargparseで受け取る
-    parser = argparse.ArgumentParser()
-    parser.add_argument("ds", type=str)
-    parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
-    args = parser.parse_args()
-    ds_name = args.ds
-    k = args.k
+def main(ds_name, k):
     print(f"ds_name: {ds_name}, fold_id: {k}")
     
     # デバイス (cuda, or cpu) の取得
@@ -50,6 +46,9 @@ if __name__ == "__main__":
     
     # pretrained modelのロード
     pretrained_dir = getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR.format(k=k)
+    this_file_name = os.path.basename(__file__).split(".")[0]
+    logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
+    logger.info(f"ds_name: {ds_name}, fold_id: {k}")
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # 学習時の設定をロード
@@ -82,17 +81,29 @@ if __name__ == "__main__":
         test_iter = math.ceil(len(ds_preprocessed["test"]) / eval_batch_size)
         # train, repair, testデータに対する推論の実行
         # train
-        print(f"predict training data... #iter = {train_iter} ({len(ds_preprocessed['train'])} samples / {train_batch_size} batches)")
+        logger.info(f"predict training data... #iter = {train_iter} ({len(ds_preprocessed['train'])} samples / {train_batch_size} batches)")
+        st = time.perf_counter()
         train_pred = trainer.predict(ds_preprocessed["train"])
+        et = time.perf_counter()
+        t_train = et - st
+        logger.info(f"elapsed time: {t_train} sec")
         # repair
-        print(f"predict repair data... #iter = {repair_iter} ({len(ds_preprocessed['repair'])} samples / {eval_batch_size} batches)")
+        logger.info(f"predict repair data... #iter = {repair_iter} ({len(ds_preprocessed['repair'])} samples / {eval_batch_size} batches)")
+        st = time.perf_counter()
         repair_pred = trainer.predict(ds_preprocessed["repair"])
+        et = time.perf_counter()
+        t_repair = et - st
+        logger.info(f"elapsed time: {t_repair} sec")
         # test
-        print(f"predict test data... #iter = {test_iter} ({len(ds_preprocessed['test'])} samples / {eval_batch_size} batches)")
+        logger.info(f"predict test data... #iter = {test_iter} ({len(ds_preprocessed['test'])} samples / {eval_batch_size} batches)")
+        st = time.perf_counter()
         test_pred = trainer.predict(ds_preprocessed["test"])
+        et = time.perf_counter()
+        t_test = et - st
+        logger.info(f"elapsed time: {t_test} sec")
         # いったんログ表示
         for key, pred in zip(["train", "repair", "test"], [train_pred, repair_pred, test_pred]):
-            print(f'metrics for {key} set:\n {pred.metrics}')
+            logger.info(f'metrics for {key} set:\n {pred.metrics}')
 
         # 予測結果を格納するPredictioOutputオブジェクトをpickleで保存
         with open(os.path.join(pred_out_dir, "train_pred.pkl"), "wb") as f:
@@ -114,20 +125,21 @@ if __name__ == "__main__":
             tgt_proba = train_pred_proba[train_labels == c]
             # train_pred_probaを保存
             np.save(os.path.join(pretrained_dir, "pred_results", f"train_proba_{c}.npy"), tgt_proba)
-            print(f"train_proba_{c}.npy ({tgt_proba.shape}) saved")
+            logger.info(f"train_proba_{c}.npy ({tgt_proba.shape}) saved")
         # ラベルごとに違うファイルとして保存 (repair)
         for c in range(len(labels)):
             tgt_proba = repair_pred_proba[repair_labels == c]
             # repair_pred_probaを保存
             np.save(os.path.join(pretrained_dir, "pred_results", f"repair_proba_{c}.npy"), tgt_proba)
-            print(f"repair_proba_{c}.npy ({tgt_proba.shape}) saved")
+            logger.info(f"repair_proba_{c}.npy ({tgt_proba.shape}) saved")
         # ラベルごとに違うファイルとして保存 (test)
         for c in range(len(labels)):
             tgt_proba = test_pred_proba[test_labels == c]
             # test_pred_probaを保存
             np.save(os.path.join(pretrained_dir, "pred_results", f"test_proba_{c}.npy"), tgt_proba)
-            print(f"test_proba_{c}.npy ({tgt_proba.shape}) saved")
+            logger.info(f"test_proba_{c}.npy ({tgt_proba.shape}) saved")
 
+        logger.info(f"all pred_results saved, total elapsed time: {t_train+t_repair+t_test} sec")
     # C10Cデータセットに対する推論
     # ====================================================================
     if ds_name == "c10c" or ds_name == "c100c":
@@ -140,3 +152,14 @@ if __name__ == "__main__":
             # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
             with open(os.path.join(pred_out_dir, f"{ds_name}_{key}_pred.pkl"), "wb") as f:
                 pickle.dump(key_pred, f)
+
+if __name__ == "__main__":
+    # データセットをargparseで受け取る
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ds", type=str)
+    parser.add_argument('k_list', type=int, nargs="*", default=[0, 1, 2, 3, 4], help="the fold id(s) to run (default: 0 1 2 3 4)")
+    args = parser.parse_args()
+    ds_name = args.ds
+    k_list = args.k_list
+    for k in k_list:
+        main(ds_name, k)
