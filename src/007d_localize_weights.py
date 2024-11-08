@@ -2,6 +2,7 @@ import os, sys, time, pickle, json
 import argparse
 from tqdm import tqdm
 from collections import defaultdict
+from itertools import product
 import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import localize_weights, localize_weights_random, identfy_tgt_misclf
@@ -11,30 +12,8 @@ from logging import getLogger
 
 logger = getLogger("base_logger")
 
-if __name__ == "__main__":
-    # データセットをargparseで受け取る
-    parser = argparse.ArgumentParser()
-    parser.add_argument("ds", type=str)
-    parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
-    parser.add_argument('tgt_rank', type=int, help="the rank of the target misclassification type")
-    parser.add_argument('n', type=int, help="the factor for the number of neurons to fix")
-    parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
-    parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
-    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
-
-    args = parser.parse_args()
-    ds_name = args.ds
-    k = args.k
-    tgt_rank = args.tgt_rank
-    n = args.n
-    fl_method = args.fl_method
-    misclf_type = args.misclf_type
-    fpfn = args.fpfn
+def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}, fpfn: {fpfn}")
-
-    # TODO: あとでrandomly weights selectionも実装
-    if fl_method == "random":
-        NotImplementedError, "randomly weights selection is not implemented yet."
     
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
@@ -48,12 +27,11 @@ if __name__ == "__main__":
     os.makedirs(save_dir, exist_ok=True)
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
-    exp_name = f"{this_file_name}_n{n}"
+    exp_name = f"{this_file_name}_n{n}" if not run_all else f"{this_file_name}_run_all"
     # loggerの設定をして設定情報を表示
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}")
 
-    
     # tgt_rankの誤分類情報を取り出す
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
@@ -83,7 +61,10 @@ if __name__ == "__main__":
     logger.info(f"vscore_dir: {vscore_dir}")
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
     # localizationを実行
+    st = time.perf_counter()
     pos_before, pos_after = localizer(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
+    et = time.perf_counter()
+    logger.info(f"localization time: {et-st} sec.")
     # log表示
     logger.info(f"pos_before={pos_before}")
     logger.info(f"pos_after={pos_after}")
@@ -92,3 +73,43 @@ if __name__ == "__main__":
     # 位置情報を保存
     np.save(location_save_path, (pos_before, pos_after))
     logger.info(f"saved location information to {location_save_path}")
+
+if __name__ == "__main__":
+    # データセットをargparseで受け取る
+    parser = argparse.ArgumentParser()
+    parser.add_argument("ds", type=str)
+    parser.add_argument('k', nargs="?", type=list, help="the fold id (0 to K-1)")
+    parser.add_argument('tgt_rank', nargs="?", type=list, help="the rank of the target misclassification type")
+    parser.add_argument('n', nargs="?", type=int, help="the factor for the number of neurons to fix")
+    parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt)", default="tgt")
+    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
+    parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
+    parser.add_argument("--run_all", action="store_true", help="run all settings")
+    args = parser.parse_args()
+    ds = args.ds
+    k_list = args.k
+    tgt_rank_list = args.tgt_rank
+    n_list = args.n
+    misclf_type = args.misclf_type
+    fpfn = args.fpfn
+    fl_method = args.fl_method
+    run_all = args.run_all
+
+    assert fl_method == "vdiff" or fl_method == "random", "fl_method should be vdiff or random."
+
+    if run_all:
+        # run_allがtrueなのにkとtgt_rankが指定されている場合はエラー
+        assert k_list is None and tgt_rank_list is None and n_list is None, "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
+        k_list = range(5)
+        tgt_rank_list = range(1, 6)
+        n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
+        misclf_type_list = ["all", "src_tgt", "tgt"]
+        fpfn_list = [None, "fp", "fn"]
+        for k, tgt_rank, n, misclf_type, fpfn in product(k_list, tgt_rank_list, n_list, misclf_type_list, fpfn_list):
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
+                continue
+            main(ds, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=run_all)
+    else:
+        assert k_list is not None and tgt_rank_list is not None and n_list is not None, "k_list and tgt_rank_list and n_list should be specified"
+        for k, tgt_rank, n in zip(k_list, tgt_rank_list, n_list):
+            main(ds, k, tgt_rank, n, fl_method, misclf_type, fpfn)

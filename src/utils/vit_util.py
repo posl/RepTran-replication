@@ -253,8 +253,38 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
     return pos_before, pos_after
 
 
-def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair"):
-    return None
+def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None):
+    def _get_vscore_shape(vscore_dir):
+        for cor_mis in ["cor", "mis"]:
+            ds_type = f"ori_{tgt_split}"
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+            if misclf_pair is not None and cor_mis == "mis":
+                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
+                slabel, tlabel = misclf_pair
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
+            if tgt_label is not None and cor_mis == "mis":
+                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
+                if fpfn is not None:
+                    vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
+            vscores = np.load(vscore_save_path)
+            return vscores.shape
+
+    for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
+        vscore_shape = _get_vscore_shape(vscore_dir)
+        num_neurons = vscore_shape[1]
+        # ランダムにn もしくは 4n個のニューロンを選ぶ
+        top_idx_dic = defaultdict(list)
+        if ba == "intermediate":
+            topx = 4*n
+        else:
+            topx = n
+        top_idx_dic[ba] = np.random.choice(num_neurons, topx, replace=False)
+    # before-intermediate, intermediate-afterの修正箇所を返す
+    pos_before = np.array(list(product(top_idx_dic["intermediate"], top_idx_dic["before"])))
+    pos_after = np.array(list(product(top_idx_dic["after"], top_idx_dic["intermediate"])))
+    return pos_before, pos_after
 
 class ViTFromLastLayer(nn.Module):
     def __init__(self, base_model):

@@ -192,6 +192,8 @@ if __name__ == "__main__":
         fpfn_list = [None, "fp", "fn"]
 
         for k, tgt_rank, misclf_type, fpfn in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list):
+            if misclf_type == "src_tgt" and fpfn is not None:
+                continue
             main(ds, k, tgt_rank, misclf_type, fpfn)
     else:
         assert k_list is not None and tgt_rank_list is not None, "k_list and tgt_rank_list should be specified"
