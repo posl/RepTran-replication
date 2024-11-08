@@ -271,11 +271,11 @@ def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt
             vscores = np.load(vscore_save_path)
             return vscores.shape
 
+    top_idx_dic = defaultdict(list)
     for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
         vscore_shape = _get_vscore_shape(vscore_dir)
         num_neurons = vscore_shape[1]
         # ランダムにn もしくは 4n個のニューロンを選ぶ
-        top_idx_dic = defaultdict(list)
         if ba == "intermediate":
             topx = 4*n
         else:

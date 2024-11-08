@@ -10,7 +10,7 @@ from logging import getLogger
 
 logger = getLogger("base_logger")
 
-def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cuda")):
+def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cuda"), op=None):
     # patchの最初のlen(pos_before)個はintermediateのpos_beforeの重み，それ以降のlen(pos_after)個はoutputのpos_afterの重み
     assert len(patch) == len(pos_before) + len(pos_after), "The length of patch should be equal to the sum of the lengths of pos_before and pos_after"
     num_pos_before = len(pos_before)
@@ -26,7 +26,14 @@ def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cu
             tgt_weight_data = model.base_model_last_layer.output.dense.weight.data
         # posで指定された位置のニューロンを書き換える
         xi, yi = pos[:, 0], pos[:, 1]
-        tgt_weight_data[xi, yi] = torch.from_numpy(patch[idx_patch_candidate]).to(device)
+        if op is None:
+            tgt_weight_data[xi, yi] = torch.from_numpy(patch[idx_patch_candidate]).to(device)
+        elif op is "enh":
+            tgt_weight_data[xi, yi] *= 2
+        elif op is "sup":
+            tgt_weight_data[xi, yi] *= 0
+        else:
+            NotImplementedError(f"{op} is not supported yet")
 
 class DE_searcher(object):
     random = __import__("random")
