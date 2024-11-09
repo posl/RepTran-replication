@@ -5,8 +5,8 @@ from tqdm import tqdm
 from collections import defaultdict
 from itertools import product
 import numpy as np
-from utils.helper import get_device, json2dict
-from utils.vit_util import localize_weights, localize_weights_random, identfy_tgt_misclf, transforms, transforms_c100, ViTFromLastLayer
+from utils.helper import get_device
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from utils.de import set_new_weights
@@ -30,6 +30,8 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     location_save_path = os.path.join(save_dir, f"location_n{n}_{fl_method}.npy")
     os.makedirs(save_dir, exist_ok=True)
+    proba_save_dir = os.path.join(save_dir, f"proba_n{n}_{fl_method}")
+    os.makedirs(proba_save_dir, exist_ok=True)
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_n{n}" if not run_all else f"{this_file_name}_run_all"
@@ -106,7 +108,7 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
             proba_dict[true_label] = np.stack(proba_list)
         for true_label, proba in proba_dict.items():
             logger.info(f"true_label: {true_label}, proba: {proba.shape}")
-            save_path = os.path.join(save_dir, f"{tgt_split}_proba_{fl_method}_{op}_{true_label}.npy")
+            save_path = os.path.join(proba_save_dir, f"{tgt_split}_proba_{op}_{true_label}.npy")
             np.save(save_path, proba)
             logger.info(f"proba: {proba.shape} is saved at {save_path}")
 

@@ -253,7 +253,8 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
     return pos_before, pos_after
 
 
-def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None):
+def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", 
+                            misclf_pair=None, tgt_label=None, fpfn=None):
     def _get_vscore_shape(vscore_dir):
         for cor_mis in ["cor", "mis"]:
             ds_type = f"ori_{tgt_split}"
