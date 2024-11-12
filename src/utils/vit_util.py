@@ -204,7 +204,7 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None):
+def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
 
     vdiff_dic = defaultdict(defaultdict)
     # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
@@ -232,11 +232,25 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
         vmap_mis = vmap_dic["mis"]
         # vdiffとそのランキングをbaに紐づいた辞書に保存
         vmap_diff = vmap_cor - vmap_mis
-        vdiff_dic[ba]["vdiff"] = np.abs(vmap_diff[:, tgt_layer])
-        vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"])
+        if rank_type == "abs":
+            vdiff_dic[ba]["vdiff"] = np.abs(vmap_diff[:, tgt_layer])
+            vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"]) # 絶対値の降順
+            order = "desc"
+        else:
+            vdiff_dic[ba]["vdiff"] = vmap_diff[:, tgt_layer]
+            if rank_type == "desc":
+                vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"]) # 絶対値取る前の値の大きい順
+                order = "desc"
+            elif rank_type == "asc":
+                vdiff_dic[ba]["rank"] = rank_descending(- vdiff_dic[ba]["vdiff"]) # 絶対値取る前の値の小さい順
+                order = "asc"
+            else:
+                raise NotImplementedError
         # vdiff_dic[ba]["vdiff"]のi番目の値の順位がvdiff_dic[ba]["rank"]のi番目と等しいことを確認
         for i, r in enumerate(vdiff_dic[ba]["rank"]):
-            assert return_rank(vdiff_dic[ba]["vdiff"], i) == r, f"Error: {i}, {r}"
+            assert return_rank(vdiff_dic[ba]["vdiff"], i, order) == r, f"Error: {i}, {r}"
+        # rankのユニーク性の確認のためのプリント
+        # print(f"{len(set(vdiff_dic[ba]['rank']))} / {len(vdiff_dic[ba]['rank'])}")
         # print(f'({ba}) |vdiff| [min, max] = [{np.min(vdiff_dic[ba]["vdiff"])}, {np.max(vdiff_dic[ba]["vdiff"])}]')
     # before,afterからtop n個ずつ，intermediateからtop 4n個を取得
     top_idx_dic = defaultdict(list)
@@ -254,7 +268,7 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
 
 
 def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", 
-                            misclf_pair=None, tgt_label=None, fpfn=None):
+                            misclf_pair=None, tgt_label=None, fpfn=None, rank_type=None):
     def _get_vscore_shape(vscore_dir):
         for cor_mis in ["cor", "mis"]:
             ds_type = f"ori_{tgt_split}"

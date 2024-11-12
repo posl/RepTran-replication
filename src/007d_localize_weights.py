@@ -1,4 +1,4 @@
-import os, sys, time, pickle, json
+import os, sys, time, pickle, json, math
 import argparse
 from tqdm import tqdm
 from collections import defaultdict
@@ -46,8 +46,18 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
 
     if fl_method == "vdiff":
         localizer = localize_weights
+        rank_type = "abs"
+    elif fl_method == "vdiff_desc":
+        localizer = localize_weights
+        rank_type = "desc"
+    elif fl_method == "vdiff_asc":
+        localizer = localize_weights
+        rank_type = "asc"
     elif fl_method == "random":
         localizer = localize_weights_random
+        rank_type = None
+    else:
+        raise ValueError(f"fl_method: {fl_method} is not supported.")
 
     if misclf_type == "src_tgt" or misclf_type == "tgt":
         vscore_before_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "vscores_before")
@@ -62,7 +72,7 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
     # localizationを実行
     st = time.perf_counter()
-    pos_before, pos_after = localizer(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
+    pos_before, pos_after = localizer(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn, rank_type=rank_type)
     et = time.perf_counter()
     logger.info(f"localization time: {et-st} sec.")
     # log表示
@@ -85,6 +95,7 @@ if __name__ == "__main__":
     parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
     parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
     parser.add_argument("--run_all", action="store_true", help="run all settings")
+    parser.add_argument("--run_asc_desc", action="store_true", help="run only for asc and desc settings")
     args = parser.parse_args()
     ds = args.ds
     k_list = args.k
@@ -94,8 +105,10 @@ if __name__ == "__main__":
     fpfn = args.fpfn
     fl_method = args.fl_method
     run_all = args.run_all
+    run_asc_desc = args.run_asc_desc
 
-    assert fl_method == "vdiff" or fl_method == "random", "fl_method should be vdiff or random."
+    # run_allとrun_asc_descが同時に指定されている場合はエラー
+    assert not (run_all and run_asc_desc), "run_all and run_asc_desc cannot be specified at the same time"
 
     if run_all:
         # run_allがtrueなのにkとtgt_rankが指定されている場合はエラー
@@ -106,6 +119,19 @@ if __name__ == "__main__":
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
         for k, tgt_rank, n, misclf_type, fpfn in product(k_list, tgt_rank_list, n_list, misclf_type_list, fpfn_list):
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
+                continue
+            main(ds, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=run_all)
+    elif run_asc_desc:
+        assert k_list is None and tgt_rank_list is None and n_list is None, "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
+        k_list = range(5)
+        tgt_rank_list = range(1, 6)
+        org_n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
+        n_list = [round(n / math.sqrt(2)) for n in org_n_list]
+        fl_method_list = ["vdiff_asc", "vdiff_desc"]
+        misclf_type_list = ["all", "src_tgt", "tgt"]
+        fpfn_list = [None, "fp", "fn"]
+        for k, tgt_rank, n, fl_method, misclf_type, fpfn in product(k_list, tgt_rank_list, n_list, fl_method_list, misclf_type_list, fpfn_list):
             if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
                 continue
             main(ds, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=run_all)
