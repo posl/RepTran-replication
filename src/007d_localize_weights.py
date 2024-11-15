@@ -127,7 +127,7 @@ if __name__ == "__main__":
         k_list = range(5)
         tgt_rank_list = range(1, 6)
         org_n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
-        n_list = [round(n / math.sqrt(2)) for n in org_n_list]
+        n_list = [round(n / math.sqrt(2)) for n in org_n_list] # absの場合と大体同じくらいの変更重み数にするための調整
         fl_method_list = ["vdiff_asc", "vdiff_desc"]
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]

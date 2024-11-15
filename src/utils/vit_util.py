@@ -266,6 +266,42 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
     pos_after = np.array(list(product(top_idx_dic["after"], top_idx_dic["intermediate"])))
     return pos_before, pos_after
 
+def get_vscore_diff_and_sim(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None):
+
+    vdiff_dic = defaultdict(np.array)
+    # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
+    for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
+        vdiff_dic[ba] = defaultdict(np.array)
+        vmap_dic = defaultdict(np.array)
+        # 正解と不正解時のvscoreを読み込む
+        for cor_mis in ["cor", "mis"]:
+            vmap_dic[cor_mis] = defaultdict(np.array)
+            ds_type = f"ori_{tgt_split}"
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+            if misclf_pair is not None and cor_mis == "mis":
+                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
+                slabel, tlabel = misclf_pair
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
+            if tgt_label is not None and cor_mis == "mis":
+                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
+                if fpfn is not None:
+                    vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
+            print(f"vscore_save_path: {vscore_save_path}")
+            vscores = np.load(vscore_save_path)
+            vmap_dic[cor_mis] = vscores.T
+        vmap_cor = vmap_dic["cor"]
+        vmap_mis = vmap_dic["mis"]
+        # vdiffとそのランキングをbaに紐づいた辞書に保存
+        vmap_diff = vmap_cor - vmap_mis
+        vdiff_dic[ba]["vdiff"] = vmap_diff
+        dot_products = np.sum(vmap_cor * vmap_mis, axis=0)
+        a_norms = np.linalg.norm(vmap_cor, axis=0)
+        b_norms = np.linalg.norm(vmap_mis, axis=0)
+        cosine_similarity = dot_products / (a_norms * b_norms)
+        vdiff_dic[ba]["cos_sim"] = cosine_similarity
+    return vdiff_dic
 
 def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", 
                             misclf_pair=None, tgt_label=None, fpfn=None, rank_type=None):

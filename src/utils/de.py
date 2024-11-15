@@ -10,6 +10,36 @@ from logging import getLogger
 
 logger = getLogger("base_logger")
 
+def check_new_weights(patch, pos_before, pos_after, old_model, new_model, device=torch.device("cuda"), op=None):
+    # patchの最初のlen(pos_before)個はintermediateのpos_beforeの重み，それ以降のlen(pos_after)個はoutputのpos_afterの重み
+    assert len(patch) == len(pos_before) + len(pos_after), "The length of patch should be equal to the sum of the lengths of pos_before and pos_after"
+    num_pos_before = len(pos_before)
+    num_pos_after = len(pos_after)
+    # pos_before, afterそれぞれの繰り返し
+    for ba, pos in enumerate([pos_before, pos_after]):
+        list_for_comparison = []
+        for model in [old_model, new_model]:
+            # patch_candidateのindexを設定
+            if ba == 0:
+                idx_patch_candidate = range(0, num_pos_before)
+                tgt_weight_data = model.base_model_last_layer.intermediate.dense.weight.data # これは破壊的な変更
+            else:
+                idx_patch_candidate = range(num_pos_before, num_pos_before + num_pos_after)
+                tgt_weight_data = model.base_model_last_layer.output.dense.weight.data
+            # posで指定された位置のニューロンを書き換える
+            xi, yi = pos[:, 0], pos[:, 1]
+            list_for_comparison.append(tgt_weight_data[xi, yi])
+        # 重みが変わっているかどうかを確認
+        sum_new_weights = list_for_comparison[1]
+        sum_old_weights = list_for_comparison[0]
+        if op is "sup":
+            check_val = torch.sum(sum_new_weights).item() # 0にしているので新しい重みの合計が0になっているかどうかを確認
+        elif op is "enh":
+            diff = list_for_comparison[1] - list_for_comparison[0] # new-old
+            check_val = torch.sum(diff - list_for_comparison[0]).item() # 2倍にしているのでnew - 2 old は0になってるはず
+        # check_valが0になっているかどうかを確認
+        assert np.isclose(check_val, 0, atol=1e-8), f"check_val should be close to 0 (check_val: {check_val})"
+
 def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cuda"), op=None):
     # patchの最初のlen(pos_before)個はintermediateのpos_beforeの重み，それ以降のlen(pos_after)個はoutputのpos_afterの重み
     assert len(patch) == len(pos_before) + len(pos_after), "The length of patch should be equal to the sum of the lengths of pos_before and pos_after"

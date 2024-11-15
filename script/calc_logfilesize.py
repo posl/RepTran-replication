@@ -9,7 +9,7 @@ def format_size(size):
             return f"{size:.2f} {unit}"
         size /= 1024
 
-def calculate_specific_log_size(directory_path, condition, match_type="exact", show_extension_summary=False):
+def calculate_specific_log_size(directory_path, condition, match_type="exact", show_extension_summary=False, delete_files=False):
     total_size = 0
     matching_files = []
     total_size_by_extension = defaultdict(int)
@@ -59,11 +59,19 @@ def calculate_specific_log_size(directory_path, condition, match_type="exact", s
         print("\nSize summary by extension:")
         for extension, size in sorted(total_size_by_extension.items(), key=lambda x: x[1], reverse=True):
             print(f"{extension}: {format_size(size)}")
-            
+    
+    # ファイルを削除
+    if delete_files:
+        for file_path, file_size in matching_files:
+            try:
+                os.remove(file_path)
+                print(f"Deleted: {file_path} - {format_size(file_size)}")
+            except Exception as e:
+                print(f"Error deleting {file_path}: {e}")
 
 
 if __name__ == "__main__":
     directory_path = "/src"  # 対象のディレクトリを指定
     log_filename = "101_change_localized_weights_run_all.log"  # 対象のファイル名を指定
     calculate_specific_log_size(directory_path, condition=log_filename, match_type="exact")
-    calculate_specific_log_size(directory_path, condition=".log", match_type="extension", show_extension_summary=True)
+    # calculate_specific_log_size(directory_path, condition=".log", match_type="extension", show_extension_summary=True)
