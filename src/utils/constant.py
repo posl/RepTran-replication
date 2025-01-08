@@ -12,3 +12,7 @@ class ViTExperiment(Experiment):
     class c100:
         OUTPUT_DIR = "/src/src/out_vit_c100_fold{k}" # k: fold id
         NUM_EPOCHS = 2
+        
+class Experiment1(Experiment):
+    NUM_IDENTIFIED_NEURONS = 96 # exp-fl-1.md参照
+    NUM_IDENTIFIED_WEIGHTS = 96 # exp-fl-1.md参照

@@ -13,20 +13,30 @@ from utils.de import set_new_weights, check_new_weights
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 
+
 def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
-    save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
+    save_dir = os.path.join(
+        pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location"
+    )
     if misclf_type == "all":
         save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     if fpfn is not None and misclf_type == "tgt":
-        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
+        save_dir = os.path.join(
+            pretrained_dir,
+            f"misclf_top{tgt_rank}",
+            f"{misclf_type}_{fpfn}_weights_location",
+        )
     return save_dir
+
 
 def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
     device = get_device()
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}, fpfn: {fpfn}")
+    print(
+        f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}, fpfn: {fpfn}"
+    )
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    
+
     # 結果とかログの保存先を先に作っておく
     save_dir = get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn)
     os.makedirs(save_dir, exist_ok=True)
@@ -49,7 +59,9 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
         pos_before, pos_after = np.load(location_save_path)
         proba_save_dir = os.path.join(save_dir, f"proba_n{n}_{fl_method}")
         os.makedirs(proba_save_dir, exist_ok=True)
-    print(f"save_dir: {save_dir},\n location_save_path: {location_save_path},\n proba_save_dir: {proba_save_dir}")
+    print(
+        f"save_dir: {save_dir},\n location_save_path: {location_save_path},\n proba_save_dir: {proba_save_dir}"
+    )
 
     # datasetをロード (初回の読み込みだけやや時間かかる)
     ds_dirname = f"{ds_name}_fold{k}"
@@ -68,29 +80,44 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
     true_labels = ds[tgt_split][label_col]
 
     # キャッシュの保存用のディレクトリ
-    cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
+    cache_dir = os.path.join(
+        pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}"
+    )
     os.makedirs(cache_dir, exist_ok=True)
-    cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
+    cache_path = os.path.join(
+        cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy"
+    )
     # cache_pathに存在することを確認
     assert os.path.exists(cache_path), f"cache_path: {cache_path} does not exist."
     # Check the cached hidden states and ViTFromLastLayer
     cached_hidden_states = np.load(cache_path)
     hidden_states_before_layernorm = torch.from_numpy(cached_hidden_states).to(device)
     batch_size = ViTExperiment.BATCH_SIZE
-    num_batches = (hidden_states_before_layernorm.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
-    batched_hidden_states_before_layernorm = np.array_split(hidden_states_before_layernorm, num_batches)
+    num_batches = (
+        hidden_states_before_layernorm.shape[0] + batch_size - 1
+    ) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
+    batched_hidden_states_before_layernorm = np.array_split(
+        hidden_states_before_layernorm, num_batches
+    )
 
     if isinstance(fl_method, list):
         if "vdiff_asc" in fl_method:
             pos_asc = pos_before_asc, pos_after_asc = pos_before_after["vdiff_asc"]
-            print(f"pos_before_asc: {pos_before_asc.shape}, pos_after_asc: {pos_after_asc.shape}")
+            print(
+                f"pos_before_asc: {pos_before_asc.shape}, pos_after_asc: {pos_after_asc.shape}"
+            )
         if "vdiff_desc" in fl_method:
             pos_desc = pos_before_desc, pos_after_desc = pos_before_after["vdiff_desc"]
-            print(f"pos_before_desc: {pos_before_desc.shape}, pos_after_desc: {pos_after_desc.shape}")
-        
+            print(
+                f"pos_before_desc: {pos_before_desc.shape}, pos_after_desc: {pos_after_desc.shape}"
+            )
+
         if "vdiff_asc" in fl_method and "vdiff_desc" in fl_method:
             # pos_before_ascとdesc, pos_after_ascとdescのそれぞれに被りがあるかどうかチェック
-            for l, pos in zip(["intermediate", "output"], [(pos_before_asc, pos_before_desc), (pos_after_asc, pos_after_desc)]):
+            for l, pos in zip(
+                ["intermediate", "output"],
+                [(pos_before_asc, pos_before_desc), (pos_after_asc, pos_after_desc)],
+            ):
                 # インデックスリストを2次元のタプルの集合に変換
                 set1 = {tuple(pair) for pair in pos[0]}
                 set2 = {tuple(pair) for pair in pos[1]}
@@ -98,28 +125,24 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
                 assert len(set2) == len(pos[1]), f"pos_after_{l} has duplicates"
                 duplicates = set1.intersection(set2)
                 # 重複があればassertion違反で終了
-                assert len(duplicates) == 0, f"pos_before_{l} and pos_after_{l} have duplicates"
+                assert (
+                    len(duplicates) == 0
+                ), f"pos_before_{l} and pos_after_{l} have duplicates"
             # pos_*_ascをx0して，pos_*_descをx2する, またはその逆
             op_dict = {
                 "as_de": {"asc": "sup", "desc": "enh"},
-                "ae_ds": {"asc": "enh", "desc": "sup"}
+                "ae_ds": {"asc": "enh", "desc": "sup"},
             }
             rank_list = ["asc", "desc"]
-            pos_list =  [pos_asc, pos_desc]
+            pos_list = [pos_asc, pos_desc]
         elif "vdiff_desc" in fl_method:
-            op_dict = {
-                "de": {"desc": "enh"},
-                "ds": {"desc": "sup"}
-            }
+            op_dict = {"de": {"desc": "enh"}, "ds": {"desc": "sup"}}
             rank_list = ["desc"]
-            pos_list =  [pos_desc]
+            pos_list = [pos_desc]
         elif "vdiff_asc" in fl_method:
-            op_dict = {
-                "ae": {"asc": "enh"},
-                "as": {"asc": "sup"}
-            }
+            op_dict = {"ae": {"asc": "enh"}, "as": {"asc": "sup"}}
             rank_list = ["asc"]
-            pos_list =  [pos_asc]
+            pos_list = [pos_asc]
         else:
             raise ValueError(f"Invalid fl_method: {fl_method}")
         for op_id, op in op_dict.items():
@@ -132,19 +155,33 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
                 pos_before, pos_after = pos
                 # print(f"pos_before: {pos_before.shape}, pos_after: {pos_after.shape}")
                 dummy_in = [0] * (len(pos_before) + len(pos_after))
-                set_new_weights(dummy_in, pos_before, pos_after, vit_from_last_layer, op=op[rank])
+                set_new_weights(
+                    dummy_in, pos_before, pos_after, vit_from_last_layer, op=op[rank]
+                )
             # TODO: ここまででモデルの重みはセットできた. ここで想定通りに重みがセットできてるかのバリデーションしたい
             for rank, pos in zip(rank_list, pos_list):
                 print(f"Checking the weights for {rank}...")
                 pos_before, pos_after = pos
                 temp_model = ViTFromLastLayer(model)
                 # 重みが変更されているかチェック
-                check_new_weights(dummy_in, pos_before, pos_after, temp_model, vit_from_last_layer, op=op[rank])
+                check_new_weights(
+                    dummy_in,
+                    pos_before,
+                    pos_after,
+                    temp_model,
+                    vit_from_last_layer,
+                    op=op[rank],
+                )
 
             all_logits = []
             all_proba = []
-            for cached_state in tqdm(batched_hidden_states_before_layernorm, total=len(batched_hidden_states_before_layernorm)):
-                logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state)
+            for cached_state in tqdm(
+                batched_hidden_states_before_layernorm,
+                total=len(batched_hidden_states_before_layernorm),
+            ):
+                logits = vit_from_last_layer(
+                    hidden_states_before_layernorm=cached_state
+                )
                 proba = torch.nn.functional.softmax(logits, dim=-1)
                 logits = logits.detach().cpu().numpy()
                 proba = proba.detach().cpu().numpy()
@@ -161,7 +198,9 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
             for true_label, proba_list in proba_dict.items():
                 proba_dict[true_label] = np.stack(proba_list)
             for true_label, proba in proba_dict.items():
-                save_path = os.path.join(proba_save_dir, f"{tgt_split}_proba_{op_id}_{true_label}.npy")
+                save_path = os.path.join(
+                    proba_save_dir, f"{tgt_split}_proba_{op_id}_{true_label}.npy"
+                )
                 np.save(save_path, proba)
     else:
         for op in ["enh", "sup"]:
@@ -173,11 +212,18 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
             if op is not None:
                 # モデルの重みを変更する
                 dummy_in = [0] * (len(pos_before) + len(pos_after))
-                set_new_weights(dummy_in, pos_before, pos_after, vit_from_last_layer, op=op)
+                set_new_weights(
+                    dummy_in, pos_before, pos_after, vit_from_last_layer, op=op
+                )
             all_logits = []
             all_proba = []
-            for cached_state in tqdm(batched_hidden_states_before_layernorm, total=len(batched_hidden_states_before_layernorm)):
-                logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state)
+            for cached_state in tqdm(
+                batched_hidden_states_before_layernorm,
+                total=len(batched_hidden_states_before_layernorm),
+            ):
+                logits = vit_from_last_layer(
+                    hidden_states_before_layernorm=cached_state
+                )
                 proba = torch.nn.functional.softmax(logits, dim=-1)
                 logits = logits.detach().cpu().numpy()
                 proba = proba.detach().cpu().numpy()
@@ -195,21 +241,46 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all):
             for true_label, proba_list in proba_dict.items():
                 proba_dict[true_label] = np.stack(proba_list)
             for true_label, proba in proba_dict.items():
-                save_path = os.path.join(proba_save_dir, f"{tgt_split}_proba_{op}_{true_label}.npy")
+                save_path = os.path.join(
+                    proba_save_dir, f"{tgt_split}_proba_{op}_{true_label}.npy"
+                )
                 np.save(save_path, proba)
+
 
 if __name__ == "__main__":
     # データセットをargparseで受け取る
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
-    parser.add_argument('k', nargs="?", type=list, help="the fold id (0 to K-1)")
-    parser.add_argument('tgt_rank', nargs="?", type=list, help="the rank of the target misclassification type")
-    parser.add_argument('n', nargs="?", type=int, help="the factor for the number of neurons to fix")
-    parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt)", default="tgt")
-    parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
-    parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
+    parser.add_argument("k", nargs="?", type=list, help="the fold id (0 to K-1)")
+    parser.add_argument(
+        "tgt_rank",
+        nargs="?",
+        type=list,
+        help="the rank of the target misclassification type",
+    )
+    parser.add_argument(
+        "n", nargs="?", type=int, help="the factor for the number of neurons to fix"
+    )
+    parser.add_argument(
+        "--misclf_type",
+        type=str,
+        help="the type of misclassification (src_tgt or tgt)",
+        default="tgt",
+    )
+    parser.add_argument(
+        "--fpfn",
+        type=str,
+        help="the type of misclassification (fp or fn)",
+        default=None,
+        choices=["fp", "fn"],
+    )
+    parser.add_argument(
+        "--fl_method", type=str, help="the method used for FL", default="vdiff"
+    )
     parser.add_argument("--run_all", action="store_true", help="run all settings")
-    parser.add_argument("--run_asc_desc", action="store_true", help="run only for asc and desc settings")
+    parser.add_argument(
+        "--run_asc_desc", action="store_true", help="run only for asc and desc settings"
+    )
     args = parser.parse_args()
     ds = args.ds
     k_list = args.k
@@ -222,23 +293,31 @@ if __name__ == "__main__":
     run_asc_desc = args.run_asc_desc
 
     # run_allとrun_asc_descが同時に指定されている場合はエラー
-    assert not (run_all and run_asc_desc), "run_all and run_asc_desc cannot be specified at the same time"
+    assert not (
+        run_all and run_asc_desc
+    ), "run_all and run_asc_desc cannot be specified at the same time"
 
     if run_all:
         # run_allがtrueなのにkとtgt_rankが指定されている場合はエラー
-        assert k_list is None and tgt_rank_list is None and n_list is None, "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
+        assert (
+            k_list is None and tgt_rank_list is None and n_list is None
+        ), "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
         k_list = range(5)
         tgt_rank_list = range(1, 6)
         n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
         fl_method_list = ["vdiff", "random"]
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
-        for k, tgt_rank, n, fl_method, misclf_type, fpfn in product(k_list, tgt_rank_list, n_list, fl_method_list, misclf_type_list, fpfn_list):
+        for k, tgt_rank, n, fl_method, misclf_type, fpfn in product(
+            k_list, tgt_rank_list, n_list, fl_method_list, misclf_type_list, fpfn_list
+        ):
             if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
                 continue
             main(ds, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=run_all)
     elif run_asc_desc:
-        assert k_list is None and tgt_rank_list is None and n_list is None, "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
+        assert (
+            k_list is None and tgt_rank_list is None and n_list is None
+        ), "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
         k_list = range(5)
         tgt_rank_list = range(1, 6)
         org_n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
@@ -247,11 +326,15 @@ if __name__ == "__main__":
         fl_method = ["vdiff_desc"]
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
-        for k, tgt_rank, n, misclf_type, fpfn in product(k_list, tgt_rank_list, n_list, misclf_type_list, fpfn_list):
+        for k, tgt_rank, n, misclf_type, fpfn in product(
+            k_list, tgt_rank_list, n_list, misclf_type_list, fpfn_list
+        ):
             if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
                 continue
             main(ds, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=run_all)
     else:
-        assert k_list is not None and tgt_rank_list is not None and n_list is not None, "k_list and tgt_rank_list and n_list should be specified"
+        assert (
+            k_list is not None and tgt_rank_list is not None and n_list is not None
+        ), "k_list and tgt_rank_list and n_list should be specified"
         for k, tgt_rank, n in zip(k_list, tgt_rank_list, n_list):
             main(ds, k, tgt_rank, n, fl_method, misclf_type, fpfn)

@@ -154,37 +154,63 @@ def get_vscore(batch_neuron_values):
     vscore = neuron_var + mean_cov # (num_neurons_of_tgt_layer,)
     return vscore
 
-def localize_neurons(vmap_dic, tgt_layer, theta=10):
-    """
-    vmap_dicのcorとmisの差分が上位theta%のニューロンを取得する
-
-    Args:
-        vmap_dic (dict): _description_
-        tgt_layer (int): _description_
-        theta (float, optional): _description_. Defaults to 10.
-    """
-    # take diff of vscores and get top 10% neurons
+def localize_neurons(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
+    vmap_dic = defaultdict(np.array)
+    for cor_mis in ["cor", "mis"]:
+        ds_type = f"ori_{tgt_split}"
+        # vscore_save_pathの設定
+        vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+        if misclf_pair is not None and cor_mis == "mis":
+            # misclf_pairが指定されている場合は，その対象のデータのみを取得
+            assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
+            slabel, tlabel = misclf_pair
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
+        if tgt_label is not None and cor_mis == "mis":
+            # tgt_labelが指定されている場合は，その対象のデータのみを取得
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
+            if fpfn is not None:
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
+        # vscoreを読み込む
+        vscores = np.load(vscore_save_path)
+        vmap_dic[cor_mis] = vscores.T
     vmap_cor = vmap_dic["cor"]
     vmap_mis = vmap_dic["mis"]
-    vmap_diff = vmap_cor - vmap_mis # (num_neurons, num_layers)
-    # vdiffの上位theta%のニューロンを取得
-    theta = 10
-    top_theta = np.percentile(np.abs(vmap_diff[:, tgt_layer]), 100-theta)
-    condition = np.abs(vmap_diff[:, tgt_layer]).reshape(-1) > top_theta
-    places_to_fix = [[tgt_layer, pos] for pos in np.where(condition)[0]]
+    vmap_diff = vmap_cor - vmap_mis
+    # vmap_diff[:, tgt_layer]の絶対値の上位n個を取得
+    vmap_diff_abs = np.abs(vmap_diff[:, tgt_layer])
+    top_idx = np.argsort(vmap_diff_abs)[::-1][:n] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
+    # top_idx[k]の順位がkであることを確認
+    for r, ti in enumerate(top_idx):
+        # print(r, ti, vmap_diff_abs[ti])
+        assert return_rank(vmap_diff_abs, ti) == r, f"Error: {ti}, {r}"
+    places_to_fix = [[tgt_layer, pos] for pos in top_idx]
     # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
-    tgt_vdiff = vmap_diff[condition, tgt_layer]
+    tgt_vdiff = vmap_diff[top_idx, tgt_layer]
     return places_to_fix, tgt_vdiff
 
-def localize_neurons_random(vmap_dic, tgt_layer, theta=10):
-    places_to_fix, _ = localize_neurons(vmap_dic, tgt_layer, theta)
-    # places_to_fixと同じ数の，places_to_fix以外のランダムな位置を選択 (レイヤは同じ)
-    other_places = []
-    for _ in range(len(places_to_fix)):
-        layer_idx = tgt_layer
-        neuron_idx = np.random.randint(vmap_dic["cor"].shape[0])
-        other_places.append([layer_idx, neuron_idx])
-    return other_places, None
+def localize_neurons_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
+    def _get_vscore_shape(vscore_dir):
+        for cor_mis in ["cor", "mis"]:
+            ds_type = f"ori_{tgt_split}"
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+            if misclf_pair is not None and cor_mis == "mis":
+                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
+                slabel, tlabel = misclf_pair
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
+            if tgt_label is not None and cor_mis == "mis":
+                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
+                if fpfn is not None:
+                    vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
+            vscores = np.load(vscore_save_path)
+            return vscores.shape
+    vscore_shape = _get_vscore_shape(vscore_dir)
+    num_neurons = vscore_shape[1]
+    # ランダムにnum_neurons個のニューロンからn個のニューロンを選ぶ
+    top_idx = np.random.choice(num_neurons, n, replace=False)
+    places_to_fix = [[tgt_layer, pos] for pos in top_idx]
+    return places_to_fix, None
 
 def rank_descending(x):
     # x を降順に並べ替えるためのインデックスを取得

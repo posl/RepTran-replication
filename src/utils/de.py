@@ -58,9 +58,9 @@ def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cu
         xi, yi = pos[:, 0], pos[:, 1]
         if op is None:
             tgt_weight_data[xi, yi] = torch.from_numpy(patch[idx_patch_candidate]).to(device)
-        elif op is "enh":
+        elif op is "enh" or op is "enhance":
             tgt_weight_data[xi, yi] *= 2
-        elif op is "sup":
+        elif op is "sup" or op is "suppress":
             tgt_weight_data[xi, yi] *= 0
         else:
             NotImplementedError(f"{op} is not supported yet")

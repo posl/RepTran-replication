@@ -13,7 +13,7 @@ if __name__ == "__main__":
     # プログラム引数の受け取り
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
-    parser.add_argument("tgt_ct", type=str)
+    parser.add_argument("--tgt_ct", type=str, default=None)
     parser.add_argument('--used_column', type=str, default="train")
     parser.add_argument('--start_layer_idx', type=int, default=9)
     parser.add_argument('--severity', type=int, help="severity of corruption (integer from 0 to 4). when set to -1, treat all as one dataset.", default=4)
@@ -48,14 +48,22 @@ if __name__ == "__main__":
     ori_ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ori_ds_name))[used_column]
     ori_labels = np.array(ori_ds[label_col])
     ori_ds = ori_ds.with_transform(tf_func)
-    # tgt_ctに対するcorruption datasetをロード
-    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, f"{ori_ds_name}c_severity{severity}", tgt_ct))
-    # train, testに分ける
-    ds_split = ds.train_test_split(test_size=0.4, shuffle=True, seed=777)[used_column] # XXX: !SEEDは絶対固定!
-    labels = np.array(ds_split[label_col])
-    ct_ds = ds_split.with_transform(tf_func)
-    # dsとct_dsのデータセットのサイズを出力
-    print(f"ori_ds: {len(ori_ds)}, ct_ds: {len(ct_ds)}")
+    print(f"ori_ds: {len(ori_ds)}")
+    ds_name_list = ["ori_ds"]
+    ds_list = [ori_ds]
+    label_list = [ori_labels]
+    if tgt_ct is not None:
+        # tgt_ctに対するcorruption datasetをロード
+        ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, f"{ori_ds_name}c_severity{severity}", tgt_ct))
+        # train, testに分ける
+        ds_split = ds.train_test_split(test_size=0.4, shuffle=True, seed=777)[used_column] # XXX: !SEEDは絶対固定!
+        labels = np.array(ds_split[label_col])
+        ct_ds = ds_split.with_transform(tf_func)
+        # dsとct_dsのデータセットのサイズを出力
+        print(f"ct_ds: {len(ct_ds)}")
+        ds_name_list.append("ct_ds")
+        ds_list.append(ct_ds)
+        label_list.append(labels)
     # pretrained modelのロード
     pretrained_dir = getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR
     result_dir = os.path.join(getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR, "neuron_scores")
@@ -68,7 +76,7 @@ if __name__ == "__main__":
     end_li = model.vit.config.num_hidden_layers
 
     tic = time.perf_counter()
-    for ds_name, ds, ls in zip(["ori_ds", "ct_ds"], [ori_ds, ct_ds], [ori_labels, labels]):
+    for ds_name, ds, ls in zip(ds_name_list, ds_list, label_list):
         if not include_ori and ds_name == "ori_ds":
             continue
 
