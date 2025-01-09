@@ -321,12 +321,13 @@ class ViTIntermediate(nn.Module):
             # imp_opが文字列型の場合
             if isinstance(imp_op, str):
                 # if imp_pos is [], then it does not loop the following for stmt.
-                for layer, pos in imp_pos:
+                for _, pos in imp_pos:
                     if imp_op == "enhance":
                         hidden_states[:, tgt_pos, pos] *= 2
                     elif imp_op == "suppress":
                         hidden_states[:, tgt_pos, pos] *= 0
-                    # TODO: add "custom" to specify different ratio per position
+                    else:
+                        raise ValueError(f"imp_op must be 'enhance' or 'suppress' but got {imp_op}")
             # imp_opがarrayの場合
             elif isinstance(imp_op, np.ndarray):
                 # imp_posが空でない場合

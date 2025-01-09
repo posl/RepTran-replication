@@ -122,8 +122,8 @@ if __name__ == "__main__":
     is_correct = np.equal(all_pred_labels, tgt_labels)
     print(f"{sum(is_correct)} / {len(is_correct)}")
     logger.info(f"{sum(is_correct)} / {len(is_correct)}")
-    te_with_cache = time.perf_counter()
-    t_with_cache = te_with_cache - ts_with_cahce
-    speedup_rate = t_without_cache / t_with_cache * 100
     if not do_not_cache: # cacheした場合は時間の比較を出す
+        te_with_cache = time.perf_counter()
+        t_with_cache = te_with_cache - ts_with_cahce
+        speedup_rate = t_without_cache / t_with_cache * 100
         logger.info(f"t_without_cache: {t_without_cache:.5f} sec., t_with_cache: {t_with_cache:.5f} sec., speedup_rate: {speedup_rate:.5f} %")

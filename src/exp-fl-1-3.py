@@ -4,8 +4,6 @@ from collections import defaultdict
 from itertools import product
 import numpy as np
 import pandas as pd
-from utils.helper import get_device, json2dict
-from utils.vit_util import localize_neurons, localize_neurons_random, localize_weights, localize_weights_random, identfy_tgt_misclf
 from utils.constant import ViTExperiment, Experiment1
 from utils.log import set_exp_logging
 from logging import getLogger
@@ -42,6 +40,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
     true_labels = ds[tgt_split][label_col]
+    label_list = range(100)
     
     # 変更する対象のサイズ
     if fl_target == "neuron":
@@ -70,10 +69,10 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
     
     for op in op_list:
         for fl_method in ["vdiff", "random"]:
-            print(f"fl_target: {fl_target}, method_name: {fl_method}")
+            print(f"op: {op}, fl_target: {fl_target}, method_name: {fl_method}")
             # proba_save_dirの作成
             proba_save_dir = os.path.join(save_dir, f"exp-fl-1_proba_n{n}_{fl_target}_{fl_method}")
-            for tl in true_labels:
+            for tl in label_list:
                 # オリジナルのモデルの予測確率を取得
                 ori_proba_save_path = os.path.join(pretrained_dir, "pred_results", f"{tgt_split}_proba_{tl}.npy")
                 ori_proba = np.load(ori_proba_save_path)[:, tl]  # tlへの予測確率 # 形状は (tlのラベルのサンプル数, ) の1次元配列
@@ -118,6 +117,7 @@ if __name__ == "__main__":
             continue
         result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target)
         all_results = pd.concat([all_results, result_df], ignore_index=True)
+        print(f"all_results.shape: {all_results.shape}")
     # all_resultsを保存
     save_path = f"./exp-fl-1_{ds}_proba_diff.csv"
     all_results.to_csv(save_path, index=False)
