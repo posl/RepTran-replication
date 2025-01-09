@@ -36,7 +36,7 @@ if __name__ == "__main__":
     # datasetをロード (初回の読み込みだけやや時間かかる)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     split_names = list(ds.keys()) # [train, repair, test]
-    target_split_names = ["train", "repair"]
+    target_split_names = ["repair"]
     # target_split_namesは全てsplit_namesに含まれていることを前提とする
     assert all([split_name in split_names for split_name in target_split_names]), f"target_split_names should be subset of split_names"
     # ラベルの取得
@@ -66,10 +66,9 @@ if __name__ == "__main__":
         # loop for dataset batch
         for entry_dic in tqdm(ds_preprocessed[split].iter(batch_size=batch_size), total=len(ds_preprocessed[split])//batch_size+1):
             x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"]
-            output = model.forward(x, output_intermediate_states=True)
+            output = model.forward(x, output_intermediate_states=True, tgt_pos=tgt_pos)
             # CLSトークンに対応するintermediate statesを取得
-            output_mid_states = np.array([mid_states_each_layer[:, tgt_pos, :].cpu().detach().numpy()
-                                                for mid_states_each_layer in output.intermediate_states])
+            output_mid_states = np.array([mid_states_each_layer[1] for mid_states_each_layer in output.intermediate_states])
             output_mid_states = output_mid_states.transpose(1, 0, 2) # (batch_size, num_layers, num_neurons)
             logits = output.logits.cpu().detach().numpy()
             all_logits.append(logits)

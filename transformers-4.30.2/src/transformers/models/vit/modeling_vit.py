@@ -313,9 +313,6 @@ class ViTIntermediate(nn.Module):
 ) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
         # 特定の位置のニューロン値を置き換える
-        # use predefined score
-        if tmp_score is not None:
-            hidden_states[:, tgt_pos, :] = tmp_score
         # use delta to update the current value
         if imp_pos is not None:
             # imp_opが文字列型の場合
@@ -338,6 +335,9 @@ class ViTIntermediate(nn.Module):
             else:
                 raise ValueError(f"imp_op must be str or list but got {type(imp_op)}")
         hidden_states = self.intermediate_act_fn(hidden_states)
+        # use predefined score
+        if tmp_score is not None:
+            hidden_states[:, tgt_pos, :] = tmp_score
         return hidden_states
 
 
