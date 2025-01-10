@@ -113,9 +113,7 @@ if __name__ == "__main__":
     for k in k_list:
         print(f"ds: {ds}, k: {k}...")
         elapsed_time = main(ds, k)
-        results.append([
-            {"ds": ds, "k": k, "elapsed_time": elapsed_time}
-        ])
+        results.append({"ds": ds, "k": k, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
-    result_df.to_csv("./exp-fl-2-1_time.csv")
+    result_df.to_csv("./exp-fl-2-1_time.csv", index=False)
