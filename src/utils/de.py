@@ -47,6 +47,9 @@ def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cu
     num_pos_after = len(pos_after)
     # pos_before, afterそれぞれの繰り返し
     for ba, pos in enumerate([pos_before, pos_after]):
+        # pareto_frontを取る方法 (BL) の場合，len(pos_before)もしくはlen(pos_after)が0の時がある
+        if len(pos) == 0:
+            continue
         # patch_candidateのindexを設定
         if ba == 0:
             idx_patch_candidate = range(0, num_pos_before)

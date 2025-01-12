@@ -111,6 +111,8 @@ if __name__ == "__main__":
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
+        if misclf_type != "all" and fl_method == "ig": # igは誤分類のタイプごとには計算できない
+            continue
         result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_method)
         all_results = pd.concat([all_results, result_df], ignore_index=True)
         print(f"all_results.shape: {all_results.shape}")
