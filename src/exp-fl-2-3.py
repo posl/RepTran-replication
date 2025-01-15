@@ -165,6 +165,8 @@ if __name__ == "__main__":
     fl_method_list = ["ig", "bl"]
     for k, tgt_rank, misclf_type, fpfn, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list):
         print(f"k: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}")
+        if fl_method == "ig": # TODO: blだけ実行したいので一時的なスキップ
+            continue 
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき

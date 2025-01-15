@@ -7,7 +7,7 @@ import pandas as pd
 from utils.helper import get_device, json2dict
 from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, identfy_tgt_misclf, get_ori_model_predictions, get_new_model_predictions, get_batched_hs, get_batched_labels, sample_from_correct_samples, sample_true_positive_indices_per_class
 
-from utils.constant import ViTExperiment
+from utils.constant import ViTExperiment, Experiment1
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -15,8 +15,62 @@ from transformers import ViTForImageClassification
 import torch
 import torch.optim as optim
 
+NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS
+
 # デバイス (cuda, or cpu) の取得
 device = get_device()
+
+def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n, weight_grad_loss=0.5, weight_fwd_imp=0.5):
+    """
+    BI, FIを平滑化し、重み付き平均でスコアを計算して上位n件を取得。
+    
+    Args:
+        grad_loss_list (list): BI のリスト [W_bef の BI, W_aft の BI]
+        fwd_imp_list (list): FI のリスト [W_bef の FI, W_aft の FI]
+        n (int): 上位n件を取得する数
+        weight_grad_loss (float): grad_loss の重み (0~1の範囲)
+        weight_fwd_imp (float): fwd_imp の重み (0~1の範囲)
+    
+    Returns:
+        dict: 上位n件のインデックス {"bef": [...], "aft": [...]} とそのスコア
+    """
+    # BI, FIを一列に変換
+    flattened_grad_loss = torch.cat([x.flatten() for x in grad_loss_list])
+    flattened_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list])
+
+    # befとaftの形状を取得
+    shape_bef = grad_loss_list[0].shape
+    shape_aft = grad_loss_list[1].shape
+
+    # befとaftの境目インデックスを記録
+    split_idx = grad_loss_list[0].numel()
+    
+    # 正規化
+    grad_loss_min, grad_loss_max = flattened_grad_loss.min(), flattened_grad_loss.max()
+    fwd_imp_min, fwd_imp_max = flattened_fwd_imp.min(), flattened_fwd_imp.max()
+
+    normalized_grad_loss = (flattened_grad_loss - grad_loss_min) / (grad_loss_max - grad_loss_min + 1e-8)
+    normalized_fwd_imp = (flattened_fwd_imp - fwd_imp_min) / (fwd_imp_max - fwd_imp_min + 1e-8)
+
+    # 重み付きスコアを計算
+    weighted_scores = (
+        weight_grad_loss * normalized_grad_loss +
+        weight_fwd_imp * normalized_fwd_imp
+    ).detach().cpu().numpy()
+
+    # スコアが高い順にソートして上位n件のインデックスを取得
+    top_n_indices = np.argsort(weighted_scores)[-n:][::-1]  # 降順で取得
+
+    # befとaftに分類し、元の形状に戻す
+    top_n_bef = np.array([
+        np.unravel_index(idx, shape_bef) for idx in top_n_indices if idx < split_idx
+    ])
+    top_n_aft = np.array([
+        np.unravel_index(idx - split_idx, shape_aft) for idx in top_n_indices if idx >= split_idx
+    ])
+
+    return {"bef": top_n_bef, "aft": top_n_aft, "scores": weighted_scores[top_n_indices]}
+
 
 def calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list):
     """
@@ -159,7 +213,7 @@ def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_las
             results[ba_layer]["fw"] = results[ba_layer]["fw"] / results[ba_layer]["count"]
     return results
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, strategy="weighted"):
     sample_from_correct = True
     ts = time.perf_counter()
     
@@ -280,13 +334,17 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
             out_dim_before = grad_loss.shape[0]  # out_dim_before = out_dim
 
     # パレートフロントの計算
-    print(f"Calculating Pareto front for target weights...")
-    pareto_indices = calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list)
-    print(f"Pareto front indices : {pareto_indices}")
+    if strategy == "pareto":
+        print(f"Calculating Pareto front for target weights...")
+        identified_indices = calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list)
+    elif strategy == "weighted":
+        print("Calculating top n for target weights...")
+        identified_indices = calculate_top_n_flattened(grad_loss_list, fwd_imp_list, 8 * n * n)
+    print(f"len(identified_indices['bef']): {len(identified_indices['bef'])}, len(identified_indices['aft']): {len(identified_indices['aft'])}")
     
     # "before" と "after" に分けて格納
-    pos_before = pareto_indices["bef"]
-    pos_after = pareto_indices["aft"]
+    pos_before = identified_indices["bef"]
+    pos_after = identified_indices["aft"]
     
     # 結果の出力
     print(f"pos_before: {pos_before}")
@@ -299,14 +357,11 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    old1_location_save_path = os.path.join(location_save_dir, f"location_neuron_bl.npy")
-    old2_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_neuron_bl.npy")
-    new_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
+    old_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
+    new_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_n{n}_weight_bl.npy")
     # old_location_save_pathにファイルがあった場合は削除
-    if os.path.exists(old1_location_save_path):
-        os.remove(old1_location_save_path)
-    if os.path.exists(old2_location_save_path):
-        os.remove(old2_location_save_path)
+    if os.path.exists(old_location_save_path):
+        os.remove(old_location_save_path)
     np.save(new_location_save_path, (pos_before, pos_after))
     print(f"saved location information to {new_location_save_path}")
     # 終了時刻
@@ -321,13 +376,14 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     results = []
-    for k, tgt_rank, misclf_type, fpfn in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list):
+    n_list = [96]
+    for k, tgt_rank, misclf_type, fpfn, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list):
         print(f"Start: ds={ds}, k={k}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn)
+        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=NUM_IDENTIFIED_NEURONS)
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
