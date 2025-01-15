@@ -178,7 +178,12 @@ def localize_neurons(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
     vmap_diff = vmap_cor - vmap_mis
     # vmap_diff[:, tgt_layer]の絶対値の上位n個を取得
     vmap_diff_abs = np.abs(vmap_diff[:, tgt_layer])
-    top_idx = np.argsort(vmap_diff_abs)[::-1][:n] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
+    if isinstance(n, int):
+        top_idx = np.argsort(vmap_diff_abs)[::-1][:n] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
+    elif isinstance(n, float):
+        assert n <= 1, f"Error: {n}"
+        num_neurons = vmap_diff_abs.shape[0]
+        top_idx = np.argsort(vmap_diff_abs)[::-1][:int(num_neurons * n)] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
     # top_idx[k]の順位がkであることを確認
     for r, ti in enumerate(top_idx):
         # print(r, ti, vmap_diff_abs[ti])
@@ -229,6 +234,58 @@ def return_rank(x, i, order="desc"):
         return np.argsort(x).tolist().index(i)
     else:
         raise NotImplementedError
+
+def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
+    vmap_dic = defaultdict(np.array)
+    for cor_mis in ["cor", "mis"]:
+        ds_type = f"ori_{tgt_split}"
+        # vscore_save_pathの設定
+        vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+        if misclf_pair is not None and cor_mis == "mis":
+            # misclf_pairが指定されている場合は，その対象のデータのみを取得
+            assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
+            slabel, tlabel = misclf_pair
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
+        if tgt_label is not None and cor_mis == "mis":
+            # tgt_labelが指定されている場合は，その対象のデータのみを取得
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
+            if fpfn is not None:
+                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
+        # vscoreを読み込む
+        vscores = np.load(vscore_save_path)
+        vmap_dic[cor_mis] = vscores.T
+    vmap_cor = vmap_dic["cor"]
+    vmap_mis = vmap_dic["mis"]
+    vmap_diff = vmap_cor - vmap_mis # shape: (num_neurons, num_layers)
+    # vmap_diff[:, tgt_layer]の絶対値をvdiffに関するスコア
+    vmap_diff_abs = np.abs(vmap_diff[:, tgt_layer]) # shape: (num_neurons, num_layers)
+    
+    # cache_statesから中間ニューロンの値を取得
+    # print(intermediate_states.shape) # shape: (num_tgt_mis_samples, num_neurons)
+    # 活性化後値の全対象誤分類サンプルにわたっての平均をmean_activationに関するスコア
+    mean_activation = np.mean(intermediate_states[tgt_mis_indices], axis=0) # shape: (num_neurons,)
+    
+    # vmap_diff_absとmean_activationをそれぞれmin-max正規化
+    vmap_diff_abs = (vmap_diff_abs - np.min(vmap_diff_abs)) / (np.max(vmap_diff_abs) - np.min(vmap_diff_abs))
+    mean_activation = (mean_activation - np.min(mean_activation)) / (np.max(mean_activation) - np.min(mean_activation))
+    
+    # neuron_score として，上の2つのベクトルの要素ごとの積を使う
+    neuron_score = vmap_diff_abs * mean_activation # shape: (num_neurons,)
+    
+    # neuron_scoreの上位n個を取得
+    if isinstance(n, int):
+        top_idx = np.argsort(neuron_score)[::-1][:n] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
+    elif isinstance(n, float):
+        assert n <= 1, f"Error: {n}"
+        top_idx = np.argsort(neuron_score)[::-1][:int(len(neuron_score) * n)] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
+    # top_idx[k]の順位がkであることを確認
+    for r, ti in enumerate(top_idx):
+        # print(r, ti, vmap_diff_abs[ti])
+        assert return_rank(neuron_score, ti) == r, f"Error: {ti}, {r}"
+    places_to_fix = [[tgt_layer, pos] for pos in top_idx]
+    # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
+    tgt_neuron_score = neuron_score[top_idx]
+    return places_to_fix, tgt_neuron_score
 
 def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
 
