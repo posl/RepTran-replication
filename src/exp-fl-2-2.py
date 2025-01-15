@@ -357,13 +357,10 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    old_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
-    new_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_n{n}_weight_bl.npy")
-    # old_location_save_pathにファイルがあった場合は削除
-    if os.path.exists(old_location_save_path):
-        os.remove(old_location_save_path)
-    np.save(new_location_save_path, (pos_before, pos_after))
-    print(f"saved location information to {new_location_save_path}")
+    # old_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
+    location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_n{n}_weight_bl.npy")
+    np.save(location_save_path, (pos_before, pos_after))
+    print(f"saved location information to {location_save_path}")
     # 終了時刻
     te = time.perf_counter()
     elapsed_time = te - ts
