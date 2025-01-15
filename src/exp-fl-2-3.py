@@ -1,4 +1,5 @@
 import os, sys, time, pickle, json, math
+import shutil
 import torch
 from tqdm import tqdm
 from collections import defaultdict
@@ -32,7 +33,7 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         )
     return save_dir
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method):
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n=NUM_IDENTIFIED_NEURONS):
     device = get_device()
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
     
@@ -41,10 +42,8 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method):
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     
     if fl_method == "ig":
-        n = NUM_IDENTIFIED_NEURONS 
         fl_target = "neuron"
     elif fl_method == "bl":
-        n = None
         fl_target = "weight"
     
     # datasetをロード (true_labelsが欲しいので)
@@ -71,11 +70,18 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method):
     # localization結果をロード
     print(f"method_name: {fl_method}")
     if fl_method == "ig": # ig の場合は特定するニューロン数nを設定できる
-        location_save_path = os.path.join(save_dir, f"exp-fl-2_location_n{n}_neuron_{fl_method}.npy")
+        location_save_path = os.path.join(save_dir, f"exp-fl-2_location_n{n}_{fl_target}_{fl_method}.npy")
         proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_n{n}_{fl_method}")
     elif fl_method == "bl": # bl の場合は特定する重みの数は特定できない (pareto front を取るので)
-        location_save_path = os.path.join(save_dir, f"exp-fl-2_location_weight_{fl_method}.npy")
-        proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_{fl_method}")
+        # 古いディレクトリを削除
+        old_location_save_path = os.path.join(save_dir, f"exp-fl-2_location_weight_{fl_method}.npy")
+        old_proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_{fl_method}")
+        for old_dir in [old_location_save_path, old_proba_save_dir]:
+            if os.path.exists(old_dir):
+                shutil.rmtree(old_dir)
+                print(f"removed {old_dir}")
+        location_save_path = os.path.join(save_dir, f"exp-fl-2_location_n{n}_{fl_target}_{fl_method}.npy")
+        proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_n{n}_{fl_method}")
     os.makedirs(proba_save_dir, exist_ok=True)
     places_to_fix = np.load(location_save_path, allow_pickle=True)
     # check for places_to_fix
@@ -165,8 +171,6 @@ if __name__ == "__main__":
     fl_method_list = ["ig", "bl"]
     for k, tgt_rank, misclf_type, fpfn, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list):
         print(f"k: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}")
-        if fl_method == "ig": # TODO: blだけ実行したいので一時的なスキップ
-            continue 
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき

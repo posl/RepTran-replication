@@ -1,4 +1,5 @@
 import os, sys, time, pickle, json, math
+import shutil
 from tqdm import tqdm
 from collections import defaultdict
 from itertools import product
@@ -50,13 +51,9 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method):
     # 結果とかログの保存先
     save_dir = get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn)
     # 予測確率のリストの保存先
-    if fl_method == "ig":
-        n = NUM_IDENTIFIED_NEURONS
-        proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_n{n}_{fl_method}")
-    else:
-        n = None
-        proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_{fl_method}")
-    
+    n = NUM_IDENTIFIED_NEURONS
+    proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_n{n}_{fl_method}")
+        
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"exp-fl-2_{this_file_name}"

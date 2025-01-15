@@ -42,14 +42,16 @@ if __name__ == "__main__":
     for target in grouped_df["fl_target"].unique():
         # op, fl_method, fl_targetの組み合わせごとにdiff_probaの平均をプロット
         plt.figure(figsize=(8, 6))
-        color_list = ["red", "blue", "orange", "lightblue", "green", "yellow", "purple", "brown", "pink", "gray"]
+        color_list = ["red", "blue", "orange", "lightblue", "yellow", "green", "purple", "brown", "pink", "gray"]
         for i, (fl_method, fl_target, op) in enumerate(
             product(grouped_df["fl_method"].unique(), [target], grouped_df["op"].unique())
         ):
             subset = grouped_df[(grouped_df["op"] == op) & (grouped_df["fl_method"] == fl_method) & (grouped_df["fl_target"] == fl_target)]
             if len(subset) == 0:
                 continue
-            plt.plot(subset["label"], subset["mean_diff_proba"], label=f"{fl_method}, {op}, {fl_target}", color=color_list[i])
+            if op == "enhance":
+                continue # pruningした時の結果だけを載せたいので，suppressのみ
+            plt.plot(subset["label"], subset["mean_diff_proba"], label=f"{fl_method}, {op}, {fl_target}", color=color_list[i], alpha=0.66)
             mean_of_means = subset["mean_diff_proba"].mean()
             plt.axhline(mean_of_means, color=color_list[i], linestyle="--")
         plt.axhline(0, color="black", linestyle="-")
