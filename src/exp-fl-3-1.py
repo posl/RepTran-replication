@@ -190,6 +190,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn):
     pos_after = np.array([np.unravel_index(idx, original_shape_aft) for idx in top_indices_aft])
 
     # 位置情報を保存
+    location_save_path = os.path.join(save_dir, f"exp-fl-3_location_n{n_ratio}_w{w_num}_weight.npy")
     np.save(location_save_path, (pos_before, pos_after))
     print(f"saved location information to {location_save_path}")
     # 終了時刻
@@ -210,8 +211,6 @@ if __name__ == "__main__":
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
-            continue
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
             continue
         elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn)
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
