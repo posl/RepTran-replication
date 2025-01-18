@@ -12,7 +12,7 @@ def main(ds_name, k, tgt_split):
     if ds_name == "c100":
         num_classes = 100
     else:
-        NotImplemented, f"ds_name: {ds_name}"
+        raise NotImplementedError(f"ds_name: {ds_name}")
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     pred_out_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     pred_out_path = os.path.join(pred_out_dir, f"{tgt_split}_pred.pkl")
