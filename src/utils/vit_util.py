@@ -256,10 +256,13 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
         vmap_dic[cor_mis] = vscores.T
     vmap_cor = vmap_dic["cor"]
     vmap_mis = vmap_dic["mis"]
-    vmap_diff = vmap_cor - vmap_mis # shape: (num_neurons, num_layers)
-    # vmap_diff[:, tgt_layer]の絶対値をvdiffに関するスコア
-    vmap_diff_abs = np.abs(vmap_diff[:, tgt_layer]) # shape: (num_neurons, num_layers)
-    
+    vmap_diff = vmap_cor - vmap_mis # shape: (num_neurons, num_layers) or (num_neurons,)
+    # vmap_diffが2次元の場合は以下の処理
+    if len(vmap_diff.shape) == 2:
+        # vmap_diff[:, tgt_layer]の絶対値をvdiffに関するスコア
+        vmap_diff_abs = np.abs(vmap_diff[:, tgt_layer]) # shape: (num_neurons,)
+    elif len(vmap_diff.shape) == 1:
+        vmap_diff_abs = np.abs(vmap_diff) # shape: (num_neurons,)
     # cache_statesから中間ニューロンの値を取得
     # print(intermediate_states.shape) # shape: (num_tgt_mis_samples, num_neurons)
     # 活性化後値の全対象誤分類サンプルにわたっての平均をmean_activationに関するスコア
@@ -272,19 +275,28 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
     # neuron_score として，上の2つのベクトルの要素ごとの積を使う
     neuron_score = vmap_diff_abs * mean_activation # shape: (num_neurons,)
     
-    # neuron_scoreの上位n個を取得
-    if isinstance(n, int):
-        top_idx = np.argsort(neuron_score)[::-1][:n] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
-    elif isinstance(n, float):
-        assert n <= 1, f"Error: {n}"
-        top_idx = np.argsort(neuron_score)[::-1][:int(len(neuron_score) * n)] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
-    # top_idx[k]の順位がkであることを確認
-    for r, ti in enumerate(top_idx):
-        # print(r, ti, vmap_diff_abs[ti])
-        assert return_rank(neuron_score, ti) == r, f"Error: {ti}, {r}"
-    places_to_fix = [[tgt_layer, pos] for pos in top_idx]
-    # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
-    tgt_neuron_score = neuron_score[top_idx]
+    if n is not None:
+        # neuron_scoreの上位n個を取得
+        if isinstance(n, int):
+            top_idx = np.argsort(neuron_score)[::-1][:n] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
+        elif isinstance(n, float):
+            assert n <= 1, f"Error: {n}"
+            top_idx = np.argsort(neuron_score)[::-1][:int(len(neuron_score) * n)] # top_idx[k] = vmap_diff_absの中でk番目に大きい値のインデックス
+        # top_idx[k]の順位がkであることを確認
+        for r, ti in enumerate(top_idx):
+            # print(r, ti, vmap_diff_abs[ti])
+            assert return_rank(neuron_score, ti) == r, f"Error: {ti}, {r}"
+        places_to_fix = [[tgt_layer, pos] for pos in top_idx]
+        # vmap_diff[:, tgt_layer]からconditionに合うものだけ取り出す
+        tgt_neuron_score = neuron_score[top_idx]
+    else: # n is Noneの場合は，降順ソートしてから全ニューロンの情報を返す
+        top_idx = np.argsort(neuron_score)[::-1]
+        # top_idx[k]の順位がkであることを確認
+        for r, ti in enumerate(top_idx):
+            # print(r, ti, vmap_diff_abs[ti])
+            assert return_rank(neuron_score, ti) == r, f"Error: {ti}, {r}"
+        places_to_fix = [[tgt_layer, pos] for pos in top_idx]
+        tgt_neuron_score = neuron_score
     return places_to_fix, tgt_neuron_score
 
 def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):

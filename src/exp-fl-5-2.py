@@ -31,7 +31,7 @@ tgt_split = "repair"
 
 for k in range(num_fold):
     print(f"ds_name: {ds_name}, fold_id: {k}")
-    save_dir = os.path.join(exp_dir, f"{ds_name}_fold{k}")
+    save_dir = os.path.join(exp_dir, f"{ds_name}_fold{k}", "misclf_info")
     os.makedirs(save_dir, exist_ok=True)
     
     if ds_name == "c100":
@@ -78,7 +78,7 @@ for k in range(num_fold):
     true_labels = pred_out.label_ids
     # 気持ち程度にaccとf1だしとく
     met_dict = compute_metrics(pred_out)
-    print(f"Accuracy: {met_dict['eval_acc']}, F1: {met_dict['eval_f1']}")
+    print(f"Accuracy: {met_dict['accuracy']['accuracy']}, F1: {met_dict['f1']['f1']}")
     # 予測と正解ラベルを保存
     np.save(os.path.join(save_dir, f"{tgt_split}_true_labels.npy"), true_labels)
     np.save(os.path.join(save_dir, f"{tgt_split}_pred_labels.npy"), pred_labels)
@@ -98,3 +98,11 @@ for k in range(num_fold):
     print("Summary of the misclassification info:")
     print(f"mis_matrix: {mis_matrix.shape}")
     print(f"total_mis: {mis_matrix.sum()}")
+    
+    # pred_outも保存する
+    pred_out_save_dir = save_dir = os.path.join(exp_dir, f"{ds_name}_fold{k}", "PredictionOutput")
+    if not os.path.exists(pred_out_save_dir):
+        os.makedirs(pred_out_save_dir)
+    pred_out_save_path = os.path.join(pred_out_save_dir, f"{tgt_split}_pred.pkl")
+    with open(pred_out_save_path, "wb") as f:
+            pickle.dump(pred_out, f)
