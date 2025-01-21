@@ -134,7 +134,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         print(f"{cor_mis} vscore has been saved at {vscore_save_path}. shape is {tgt_vscore.shape}")
 
     # localize_neurons_with_mean_activationによるニューロン特定 (ニューロン数は限定しないので (layer_idx, neuron_idx) のリストがスコアの降順で帰ってくる) 
-    places_to_neuron, tgt_neuron_score = localize_neurons_with_mean_activation(vscore_before_dir=None, vscore_dir=vscore_dir, vscore_after_dir=None, tgt_layer=tgt_layer, n=None, intermediate_states=intermediate_states, tgt_mis_indices=tgt_mis_indices, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
+    places_to_neuron, tgt_neuron_score = localize_neurons_with_mean_activation(vscore_before_dir=None, vscore_dir=vscore_dir, vscore_after_dir=None, tgt_layer=tgt_layer, n=n, intermediate_states=intermediate_states, tgt_mis_indices=tgt_mis_indices, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
     
     # ニューロン位置情報を保存
     if fpfn is not None and misclf_type == "tgt":
@@ -218,25 +218,53 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     combined = np.concatenate((grad_Wbef_row_flat, grad_Waft_col_flat))  # shape: (num_neurons * 768 + 768 * num_neurons,)
     
     # 上位X個の値とインデックスを取得
-    top_indices = np.argsort(-np.abs(combined))  # 絶対値が大きい順でソート
-    top_values = combined[top_indices]
-    print(f"len(top_indices): {len(top_indices)}") # w_num
+    sorted_indices = np.argsort(np.abs(combined))[::-1] # 絶対値が大きい順でソート
+    print(f"len(top_indices): {len(sorted_indices)}") # w_num
     # インデックスを元の形状に変換
-    original_shape_bef = grad_Wbef_row.shape  # (num_neurons, 768)
-    original_shape_aft = grad_Waft_col.shape  # (768, num_neurons)
+    shape_bef = grad_Wbef_row.shape  # (num_neurons, 768)
+    shape_aft = grad_Waft_col.shape  # (768, num_neurons)
     
-    top_indices_bef = [i for i in top_indices if i < len(grad_Wbef_row_flat)]  # Wbef に対応するインデックス
-    top_indices_aft = [i - len(grad_Wbef_row_flat) for i in top_indices if i >= len(grad_Wbef_row_flat)]  # Waft に対応
-    assert len(top_indices_bef) + len(top_indices_aft) == len(top_indices)
+    ranks = np.zeros_like(sorted_indices) # 1次元
+    ranks[sorted_indices] = np.arange(1, len(combined) + 1)  # 降順, i番目はweighted_scoresがi番目のデータの順位
+    
+    # befとaftに分類
+    bef_indices, bef_ranks = [], []
+    aft_indices, aft_ranks = [], []
+    
+    # befとaftの境目インデックスを記録
+    split_idx = grad_Wbef_row.numel()
+    
+    for idx, rank in enumerate(ranks):
+        if idx < split_idx:
+            bef_indices.append(np.unravel_index(idx, shape_bef))
+            bef_ranks.append(rank)
+        else:
+            adjusted_idx = idx - split_idx
+            aft_indices.append(np.unravel_index(adjusted_idx, shape_aft))
+            aft_ranks.append(rank)
+    # nparrayに変更
+    bef_indices = np.array(bef_indices)
+    aft_indices = np.array(aft_indices)
+    bef_ranks = np.array(bef_ranks)
+    aft_ranks = np.array(aft_ranks)
+    print(f"len(bef_indices): {len(bef_indices)}, len(aft_indices): {len(aft_indices)}")
+    print(f"len(bef_ranks): {len(bef_ranks)}, len(aft_ranks): {len(aft_ranks)}")
+    # スコアのランキングの昇順（1位が一番大きいのでスコアの降順）にソート
+    sorted_bef = np.argsort(bef_ranks)  # ランク昇順
+    bef_indices = bef_indices[sorted_bef]
+    bef_ranks = bef_ranks[sorted_bef]
 
-    # unravel で元の形状に戻す
-    pos_before = np.array([np.unravel_index(idx, original_shape_bef) for idx in top_indices_bef])
-    pos_after = np.array([np.unravel_index(idx, original_shape_aft) for idx in top_indices_aft])
+    sorted_aft = np.argsort(aft_ranks)  # ランク昇順
+    aft_indices = aft_indices[sorted_aft]
+    aft_ranks = aft_ranks[sorted_aft]
 
     # 位置情報を保存
     location_save_path = os.path.join(location_save_dir, f"exp-fl-5_location_nAll_wAll_weight.npy")
-    np.save(location_save_path, (pos_before, pos_after))
+    np.save(location_save_path, (bef_indices, aft_indices))
     print(f"saved location information to {location_save_path}")
+    rank_save_path = os.path.join(location_save_dir, f"exp-fl-5_location_nAll_wAll_weight_rank.npy")
+    np.save(rank_save_path, (bef_ranks, aft_ranks))
+    print(f"saved rank information to {rank_save_path}")
     # 終了時刻
     te = time.perf_counter()
     elapsed_time = te - ts
@@ -249,14 +277,14 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     results = []
-    n_list = [96]
+    n_list = [None]
     for k, tgt_rank, misclf_type, fpfn, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list):
         print(f"Start: ds={ds}, k={k}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=NUM_IDENTIFIED_NEURONS)
+        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)

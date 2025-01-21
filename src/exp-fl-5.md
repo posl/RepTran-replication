@@ -23,6 +23,10 @@ FLが学習にalignしている感じがするが，real faultsを特定する�
 - vdiff+mean_act+grad_loss (`exp-fl-5-6.py`)について：
     - Vdiffとmean_actによるニューロン特定 -> grad_lossも使った重み特定をやる
     - 保存したいもの：cor, mis時のvscore, mean_act (mis時のみ), 各重みに対するgrad_lossのnpy
-
+- `exp-fl-5-7.py`: 5-1で作ったFLのGTと5-4~6で得られた結果を比較して一致率などを出すためのスクリプト．
+    - ランダムな位置特定はやる必要がある？ランダムに特定した場合の期待値は計算できる．
 
 ## 実験結果
+
+現在TransformerのAttentionの後のFFNレイヤの2つの重み（768->3072に変換する重みと，3072->768に変換する重み）に対するFault Localizationを実装しました．
+FL手法は，疑惑スコアでソートされた重みのインデックスのリストを返します．

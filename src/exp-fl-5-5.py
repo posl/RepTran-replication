@@ -57,22 +57,63 @@ def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_
         weight_grad_loss * normalized_grad_loss +
         weight_fwd_imp * normalized_fwd_imp
     ).detach().cpu().numpy()
-
     # nが指定されていない場合は全件
     if n is None:
         n = len(weighted_scores)
-    # スコアが高い順にソートして上位n件のインデックスを取得
-    top_n_indices = np.argsort(weighted_scores)[-n:][::-1]  # 降順で取得
+    
+    # スコアが高い順にソートしてランキングを計算
+    sorted_indices = np.argsort(weighted_scores)[-n:][::-1]  # 降順, i番目はweighted_scoresがi番目に大きいデータのインデックス
+    ranks = np.zeros_like(sorted_indices) # 1次元
+    ranks[sorted_indices] = np.arange(1, len(weighted_scores) + 1)  # 降順, i番目はweighted_scoresがi番目のデータの順位
 
-    # befとaftに分類し、元の形状に戻す
-    top_n_bef = np.array([
-        np.unravel_index(idx, shape_bef) for idx in top_n_indices if idx < split_idx
-    ])
-    top_n_aft = np.array([
-        np.unravel_index(idx - split_idx, shape_aft) for idx in top_n_indices if idx >= split_idx
-    ])
+    # befとaftに分類
+    bef_indices, bef_ranks = [], []
+    aft_indices, aft_ranks = [], []
+    
+    for idx, rank in enumerate(ranks): # NOTE: ここでのrankはcombined_diff[idx]のデータの順位
+        if idx < split_idx:
+            bef_indices.append(np.unravel_index(idx, shape_bef))
+            bef_ranks.append(rank)
+        else:
+            adjusted_idx = idx - split_idx
+            aft_indices.append(np.unravel_index(adjusted_idx, shape_aft))
+            aft_ranks.append(rank)
+    # nparrayに変更
+    bef_indices = np.array(bef_indices)
+    aft_indices = np.array(aft_indices)
+    bef_ranks = np.array(bef_ranks)
+    aft_ranks = np.array(aft_ranks)
+    print(f"len(bef_indices): {len(bef_indices)}, len(aft_indices): {len(aft_indices)}")
+    print(f"len(bef_ranks): {len(bef_ranks)}, len(aft_ranks): {len(aft_ranks)}")
+    
+    # スコアのランキングの昇順（1位が一番大きいのでスコアの降順）にソート
+    sorted_bef = np.argsort(bef_ranks)  # ランク昇順
+    bef_indices = bef_indices[sorted_bef]
+    bef_ranks = bef_ranks[sorted_bef]
 
-    return {"bef": top_n_bef, "aft": top_n_aft, "scores": weighted_scores[top_n_indices]}
+    sorted_aft = np.argsort(aft_ranks)  # ランク昇順
+    aft_indices = aft_indices[sorted_aft]
+    aft_ranks = aft_ranks[sorted_aft]
+    
+    # 全体のランクが30位以内の全てを表示
+    print("Top 30:")
+    rank_mask_bef = bef_ranks <= 30
+    rank_mask_aft = aft_ranks <= 30
+    print(f"rank_mask_bef: {rank_mask_bef}")
+    print(f"rank_mask_aft: {rank_mask_aft}")
+    print(f"bef_indices: {bef_indices[rank_mask_bef]}")
+    print(f"aft_indices: {aft_indices[rank_mask_aft]}")
+    print(f"bef_ranks: {bef_ranks[rank_mask_bef]}")
+    print(f"aft_ranks: {aft_ranks[rank_mask_aft]}")
+    exit()
+    
+    # 辞書形式で返す
+    return {
+        "bef": bef_indices,
+        "aft": aft_indices,
+        "bef_ranks": bef_ranks,
+        "aft_ranks": aft_ranks,
+    }
 
 
 def calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list):
@@ -344,34 +385,39 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         identified_indices = calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list)
     elif strategy == "weighted":
         print("Calculating top n for target weights...")
-        identified_indices = calculate_top_n_flattened(grad_loss_list, fwd_imp_list, 8 * n * n)
-        identified_indices_all = calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None)
+        wnum = 8 * n * n if n is not None else None
+        identified_indices = calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=wnum)
         # nが指定されない場合も保存したい
     print(f"len(identified_indices['bef']): {len(identified_indices['bef'])}, len(identified_indices['aft']): {len(identified_indices['aft'])}")
-    print(f"len(identified_indices_all['bef']): {len(identified_indices_all['bef'])}, len(identified_indices_all['aft']): {len(identified_indices_all['aft'])}")
     
-    for iis, filename in zip([identified_indices, identified_indices_all], [f"exp-fl-5_location_n{n}_weight_bl.npy", "exp-fl-5_location_nAll_weight_bl.npy"]):
-        # "before" と "after" に分けて格納
-        pos_before = iis["bef"]
-        pos_after = iis["aft"]
-        
-        # 結果の出力
-        print(f"pos_before: {pos_before}")
-        print(f"pos_after: {pos_after}")
-        
-        # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報を保存する
-        if fpfn is not None and misclf_type == "tgt":
-            location_save_dir = os.path.join(exp_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
-        elif misclf_type == "all":
-            location_save_dir = os.path.join(exp_dir, f"all_weights_location")
-        else:
-            location_save_dir = os.path.join(exp_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-        if not os.path.exists(location_save_dir):
-            os.makedirs(location_save_dir)
-        # old_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
-        location_save_path = os.path.join(location_save_dir, filename)
-        np.save(location_save_path, (pos_before, pos_after))
-        print(f"saved location information to {location_save_path}")
+    location_filename = "exp-fl-5_location_nAll_weight_bl.npy" if n is None else f"exp-fl-5_location_n{n}_weight_bl.npy"
+    rank_filename = "exp-fl-5_location_nAll_weight_bl_rank.npy" if n is None else f"exp-fl-5_location_n{n}_weight_bl_rank.npy"
+    # "before" と "after" に分けて格納
+    pos_before = identified_indices["bef"]
+    pos_after = identified_indices["aft"]
+    rank_before = identified_indices["bef_ranks"]
+    rank_after = identified_indices["aft_ranks"]
+    
+    # 結果の出力
+    print(f"pos_before: {pos_before}")
+    print(f"pos_after: {pos_after}")
+    
+    # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報を保存する
+    if fpfn is not None and misclf_type == "tgt":
+        location_save_dir = os.path.join(exp_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
+    elif misclf_type == "all":
+        location_save_dir = os.path.join(exp_dir, f"all_weights_location")
+    else:
+        location_save_dir = os.path.join(exp_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
+    if not os.path.exists(location_save_dir):
+        os.makedirs(location_save_dir)
+    # old_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
+    location_save_path = os.path.join(location_save_dir, location_filename)
+    rank_save_path = os.path.join(location_save_dir, rank_filename)
+    np.save(location_save_path, (pos_before, pos_after))
+    print(f"saved location information to {location_save_path}")
+    np.save(rank_save_path, (rank_before, rank_after))
+    print(f"saved rank information to {rank_save_path}")
     # 終了時刻
     te = time.perf_counter()
     elapsed_time = te - ts
@@ -384,14 +430,14 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     results = []
-    n_list = [96]
+    n_list = [None]
     for k, tgt_rank, misclf_type, fpfn, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list):
         print(f"Start: ds={ds}, k={k}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=NUM_IDENTIFIED_NEURONS)
+        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)

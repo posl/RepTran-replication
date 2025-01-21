@@ -62,24 +62,73 @@ for k in range(num_fold):
         wbef_list.append(wbef)
         waft_list.append(waft)
     # 重み行列の差分の絶対値 (変化量だけに興味があり符号には興味がない) を計算
-    diff_wbef = torch.abs(wbef_list[1] - wbef_list[0])
-    diff_waft = torch.abs(waft_list[1] - waft_list[0])
-    diff_wbef = diff_wbef.cpu().detach().numpy()
-    diff_waft = diff_waft.cpu().detach().numpy()
+    diff_wbef = torch.abs(wbef_list[1] - wbef_list[0]).cpu().detach().numpy()
+    diff_waft = torch.abs(waft_list[1] - waft_list[0]).cpu().detach().numpy()
+    shape_bef = diff_wbef.shape
+    shape_aft = diff_waft.shape
+    split_idx = diff_wbef.size
+    # 統合してランキングを作成
+    combined_diff = np.concatenate([diff_wbef.flatten(), diff_waft.flatten()])
+    sorted_indices = np.argsort(combined_diff)[::-1]  # 降順でランキング作成, i番目はcombined_diffがi番目に大きいデータのインデックス
+    ranks = np.zeros_like(sorted_indices) # 1次元
+    ranks[sorted_indices] = np.arange(1, len(combined_diff) + 1)  # 降順, i番目はcombined_diff[i]の順位
+    # 確認
+    # print(combined_diff[sorted_indices[:13]])
+    # print(ranks[sorted_indices[:13]])
+    # print(sorted_indices[:13])
+    # for si in sorted_indices[:13]:
+    #     if si < split_idx:
+    #         print(f"bef: {np.unravel_index(si, shape_bef)}")
+    #     else:
+    #         print(f"aft: {np.unravel_index(si - split_idx, shape_aft)}")
+    # befとaftに分類
+    bef_indices, bef_ranks = [], []
+    aft_indices, aft_ranks = [], []
     
-    # wbef, waftそれぞれで変化の絶対値が大きい順にインデックスを取得
-    pos_before = np.unravel_index(np.argsort(-diff_wbef, axis=None), diff_wbef.shape)  # 大きい順
-    pos_after = np.unravel_index(np.argsort(-diff_waft, axis=None), diff_waft.shape)  # 大きい順
+    
+    for idx, rank in enumerate(ranks): # NOTE: ここでのrankはcombined_diff[idx]のデータの順位
+        if idx < split_idx:
+            bef_indices.append(np.unravel_index(idx, shape_bef))
+            bef_ranks.append(rank)
+        else:
+            adjusted_idx = idx - split_idx
+            aft_indices.append(np.unravel_index(adjusted_idx, shape_aft))
+            aft_ranks.append(rank)
+    # nparrayに変更
+    bef_indices = np.array(bef_indices)
+    aft_indices = np.array(aft_indices)
+    bef_ranks = np.array(bef_ranks)
+    aft_ranks = np.array(aft_ranks)
+    print(f"len(bef_indices): {len(bef_indices)}, len(aft_indices): {len(aft_indices)}")
+    print(f"len(bef_ranks): {len(bef_ranks)}, len(aft_ranks): {len(aft_ranks)}")
+    
+    # スコアのランキングの昇順（1位が一番大きいのでスコアの降順）にソート
+    sorted_bef = np.argsort(bef_ranks)  # ランク昇順
+    bef_indices = bef_indices[sorted_bef]
+    bef_ranks = bef_ranks[sorted_bef]
 
-    # インデックスをタプルのリストに変換
-    pos_before_list = np.array(list(zip(pos_before[0], pos_before[1])))
-    pos_after_list = np.array(list(zip(pos_after[0], pos_after[1])))
-    print(f"pos_before_list: {pos_before_list.shape}")
-    print(f"pos_after_list: {pos_after_list.shape}")
-
+    sorted_aft = np.argsort(aft_ranks)  # ランク昇順
+    aft_indices = aft_indices[sorted_aft]
+    aft_ranks = aft_ranks[sorted_aft]
+    
+    # 全体のランクが30位以内の全てを表示
+    print("Top 30: (just for checking)")
+    rank_mask_bef = bef_ranks <= 30
+    rank_mask_aft = aft_ranks <= 30
+    print(f"bef_indices: {bef_indices[rank_mask_bef]}")
+    print(f"aft_indices: {aft_indices[rank_mask_aft]}")
+    print(f"bef_ranks: {bef_ranks[rank_mask_bef]}")
+    print(f"aft_ranks: {aft_ranks[rank_mask_aft]}")
+    
+    # ランキングを保存
+    np.save(os.path.join(exp_dir, f"fl_gt_before_{ds_name}_fold{k}_rank.npy"), bef_ranks)
+    np.save(os.path.join(exp_dir, f"fl_gt_after_{ds_name}_fold{k}_rank.npy"), aft_ranks)
+    print(f"Saved: fl_gt_before_{ds_name}_fold{k}_rank.npy")
+    print(f"Saved: fl_gt_after_{ds_name}_fold{k}_rank.npy")
+    
     # インデックスリストをnpyファイルとして保存
-    np.save(os.path.join(exp_dir, f"fl_gt_before_{ds_name}_fold{k}.npy"), pos_before_list)
-    np.save(os.path.join(exp_dir, f"fl_gt_after_{ds_name}_fold{k}.npy"), pos_after_list)
+    np.save(os.path.join(exp_dir, f"fl_gt_before_{ds_name}_fold{k}.npy"), bef_indices)
+    np.save(os.path.join(exp_dir, f"fl_gt_after_{ds_name}_fold{k}.npy"), aft_indices)
     print(f"Saved: fl_gt_before_{ds_name}_fold{k}.npy")
     print(f"Saved: fl_gt_after_{ds_name}_fold{k}.npy")
     
