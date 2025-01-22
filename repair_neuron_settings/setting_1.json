@@ -1,7 +1,0 @@
-{
-    "theta": 10, 
-    "num_sampled_from_correct": 200,
-    "max_search_num": 50,
-    "pop_size": 100,
-    "alpha": 1
-}
