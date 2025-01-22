@@ -132,7 +132,6 @@ def compute_topk_overlap(fl_rank: np.ndarray, gt_rank: np.ndarray,
     return overlap_list
 
 def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
-    ts = time.perf_counter()
     
     # datasetごとに違う変数のセット
     tgt_split = "repair" # NOTE: we only use repair split for repairing
@@ -245,6 +244,7 @@ def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
     # ============== 3) Plot them as subplots ===========================
     fig, axes = plt.subplots(1, 4, figsize=(20,4))
     
+    ret_dict = defaultdict(defaultdict)
     colors = ["b", "r", "g"]  # 3つの手法用
     for idx, method in enumerate(fl_method_list):
         fl_rank = FL_ranks[method]
@@ -261,6 +261,10 @@ def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
             gt_rank=fl_gt_rank_combined,
             K_values=K_values
         )
+        ret_dict[method]["precision"] = p_list
+        ret_dict[method]["recall"] = r_list
+        ret_dict[method]["f1"] = f_list
+        ret_dict[method]["overlap"] = overlap_list
         # 手法ごとのリストをprint
         print(f"[{method}] Precision: {p_list}")
         print(f"[{method}] Recall: {r_list}")
@@ -311,9 +315,13 @@ def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
     plt.savefig(os.path.join(location_save_dir, saved_filename + ".pdf"), dpi=300, bbox_inches="tight")
     print(f"Saved: {location_save_dir}/{saved_filename}.png/pdf")
     plt.close(fig)
-
+    
+    # ret_dictを保存
+    with open(os.path.join(location_save_dir, saved_filename + ".json"), "w") as f:
+        json.dump(ret_dict, f, indent=4)
+    
     print("Done FL comparison for ds=", ds_name, " k=", k, " in method_list=", fl_method_list)
-    print("Elapsed:", time.perf_counter() - ts)
+    return ret_dict
 
 if __name__ == "__main__":
     ds = "c100"
@@ -328,4 +336,4 @@ if __name__ == "__main__":
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
-        main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
+        ret_dict = main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
