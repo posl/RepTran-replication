@@ -237,7 +237,7 @@ def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
     print(f"top_gt = 1% of {N} => {top_gt}")
     
     # ============== 2) K as {0.1%, 0.5%, 1%, 2%, 5%, 10%} of N =========
-    K_fractions = [0.001, 0.005, 0.01, 0.02, 0.05, 0.1, 0.2]
+    K_fractions = [0.001, 0.005, 0.01, 0.02, 0.05]
     K_values = [int(math.floor(frac * N)) for frac in K_fractions]
     print(f"K_values = {K_values}")
     
