@@ -72,6 +72,10 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
             print(f"op: {op}, fl_target: {fl_target}, method_name: {fl_method}")
             # proba_save_dirの作成
             proba_save_dir = os.path.join(save_dir, f"exp-fl-1_proba_n{n}_{fl_target}_{fl_method}")
+            # # vdiffかつallの場合はpretrained_dir直下のall_weights_locationを使う
+            # if fl_method == "vdiff" and misclf_type == "all":
+            #     proba_save_dir = os.path.join(pretrained_dir, f"all_weights_location", f"exp-fl-1_proba_n{n}_{fl_target}_{fl_method}")
+            
             for tl in label_list:
                 # オリジナルのモデルの予測確率を取得
                 ori_proba_save_path = os.path.join(pretrained_dir, "pred_results", f"{tgt_split}_proba_{tl}.npy")

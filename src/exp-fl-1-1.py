@@ -86,6 +86,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
             # log表示
             logger.info(f"places_to_fix={places_to_fix}")
             logger.info(f"num(pos_to_fix)={len(places_to_fix)}")
+            print(f"num(pos_to_fix)={len(places_to_fix)}")
             # 位置情報を保存
             np.save(location_save_path, places_to_fix)
             logger.info(f"saved location information to {location_save_path}")
@@ -96,6 +97,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
             logger.info(f"pos_before={pos_before}")
             logger.info(f"pos_after={pos_after}")
             logger.info(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
+            print(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
             # 位置情報を保存
             np.save(location_save_path, (pos_before, pos_after))
             logger.info(f"saved location information to {location_save_path}")

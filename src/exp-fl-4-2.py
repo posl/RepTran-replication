@@ -36,14 +36,14 @@ if __name__ == "__main__":
     # 1) (fl_method, fl_target) の行Index / misclf_type の列Index を準備
     #========================================================================
     method_target_pairs = (
-        df[["fl_method", "fl_target"]]
+        df[["fl_target", "fl_method"]]
         .drop_duplicates()
-        .sort_values(["fl_method", "fl_target"])
+        .sort_values(["fl_target", "fl_method"])
         .apply(tuple, axis=1)
         .tolist()
     )
     row_index = pd.MultiIndex.from_tuples(
-        method_target_pairs, names=["fl_method", "fl_target"]
+        method_target_pairs, names=["fl_target", "fl_method"]
     )
 
     # スクリプト2で使っていた5種類
@@ -132,9 +132,13 @@ if __name__ == "__main__":
         grouped_df = (
             df_extracted
             .groupby(["label", "op", "fl_method", "fl_target"], as_index=False)
-            .agg(mean_diff_proba=("diff_proba", "mean"),
-                 std_diff_proba=("diff_proba", "std"))
+            .agg(
+                count_rows=("diff_proba", "count"),
+                mean_diff_proba=("diff_proba", "mean"),
+                std_diff_proba=("diff_proba", "std"))
         )
+        # print(f"count_rows: {grouped_df['count_rows'].sum()}")
+        print(f"grouped_df.shape: {grouped_df.shape}")
         grouped_df["mean_diff_proba"] = grouped_df["mean_diff_proba"] * 100
 
         #====================================================================
@@ -162,7 +166,7 @@ if __name__ == "__main__":
             # 上書き or 最大値比較 or 加算など、方針に合わせてどうぞ
             # 例: 上書き => 
             # if n_pos > current_val:
-            result_table.loc[(method_val, target_val), col_name] = n_pos
+            result_table.loc[(target_val, method_val), col_name] = n_pos
 
     #========================================================================
     # 6) テーブルを保存 (列は misclf_type だけ)
@@ -171,5 +175,17 @@ if __name__ == "__main__":
     print(result_table)
 
     out_csv = f"./exp-fl-4_{ds}_no_rank_table.csv"
+    desired_index_order = [
+        ("neuron", "random"),
+        ("weight", "random"),
+        ("neuron", "ig"),
+        ("weight", "bl"),
+        ("neuron", "vdiff"),
+        ("weight", "vdiff"),
+        ("neuron", "vdiff+mean_act"),
+        ("weight", "vdiff+mean_act+grad"),
+    ]
+    # 再インデックス (存在しないペアがある場合は NaN になります)
+    result_table = result_table.reindex(desired_index_order)
     result_table.to_csv(out_csv)
     print(f"Saved table to {out_csv}")

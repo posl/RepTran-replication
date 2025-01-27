@@ -153,8 +153,7 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    # fl_method_list = ["vdiff", "random"]
-    fl_method_list = ["random"]
+    fl_method_list = ["vdiff", "random"]
     for k, tgt_rank, misclf_type, fpfn, fl_target, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, fl_method_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
