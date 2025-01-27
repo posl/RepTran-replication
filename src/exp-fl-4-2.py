@@ -6,137 +6,170 @@ from collections import defaultdict
 from utils.constant import ViTExperiment
 import matplotlib.pyplot as plt
 import seaborn as sns
-import argparse
 sns.set_style("ticks")
 
 if __name__ == "__main__":
-    # only_suppressというバイナリ変数をargparseで受けとる
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--separate_by_target", action="store_true", default=False)
-    args = parser.parse_args()
-    separate_by_target = args.separate_by_target
-    
     ds = "c100"
     true_labels = range(100) if ds == "c100" else None
     tgt_split = "repair"
     exp_fl_1_save_path = f"./exp-fl-1_{ds}_proba_diff.csv"
     exp_fl_2_save_path = f"./exp-fl-2_{ds}_proba_diff.csv"
     exp_fl_3_save_path = f"./exp-fl-3_{ds}_proba_diff.csv"
+
     df1 = pd.read_csv(exp_fl_1_save_path)
     df2 = pd.read_csv(exp_fl_2_save_path)
     df3 = pd.read_csv(exp_fl_3_save_path)
     print(f"df1.shape: {df1.shape}")
     print(f"df2.shape: {df2.shape}")
     print(f"df3.shape: {df3.shape}")
+
     # df1,2,3を縦に結合
-    df = pd.concat([df1, df2, df3])
+    df = pd.concat([df1, df2, df3], ignore_index=True)
     print(f"df.shape: {df.shape}")
-    # df_run_allのdiff_proba_mean以外のユニークな値のリストを表示
+
+    # diff_proba以外のユニークな値を表示 (デバッグ用)
     for col in df.columns:
         if col not in ["diff_proba"]:
-            print(f"{col}: {df[col].unique()}") 
-            
-    # 対象の誤分類情報（ランキングと種類）を取得
-    tgt_rank_list = df["tgt_rank"].unique()
-    print(f"tgt_rank_list: {tgt_rank_list}")
-    # 対象のmisclf_typeとfpfnのペアのリストを生成
+            print(f"{col}: {df[col].unique()}")
+
+    #========================================================================
+    # 1) (fl_method, fl_target) の行Index / misclf_type の列Index を準備
+    #========================================================================
+    method_target_pairs = (
+        df[["fl_method", "fl_target"]]
+        .drop_duplicates()
+        .sort_values(["fl_method", "fl_target"])
+        .apply(tuple, axis=1)
+        .tolist()
+    )
+    row_index = pd.MultiIndex.from_tuples(
+        method_target_pairs, names=["fl_method", "fl_target"]
+    )
+
+    # スクリプト2で使っていた5種類
+    known_misclf_types = ["all", "src_tgt", "tgt_all", "tgt_fp", "tgt_fn"]
+    # 1次元だけのカラム
+    col_index = pd.Index(known_misclf_types, name="misclf_type")
+
+    # 結果テーブル (行=(fl_method,fl_target), 列=misclf_type)
+    result_table = pd.DataFrame(index=row_index, columns=col_index, data=0)
+
+    #========================================================================
+    # 2) misclf_type と fpfn の組み合わせを取得してループ
+    #    ただし rank は一切絞らず、全 rank を対象に集計
+    #========================================================================
     misclf_type_fpfn_list = df[["misclf_type", "fpfn"]].drop_duplicates().values.tolist()
-    print(f"misclf_type_fpfn_list: {misclf_type_fpfn_list}")
-    
-    # ある列が特定の値の行のみ抽出
-    for tr, mc_fpfn in product(tgt_rank_list, misclf_type_fpfn_list):
-        print(f"tr: {tr}, mc_fpfn: {mc_fpfn}")
-        # NaN かどうかをチェックして条件分岐
-        if pd.isna(mc_fpfn[1]):
-            df_extracted = df[(df["tgt_rank"] == tr) & (df["misclf_type"] == mc_fpfn[0]) & (df["fpfn"].isna())]
+    print("misclf_type_fpfn_list:", misclf_type_fpfn_list)
+
+    for (mc_type, fpfn_val) in misclf_type_fpfn_list:
+        # 例: mc_type='all', fpfn_val=nan
+        #     mc_type='tgt', fpfn_val='fp'
+        #     mc_type='src_tgt', fpfn_val=nan
+        #     etc.
+
+        # どの列名に書き込むかを決める (script2 のロジック)
+        # mc_type='all', 'src_tgt', 'tgt', ...
+        # fpfn_val= NaN / 'fp' / 'fn'
+        # ここで 'tgt' なら 'tgt_all' / 'tgt_fp' / 'tgt_fn' に振り分け
+        col_name = None
+        if mc_type == "all":
+            # 'all' は rank関係なく
+            # 書き込み先は known_misclf_types の 'all'
+            col_name = "all"
+        elif mc_type == "src_tgt":
+            col_name = "src_tgt"
+        elif mc_type == "tgt":
+            # 'tgt' + fp/fn のパターン
+            if pd.isna(fpfn_val):
+                col_name = "tgt_all"
+            elif fpfn_val == "fp":
+                col_name = "tgt_fp"
+            elif fpfn_val == "fn":
+                col_name = "tgt_fn"
+            else:
+                continue  # 不明なパターンはスキップ
         else:
-            df_extracted = df[(df["tgt_rank"] == tr) & (df["misclf_type"] == mc_fpfn[0]) & (df["fpfn"] == mc_fpfn[1])]
-        # print(df_extracted["fl_method"].value_counts())
-        # print(df_extracted[["tgt_rank", "misclf_type", "fpfn"]].head())
-        # df_extracted = df[(df["misclf_type"] == "src_tgt") & (df["tgt_rank"] == 1)]
-        # 抽出した後のdfはtgt_rank, misclf_type, fpfnのユニーク値が1つであることを保証
-        assert len(df_extracted["tgt_rank"].unique()) == 1
-        assert len(df_extracted["misclf_type"].unique()) == 1
-        assert len(df_extracted["fpfn"].unique()) == 1
-    
-        # label列の値, op列の値, fl_method列の値 ごとにdiff_probaの平均を表にする
+            # もし 'tgt_all' とか既に入ってる場合があれば対応
+            # あるいは余計なものはスキップ
+            continue
+
+        if col_name not in known_misclf_types:
+            # 既定の5種に含まれないならスキップ
+            continue
+
+        print(f"\n==== Collecting for mc_type={mc_type}, fpfn_val={fpfn_val} => col={col_name}")
+
+        #====================================================================
+        # 3) データ抽出 (rankを無視: 全rank) + misclf_type/fpfn でフィルタ
+        #====================================================================
+        # df_extracted = df.copy()  # 全rank含む
+        # -> ただし mc_type == 'all'なら何も絞らない (fpfn_val があるならエラー?)
+        # -> mc_type == 'src_tgt'なら df_extracted = df[df["misclf_type"]=='src_tgt']
+        # -> mc_type == 'tgt' なら df_extracted = df[df["misclf_type"]=='tgt'] etc.
+
+        if mc_type == "all":
+            # all は misclf_type を絞らず
+            if not pd.isna(fpfn_val):
+                # all なのに fpfn_val があるのは整合しないはず → スキップかcontinue
+                print("all + fpfn_val != nan → skip")
+                continue
+            df_extracted = df[df["misclf_type"] == mc_type]
+        else:
+            df_extracted = df[df["misclf_type"] == mc_type]
+            if pd.isna(fpfn_val):
+                df_extracted = df_extracted[df_extracted["fpfn"].isna()]
+            else:
+                df_extracted = df_extracted[df_extracted["fpfn"] == fpfn_val]
+
+        if len(df_extracted) == 0:
+            print("No data in df_extracted => skip")
+
+        print("df_extracted.shape:", df_extracted.shape)
+
+        #====================================================================
+        # 4) groupby(["label", "op", "fl_method", "fl_target"]) で mean_diff_proba
+        #====================================================================
         grouped_df = (
             df_extracted
-            .groupby(["label", "op", "fl_method", "fl_target"])
-            .agg(mean_diff_proba=("diff_proba", "mean"), std_diff_proba=("diff_proba", "std"))
-            .reset_index()
+            .groupby(["label", "op", "fl_method", "fl_target"], as_index=False)
+            .agg(mean_diff_proba=("diff_proba", "mean"),
+                 std_diff_proba=("diff_proba", "std"))
         )
         grouped_df["mean_diff_proba"] = grouped_df["mean_diff_proba"] * 100
-        print(f"df_extracted.columns: {df_extracted.columns}, grouped_df.columns: {grouped_df.columns}")
-        print(f"df_extracted.shape: {df_extracted.shape}, grouped_df.shape: {grouped_df.shape}")
-        exit()
-    
-    
-    if not separate_by_target:
-        for target in grouped_df["fl_target"].unique():
-            filename = f"./exp-fl-4_{ds}_proba_diff_{target}"
-            # op, fl_method, fl_targetの組み合わせごとにdiff_probaの平均をプロット
-            plt.figure(figsize=(8, 6))
-            color_list = ["red", "blue", "orange", "lightblue", "yellow", "green", "purple", "brown", "pink", "gray", "cyan", "magenta"]
-            for i, (fl_method, fl_target) in enumerate(product(grouped_df["fl_method"].unique(), [target])):
-                # 特定のfl_method, fl_targetの行だけ抜き出し (2xクラス数 行)
-                subset = grouped_df[(grouped_df["fl_method"] == fl_method) & (grouped_df["fl_target"] == fl_target)]
-                # ラベルごとに，enh/supでmean_diff_probaが最大の行を抜き出し (クラス数 行)
-                subset = subset.groupby(["label"]).apply(lambda group: group.loc[group["mean_diff_proba"].idxmax()])
-                print(subset.shape)
-                print(subset["op"].value_counts())
-                if len(subset) == 0:
-                    continue
-                # subset["mean_diff_proba"]で0以上の数を数える
-                n_pos = len(subset[subset["mean_diff_proba"] > 0])
-                plt.plot(subset["label"], subset["mean_diff_proba"], label=f"{fl_method} ({fl_target}), n_pos={n_pos}", color=color_list[i], alpha=0.66)
-                mean_of_means = subset["mean_diff_proba"].mean()
-                plt.axhline(mean_of_means, color=color_list[i], linestyle="--")
-            plt.axhline(0, color="black", linestyle="-")
-            plt.xlabel("Class Label")
-            plt.ylabel("Average Change of Probability (%)")
-            plt.legend(loc='lower right', bbox_to_anchor=(1, 0))
-            plt.savefig(filename + ".pdf", dpi=300, bbox_inches="tight")
-            plt.savefig(filename + ".png", dpi=300, bbox_inches="tight")
-            # plt.show()
-    else:
-        plt.figure(figsize=(8, 6))
-        filename = f"./exp-fl-4_{ds}_proba_diff"
-        # 寒色系 (neuron) と暖色系 (weight)、グレー系 (random) の色リスト
-        color_map = {
-            "neuron": ["blue", "cyan", "purple", "lightblue"],
-            "weight": ["red", "orange", "green", "darkred"],
-            "random": ["gray", "darkgray", "lightgray"]
-        }
-        used_colors = set()
-        for target in grouped_df["fl_target"].unique():
-            for i, (fl_method, fl_target) in enumerate(product(grouped_df["fl_method"].unique(), [target])):
-                # 特定のfl_method, fl_targetの行だけ抜き出し (2xクラス数 行)
-                subset = grouped_df[(grouped_df["fl_method"] == fl_method) & (grouped_df["fl_target"] == fl_target)]
-                # ラベルごとに，enh/supでmean_diff_probaが最大の行を抜き出し (クラス数 行)
-                subset = subset.groupby(["label"]).apply(lambda group: group.loc[group["mean_diff_proba"].idxmax()])
-                print(subset.shape)
-                print(subset["op"].value_counts())
-                if len(subset) == 0:
-                    continue
-                # カラー選択のロジック
-                if "random" in fl_method:
-                    color_list = color_map["random"]
-                elif "neuron" in fl_target:
-                    color_list = color_map["neuron"]
-                else:
-                    color_list = color_map["weight"]
-                # 未使用の色を選ぶ
-                color = next(color for color in color_list if color not in used_colors)
-                used_colors.add(color)
-                # subset["mean_diff_proba"]で0以上の数を数える
-                n_pos = len(subset[subset["mean_diff_proba"] > 0])
-                plt.plot(subset["label"], subset["mean_diff_proba"], label=f"{fl_method} ({fl_target}), n_pos={n_pos}", color=color, alpha=0.66)
-                mean_of_means = subset["mean_diff_proba"].mean()
-                plt.axhline(mean_of_means, color=color, linestyle="--")
-        plt.axhline(0, color="black", linestyle="-")
-        plt.xlabel("Class Label")
-        plt.ylabel("Average Change of Probability (%)")
-        plt.legend(loc='lower right', bbox_to_anchor=(1, 0))
-        plt.savefig(filename + ".pdf", dpi=300, bbox_inches="tight")
-        plt.savefig(filename + ".png", dpi=300, bbox_inches="tight")
+
+        #====================================================================
+        # 5) (fl_method, fl_target) ごとに「ラベルごと最大の行」を取り、>0 のクラスをカウント
+        #====================================================================
+        for (method_val, target_val), sub_df in grouped_df.groupby(["fl_method", "fl_target"]):
+            print(method_val, target_val)
+            print(f"sub_df.shape: {sub_df.shape}")
+            if len(sub_df) == 0:
+                continue
+
+            # ラベルごとに最大
+            sub_max = sub_df.groupby("label").apply(
+                lambda g: g.loc[g["mean_diff_proba"].idxmax()]
+            )
+            n_pos = (sub_max["mean_diff_proba"] > 0).sum()
+
+            # テーブルに書き込み (加算 or 上書き)
+            # 今回は上書き想定 => もし別のfpfnで同じセルに加算したくない場合
+            # → result_table.loc[(method_val, target_val), col_name] = n_pos
+            #
+            # もし複数fpfnを合算したいなら "+=" に書き換える
+            #
+            # current_val = result_table.loc[(method_val, target_val), col_name]
+            # 上書き or 最大値比較 or 加算など、方針に合わせてどうぞ
+            # 例: 上書き => 
+            # if n_pos > current_val:
+            result_table.loc[(method_val, target_val), col_name] = n_pos
+
+    #========================================================================
+    # 6) テーブルを保存 (列は misclf_type だけ)
+    #========================================================================
+    print("\n===== Final Table: (fl_method, fl_target) x misclf_type =====")
+    print(result_table)
+
+    out_csv = f"./exp-fl-4_{ds}_no_rank_table.csv"
+    result_table.to_csv(out_csv)
+    print(f"Saved table to {out_csv}")

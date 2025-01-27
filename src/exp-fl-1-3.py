@@ -19,7 +19,7 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location"
     )
     if misclf_type == "all":
-        save_dir = os.path.join(pretrained_dir, f"all_weights_location")
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"all_weights_location")
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(
             pretrained_dir,
@@ -112,8 +112,6 @@ if __name__ == "__main__":
     
     for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
         result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target)
         all_results = pd.concat([all_results, result_df], ignore_index=True)

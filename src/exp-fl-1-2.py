@@ -23,7 +23,7 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location"
     )
     if misclf_type == "all":
-        save_dir = os.path.join(pretrained_dir, f"all_weights_location")
+        save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"all_weights_location")
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(
             pretrained_dir,
@@ -153,11 +153,10 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    fl_method_list = ["vdiff", "random"]
+    # fl_method_list = ["vdiff", "random"]
+    fl_method_list = ["random"]
     for k, tgt_rank, misclf_type, fpfn, fl_target, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, fl_method_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
         main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method)
     

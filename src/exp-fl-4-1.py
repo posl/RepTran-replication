@@ -77,6 +77,7 @@ if __name__ == "__main__":
             plt.savefig(filename + ".pdf", dpi=300, bbox_inches="tight")
             plt.savefig(filename + ".png", dpi=300, bbox_inches="tight")
             # plt.show()
+            print(f"Saved to {filename}.png/pdf")
     else:
         plt.figure(figsize=(8, 6))
         filename = f"./exp-fl-4_{ds}_proba_diff"
@@ -118,3 +119,4 @@ if __name__ == "__main__":
         plt.legend(loc='lower right', bbox_to_anchor=(1, 0))
         plt.savefig(filename + ".pdf", dpi=300, bbox_inches="tight")
         plt.savefig(filename + ".png", dpi=300, bbox_inches="tight")
+        print(f"Saved to {filename}.png/pdf")
