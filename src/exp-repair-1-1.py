@@ -9,7 +9,7 @@ from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
 from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, identfy_tgt_misclf, get_ori_model_predictions, get_new_model_predictions, get_batched_hs, get_batched_labels, sample_from_correct_samples, sample_true_positive_indices_per_class
-from utils.constant import ViTExperiment
+from utils.constant import ViTExperiment, Experiment3
 from utils.log import set_exp_logging
 from utils.de import DE_searcher
 from logging import getLogger
@@ -25,6 +25,26 @@ DEFAULT_SETTINGS = {
     "alpha": 0.5
 }
 
+TGT_SPLIT = "repair"
+TGT_LAYER = 11
+
+def get_location_save_path(fl_method, n, wnum=None):
+    if fl_method in ["vdiff", "random"]:
+        exp_id = 1
+    elif fl_method in ["ig", "bl"]:
+        exp_id = 2
+    elif fl_method in ["vmg"]:
+        exp_id = 3
+    else:
+        raise ValueError(f"fl_method: {fl_method} is not supported.")
+
+    if fl_method != "vmg":
+        location_save_path = f"exp-fl-{exp_id}_location_n{n}_weight_{fl_method}.npy"
+    else:
+        assert exp_id == 3, f"exp_id: {exp_id} is not 3."
+        assert wnum is not None, "wnum should be specified."
+        location_save_path = f"exp-fl-{exp_id}_location_n{n}_w{wnum}_weight.npy"
+    return location_save_path
 
 if __name__ == "__main__":
     # データセットをargparseで受け取る
@@ -32,11 +52,12 @@ if __name__ == "__main__":
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
     parser.add_argument('tgt_rank', type=int, help="the rank of the target misclassification type")
+    parser.add_argument('reps_id', type=int, help="the repetition id")
     parser.add_argument("--setting_path", type=str, help="path to the setting json file", default=None)
     parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
     parser.add_argument('--only_eval', action='store_true', help="if True, only evaluate the saved patch", default=False)
-    parser.add_argument("--custom_n", type=int, help="the custom n for the FL", default=None)
+    parser.add_argument("--custom_n", type=float, help="the custom n for the FL", default=None)
     parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
     parser.add_argument("--include_other_TP_for_fitness", action="store_true", help="if True, include other TP samples for fitness calculation", default=False)
     parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
@@ -45,20 +66,25 @@ if __name__ == "__main__":
     ds_name = args.ds
     k = args.k
     tgt_rank = args.tgt_rank
+    reps_id = args.reps_id
     setting_path = args.setting_path
     fl_method = args.fl_method
     misclf_type = args.misclf_type
     only_eval = args.only_eval
     custom_n = args.custom_n
+    wnum = None
+    # custom_nが1以上なら整数として扱う (NOTE: 1以下なら割合を示すとしてfloatのまま)
+    if custom_n is not None and custom_n >= 1:
+        custom_n = int(custom_n)
+    # wnumの指定 (NOTE: hard coded)
+    if custom_n is not None and (custom_n == 0.03 or custom_n == 96):
+        wnum = Experiment3.NUM_TOTAL_WEIGHTS
     custom_alpha = args.custom_alpha
     include_other_TP_for_fitness = args.include_other_TP_for_fitness
     fpfn = args.fpfn
     custom_bounds = args.custom_bounds
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, fl_method: {fl_method}, misclf_type: {misclf_type}")
+    print(f"ds_name: {ds_name}, k: {k}, tgt_rank: {tgt_rank}, reps_id: {reps_id}, setting_path: {setting_path}, fl_method: {fl_method}, misclf_type: {misclf_type}, only_eval: {only_eval}, custom_n: {custom_n}, custom_alpha: {custom_alpha}, include_other_TP_for_fitness: {include_other_TP_for_fitness}, fpfn: {fpfn}, custom_bounds: {custom_bounds}")
 
-    # TODO: あとでrandomly weights selectionも実装
-    if fl_method == "random":
-        NotImplementedError, "randomly weights selection is not implemented yet."
     # 設定のjsonファイルが指定された場合
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
@@ -86,22 +112,24 @@ if __name__ == "__main__":
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
-    if fpfn is not None and misclf_type == "tgt":
+    # save_dirは, 5種類の誤分類タイプのどれかを一意に表す
+    if fpfn is not None and misclf_type == "tgt": # tgt_fp or tgt_fn
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
-    elif misclf_type == "all":
+    elif misclf_type == "all": # all
         save_dir = os.path.join(pretrained_dir, f"{misclf_type}_repair_weight_by_de")
     else: # tgt_all or src_tgt
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
-
-    if fl_method == "vdiff":
-        patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}.npy")
-        tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}.pkl")
-    elif fl_method == "random":
-        patch_save_path = os.path.join(save_dir, f"best_patch_{setting_id}_random.npy")
-        tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}_random.pkl")
-    else:
-        NotImplementedError
     os.makedirs(save_dir, exist_ok=True)
+    
+    # repairの成果物の保存ファイル名
+    # ==================================================================
+    patch_save_path = os.path.join(save_dir, f"exp-repair-1-best_patch_{setting_id}_{fl_method}_reps{reps_id}.npy")
+    tracker_save_path = os.path.join(save_dir, f"exp-repair-1-tracker_{setting_id}_{fl_method}_reps{reps_id}.pkl")
+    # repair に使ったデータの tgt_indices を npy で保存
+    tgt_indices_save_path = os.path.join(save_dir, f"exp-repair-1-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy") # TODO: tgt_indicesの特定にランダム性が入る場合はそれをトラックできるようなファイル名にする必要あり. 同じsetting_id, fl_methodでもrepetitionが異なる場合
+    metrics_json_path = os.path.join(save_dir, f"exp-repair-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json") # 各設定での実行時間を記録
+    # ==================================================================
+    
     # このpythonのファイル名を取得
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_{setting_id}"
@@ -138,10 +166,10 @@ if __name__ == "__main__":
     model.eval()
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
-    tgt_split = "repair" # NOTE: we only use repair split for repairing
+    tgt_split = TGT_SPLIT # NOTE: we only use repair split for repairing
     ori_tgt_ds = ds_preprocessed[tgt_split]
     ori_tgt_labels = labels[tgt_split]
-    tgt_layer = 11 # NOTE: we only use the last layer for repairing
+    tgt_layer = TGT_LAYER # NOTE: we only use the last layer for repairing
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
 
     # ===============================================
@@ -154,7 +182,8 @@ if __name__ == "__main__":
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    location_save_path = os.path.join(location_save_dir, f"location_n{setting_dic['n']}_{fl_method}.npy")
+    location_filename = get_location_save_path(fl_method, setting_dic["n"], wnum=wnum)
+    location_save_path = os.path.join(location_save_dir, location_filename)
     pos_before, pos_after = np.load(location_save_path, allow_pickle=True)
     # log表示
     logger.info(f"pos_before={pos_before}")
@@ -180,7 +209,7 @@ if __name__ == "__main__":
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
     # 正解データからrepairに使う一定数だけランダムに取り出す
-    sampled_indices_to_correct = sample_from_correct_samples(setting_dic["num_sampled_from_correct"], indices_to_correct)
+    sampled_indices_to_correct = sample_from_correct_samples(setting_dic["num_sampled_from_correct"], indices_to_correct) # NOTE: 全てのラベルが含まれるとは限らない (100クラス200サンプルからランダムに取り出すので)
     if include_other_TP_for_fitness and misclf_type == "tgt":
         for pl, tl in zip(ori_pred_labels[indices_to_correct_others], labels[tgt_split][indices_to_correct_others]):
             assert pl != tgt_label, f"pl: {pl}, tgt_label: {tgt_label}"
@@ -199,6 +228,7 @@ if __name__ == "__main__":
     tgt_labels = ori_tgt_labels[tgt_indices]
     logger.info(f"ori_pred_labels[tgt_indices]: {ori_pred_labels[tgt_indices]} (len: {len(ori_pred_labels[tgt_indices])})")
     logger.info(f"ori_tgt_labels[tgt_indices]: {tgt_labels} (len: {len(tgt_labels)})")
+    # print(f"ori_pred_labels[tgt_indices]: {ori_pred_labels[tgt_indices]} (len: {len(ori_pred_labels[tgt_indices])})")
     
     # repair setに対するhidden_states_before_layernormを取得
     hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
@@ -210,8 +240,6 @@ if __name__ == "__main__":
     batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
 
-    # repair に使ったデータの tgt_indices を npy で保存
-    tgt_indices_save_path = os.path.join(save_dir, f"tgt_indices_{setting_id}.npy") # TODO: tgt_indicesの特定にランダム性が入る場合はそれをトラックできるようなファイル名にする必要あり
     # NOTE: 同じsetting_idでも乱数のシードを考慮していない
     np.save(tgt_indices_save_path, tgt_indices)
 
@@ -255,6 +283,7 @@ if __name__ == "__main__":
     assert np.sum(ori_is_correct_tgt[indices_to_correct_for_de_searcher]) == len(indices_to_correct_for_de_searcher), f"ori_is_correct_tgt[indices_to_correct_for_de_searcher]: {ori_is_correct_tgt[indices_to_correct_for_de_searcher]}"
     assert np.sum(ori_is_correct_tgt[indices_to_incorrect_for_de_searcher]) == 0, f"ori_is_correct_tgt[indices_to_incorrect_for_de_searcher]: {ori_is_correct_tgt[indices_to_incorrect_for_de_searcher]}"
     
+    # logger.info("Before DE search...")
     # DE_searcherの初期化
     searcher = DE_searcher(
         batch_hs_before_layernorm=batch_hs_before_layernorm_tgt,
@@ -287,11 +316,5 @@ if __name__ == "__main__":
     # 実行時間だけをメトリクスとしてjsonに保存
     # (このjsonはあとでrepair rateなども追記される (007f))
     metrics = {"tot_time": tot_time}
-    if fl_method == "vdiff":
-        metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")
-    elif fl_method == "random":
-        metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}_random.json")
-    else:
-        NotImplementedError
-    with open(metrics_dir, "w") as f:
+    with open(metrics_json_path, "w") as f:
         json.dump(metrics, f)
