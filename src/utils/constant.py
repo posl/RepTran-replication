@@ -23,4 +23,5 @@ class Experiment3(Experiment):
     NUM_REPS = 30 # adaprepairと同じ (多すぎるかも?)
     
 class ExperimentRepair1(Experiment):
-    NUM_IDENTIFIED_NEURONS = 24 # exp-repair-1.md参照
+    NUM_IDENTIFIED_NEURONS = 6 # exp-repair-1.md参照
+    NUM_IDENTIFIED_WEIGHTS = 24 # exp-repair-1.md参照

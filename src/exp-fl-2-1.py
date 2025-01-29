@@ -106,7 +106,7 @@ if __name__ == "__main__":
     ds = "c100"
     k_list = range(5)
     # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS] # TODO REMOVE THIS LINE
     results = []
     for k, n in product(k_list, n_list):
         print(f"ds: {ds}, k: {k}, n: {n}")

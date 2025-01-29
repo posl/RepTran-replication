@@ -106,10 +106,10 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    # n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    for k, tgt_rank, misclf_type, fpfn, fl_target, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, n_list):
+    num_neurons, num_weights = ExperimentRepair1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS # NOTE: 実験によって変える必要あり (exp-fl-1ならExperiment1クラスを使う)
+    for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
             continue
+        n = num_neurons if fl_target == "neuron" else num_weights 
         main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
     

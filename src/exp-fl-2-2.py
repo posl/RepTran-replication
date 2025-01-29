@@ -15,8 +15,6 @@ from transformers import ViTForImageClassification
 import torch
 import torch.optim as optim
 
-NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS
-
 # デバイス (cuda, or cpu) の取得
 device = get_device()
 
@@ -372,17 +370,16 @@ if __name__ == "__main__":
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS]
     results = []
     for k, tgt_rank, misclf_type, fpfn, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list):
-        print(f"Start: ds={ds}, k={k}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")
+        print(f"Start: ds={ds}, k={k}, n={n}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=NUM_IDENTIFIED_NEURONS)
-        results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
+        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
+        results.append({"ds": ds, "k": k, "n": n, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-2-2_time.csv", index=False)

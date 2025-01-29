@@ -28,7 +28,7 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
     return save_dir
 
 def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}")
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}, n: {n}")
     
     # 定数
     tgt_split = "repair" # NOTE: we only use repair split for repairing
@@ -96,22 +96,25 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_method_list = ["ig", "bl"]
-    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    exp_list = [Experiment1, ExperimentRepair1]
+    
     
     # 全ての結果を格納するDataFrame
     all_results = pd.DataFrame()
     
-    for k, tgt_rank, misclf_type, fpfn, fl_method, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list, n_list):
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
-            continue
-        if misclf_type != "all" and fl_method == "ig": # igは誤分類のタイプごとには計算できない
-            continue
-        result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_method, n)
-        all_results = pd.concat([all_results, result_df], ignore_index=True)
-        print(f"all_results.shape: {all_results.shape}")
+    for exp in exp_list:
+        num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS
+        for k, tgt_rank, misclf_type, fpfn, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list):
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+                continue
+            if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
+                continue
+            if misclf_type != "all" and fl_method == "ig": # igは誤分類のタイプごとには計算できない
+                continue
+            n = num_neurons if fl_method == "ig" else num_weights # igはneuronが対象でblはweightが対象
+            result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_method, n)
+            all_results = pd.concat([all_results, result_df], ignore_index=True)
+            print(f"all_results.shape: {all_results.shape}")
     # all_resultsを保存
     save_path = f"./exp-fl-2_{ds}_proba_diff.csv"
     all_results.to_csv(save_path, index=False)

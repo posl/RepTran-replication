@@ -1,4 +1,4 @@
-import os, sys, time, pickle, json, math
+import os, sys, time, pickle, json, math, shutil
 import torch
 from tqdm import tqdm
 from collections import defaultdict
@@ -65,6 +65,12 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n):
     # proba_save_dirの作成
     proba_save_dir = os.path.join(save_dir, f"exp-fl-1_proba_n{n}_{fl_target}_{fl_method}")
     os.makedirs(proba_save_dir, exist_ok=True)
+    # XXX SHOULD BE REMOVED
+    if fl_target == "neuron":
+        delete_dir = os.path.join(save_dir, f"exp-fl-1_proba_n24_{fl_target}_{fl_method}")
+        if os.path.exists(delete_dir):
+            shutil.rmtree(delete_dir)
+            print(f"deleted {delete_dir}")
     places_to_fix = np.load(location_save_path)
     
     # ==============================================================
@@ -142,12 +148,17 @@ if __name__ == "__main__":
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    fl_target_list = ["neuron", "weight"]
+    # fl_target_list = ["neuron", "weight"]
+    fl_target_list = ["neuron"] # TODO REMOVE THIS LINE
     fl_method_list = ["vdiff", "random"]
-    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    for k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, fl_method_list, n_list):
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n)
+    # exp_list = [Experiment1, ExperimentRepair1]
+    exp_list = [ExperimentRepair1] # TODO REMOVE THIS LINE
     
+    for exp in exp_list:
+        num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS
+        for k, tgt_rank, misclf_type, fpfn, fl_target, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, fl_method_list):
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+                continue
+            n = num_neurons if fl_target == "neuron" else num_weights 
+            main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n)
+        

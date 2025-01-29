@@ -167,15 +167,18 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_method_list = ["ig", "bl"]
-    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    for k, tgt_rank, misclf_type, fpfn, fl_method, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list, n_list):
-        print(f"k: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}")
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
-            continue
-        if misclf_type != "all" and fl_method == "ig": # igは誤分類のタイプごとには計算できない
-            continue
-        main(ds, k, tgt_rank, misclf_type, fpfn, fl_method, n)
+    exp_list = [Experiment1, ExperimentRepair1]
     
+    for exp in exp_list:
+        num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS
+        for k, tgt_rank, misclf_type, fpfn, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list):
+            print(f"k: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}")
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+                continue
+            if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
+                continue
+            if misclf_type != "all" and fl_method == "ig": # igは誤分類のタイプごとには計算できない
+                continue
+            n = num_neurons if fl_method == "ig" else num_weights # igはneuronが対象でblはweightが対象
+            main(ds, k, tgt_rank, misclf_type, fpfn, fl_method, n)
+        

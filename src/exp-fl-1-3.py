@@ -100,17 +100,20 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    exp_list = [Experiment1, ExperimentRepair1]
     
     # 全ての結果を格納するDataFrame
     all_results = pd.DataFrame()
     
-    for k, tgt_rank, misclf_type, fpfn, fl_target, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, n_list):
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
-        all_results = pd.concat([all_results, result_df], ignore_index=True)
-        print(f"all_results.shape: {all_results.shape}")
+    for exp in exp_list:
+        num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS
+        for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+                continue
+            n = num_neurons if fl_target == "neuron" else num_weights 
+            result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
+            all_results = pd.concat([all_results, result_df], ignore_index=True)
+            print(f"all_results.shape: {all_results.shape}")
     # all_resultsを保存
     save_path = f"./exp-fl-1_{ds}_proba_diff.csv"
     all_results.to_csv(save_path, index=False)
