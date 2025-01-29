@@ -6,14 +6,12 @@ import numpy as np
 import pandas as pd
 from utils.helper import get_device, json2dict
 from utils.vit_util import transforms_c100
-from utils.constant import ViTExperiment, Experiment1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 import torch
-
-NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
 
 def scaled_input(emb, num_points):
     """
@@ -28,7 +26,7 @@ def scaled_input(emb, num_points):
     return res, step[0]
 
 
-def main(ds_name, k):
+def main(ds_name, k, n):
     # デバイス (cuda, or cpu) の取得
     device = get_device()
     # datasetごとに違う変数のセット
@@ -93,8 +91,6 @@ def main(ds_name, k):
     
     grad_list = np.array(grad_list) # (num_samples, ffn_size)
     mean_grad_per_neuron = np.mean(grad_list, axis=0) # (ffn_size)
-    # mean_grad_per_neuronの上位NUM_IDENTIFIED_NEURONS個を取り出す
-    n = NUM_IDENTIFIED_NEURONS
     top_neurons = np.argsort(mean_grad_per_neuron)[::-1][:n]
     places_to_fix = [[tgt_layer, pos] for pos in top_neurons]
     # places_to_fixをnpyで保存
@@ -109,11 +105,13 @@ def main(ds_name, k):
 if __name__ == "__main__":
     ds = "c100"
     k_list = range(5)
+    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
     results = []
-    for k in k_list:
-        print(f"ds: {ds}, k: {k}...")
-        elapsed_time = main(ds, k)
-        results.append({"ds": ds, "k": k, "elapsed_time": elapsed_time})
+    for k, n in product(k_list, n_list):
+        print(f"ds: {ds}, k: {k}, n: {n}")
+        elapsed_time = main(ds, k, n)
+        results.append({"ds": ds, "k": k, "n": n, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-2-1_time.csv", index=False)

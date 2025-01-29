@@ -5,15 +5,13 @@ from collections import defaultdict
 from itertools import product
 import numpy as np
 import pandas as pd
-from utils.constant import ViTExperiment, Experiment1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
 
 logger = getLogger("base_logger")
 tgt_pos = ViTExperiment.CLS_IDX
-NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
-NUM_IDENTIFIED_WEIGHTS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
 
 def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
     save_dir = os.path.join(
@@ -29,7 +27,7 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         )
     return save_dir
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method):
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}")
     
     # 定数
@@ -51,7 +49,6 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method):
     # 結果とかログの保存先
     save_dir = get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn)
     # 予測確率のリストの保存先
-    n = NUM_IDENTIFIED_NEURONS
     proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_n{n}_{fl_method}")
         
     # このpythonのファイル名を取得
@@ -99,18 +96,20 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_method_list = ["ig", "bl"]
+    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
     
     # 全ての結果を格納するDataFrame
     all_results = pd.DataFrame()
     
-    for k, tgt_rank, misclf_type, fpfn, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list):
+    for k, tgt_rank, misclf_type, fpfn, fl_method, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list, n_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
         if misclf_type != "all" and fl_method == "ig": # igは誤分類のタイプごとには計算できない
             continue
-        result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_method)
+        result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_method, n)
         all_results = pd.concat([all_results, result_df], ignore_index=True)
         print(f"all_results.shape: {all_results.shape}")
     # all_resultsを保存

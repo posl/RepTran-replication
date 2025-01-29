@@ -5,26 +5,23 @@ from itertools import product
 import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import localize_neurons, localize_neurons_random, localize_weights, localize_weights_random, identfy_tgt_misclf
-from utils.constant import ViTExperiment, Experiment1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
 from utils.log import set_exp_logging
 from logging import getLogger
 
 logger = getLogger("base_logger")
-NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
-NUM_IDENTIFIED_WEIGHTS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_target: {fl_target}")
+
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_target: {fl_target}, n: {n}")
     
     # 変更する対象を決定
     if fl_target == "neuron":
-        n = NUM_IDENTIFIED_NEURONS
         fl_methods = {
             "vdiff": localize_neurons,
             "random": localize_neurons_random,
         }
     elif fl_target == "weight":
-        n = NUM_IDENTIFIED_WEIGHTS
         fl_methods = {
             "vdiff": localize_weights,
             "random": localize_weights_random,
@@ -109,8 +106,10 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
+    n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    # n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    for k, tgt_rank, misclf_type, fpfn, fl_target, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, n_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
             continue
-        main(ds, k, tgt_rank, misclf_type, fpfn, fl_target)
+        main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
     

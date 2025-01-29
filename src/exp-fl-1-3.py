@@ -4,15 +4,13 @@ from collections import defaultdict
 from itertools import product
 import numpy as np
 import pandas as pd
-from utils.constant import ViTExperiment, Experiment1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
 
 logger = getLogger("base_logger")
 tgt_pos = ViTExperiment.CLS_IDX
-NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
-NUM_IDENTIFIED_WEIGHTS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
 
 def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
     save_dir = os.path.join(
@@ -28,8 +26,8 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         )
     return save_dir
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_target: {fl_target}")
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_target: {fl_target}, n: {n}")
     
     # 定数
     tgt_split = "repair" # NOTE: we only use repair split for repairing
@@ -41,14 +39,6 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
     label_col = "fine_label"
     true_labels = ds[tgt_split][label_col]
     label_list = range(100)
-    
-    # 変更する対象のサイズ
-    if fl_target == "neuron":
-        n = NUM_IDENTIFIED_NEURONS
-    elif fl_target == "weight":
-        n = NUM_IDENTIFIED_WEIGHTS
-    else:
-        raise ValueError(f"fl_target: {fl_target} is not supported.")
     
     # ニューロンへの介入の方法のリスト
     op_list = ["enhance", "suppress"]
@@ -110,14 +100,15 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
+    n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
     
     # 全ての結果を格納するDataFrame
     all_results = pd.DataFrame()
     
-    for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
+    for k, tgt_rank, misclf_type, fpfn, fl_target, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, n_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
-        result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target)
+        result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
         all_results = pd.concat([all_results, result_df], ignore_index=True)
         print(f"all_results.shape: {all_results.shape}")
     # all_resultsを保存

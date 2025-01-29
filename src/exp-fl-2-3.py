@@ -8,7 +8,7 @@ import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import ViTFromLastLayer
 from utils.de import set_new_weights, check_new_weights
-from utils.constant import ViTExperiment, Experiment1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -16,8 +16,6 @@ from transformers import ViTForImageClassification
 
 logger = getLogger("base_logger")
 tgt_pos = ViTExperiment.CLS_IDX
-NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
-NUM_IDENTIFIED_WEIGHTS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
 
 def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
     save_dir = os.path.join(
@@ -33,9 +31,9 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         )
     return save_dir
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n=NUM_IDENTIFIED_NEURONS):
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
     device = get_device()
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}, n: {n}")
     
     # 定数
     tgt_split = "repair" # NOTE: we only use repair split for repairing
@@ -169,7 +167,9 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_method_list = ["ig", "bl"]
-    for k, tgt_rank, misclf_type, fpfn, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list):
+    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    for k, tgt_rank, misclf_type, fpfn, fl_method, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_method_list, n_list):
         print(f"k: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_method: {fl_method}")
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
@@ -177,5 +177,5 @@ if __name__ == "__main__":
             continue
         if misclf_type != "all" and fl_method == "ig": # igは誤分類のタイプごとには計算できない
             continue
-        main(ds, k, tgt_rank, misclf_type, fpfn, fl_method)
+        main(ds, k, tgt_rank, misclf_type, fpfn, fl_method, n)
     

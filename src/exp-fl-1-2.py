@@ -7,7 +7,7 @@ import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import ViTFromLastLayer
 from utils.de import set_new_weights, check_new_weights
-from utils.constant import ViTExperiment, Experiment1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -15,8 +15,6 @@ from transformers import ViTForImageClassification
 
 logger = getLogger("base_logger")
 tgt_pos = ViTExperiment.CLS_IDX
-NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
-NUM_IDENTIFIED_WEIGHTS = Experiment1.NUM_IDENTIFIED_NEURONS # exp-fl-1.md参照
 
 def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
     save_dir = os.path.join(
@@ -32,9 +30,9 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         )
     return save_dir
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method):
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n):
     device = get_device()
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, n: {n}")
     
     # 定数
     tgt_split = "repair" # NOTE: we only use repair split for repairing
@@ -45,14 +43,6 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method):
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
     true_labels = ds[tgt_split][label_col]
-    
-    # 変更する対象のサイズ
-    if fl_target == "neuron":
-        n = NUM_IDENTIFIED_NEURONS
-    elif fl_target == "weight":
-        n = NUM_IDENTIFIED_WEIGHTS
-    else:
-        raise ValueError(f"fl_target: {fl_target} is not supported.")
     
     # ニューロンへの介入の方法のリスト
     op_list = ["enhance", "suppress"]
@@ -154,8 +144,10 @@ if __name__ == "__main__":
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
     fl_method_list = ["vdiff", "random"]
-    for k, tgt_rank, misclf_type, fpfn, fl_target, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, fl_method_list):
+    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
+    for k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list, fl_method_list, n_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             continue
-        main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method)
+        main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n)
     
