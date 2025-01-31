@@ -5,7 +5,7 @@ from collections import defaultdict
 from itertools import product
 import numpy as np
 import pandas as pd
-from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -75,7 +75,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
             results.append(
                 {
                     "n": n,
-                    "num_weight": 768 * n if fl_method == "ig" else None, #TODO 
+                    "num_weight": 768 * n if fl_method == "ig" else 8 * n * n,
                     "k": k,
                     "tgt_rank": tgt_rank,
                     "misclf_type": misclf_type,
@@ -96,8 +96,7 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_method_list = ["ig", "bl"]
-    exp_list = [Experiment1, ExperimentRepair1]
-    
+    exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
     
     # 全ての結果を格納するDataFrame
     all_results = pd.DataFrame()

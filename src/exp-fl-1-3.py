@@ -4,7 +4,7 @@ from collections import defaultdict
 from itertools import product
 import numpy as np
 import pandas as pd
-from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -100,7 +100,7 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    exp_list = [Experiment1, ExperimentRepair1]
+    exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
     
     # 全ての結果を格納するDataFrame
     all_results = pd.DataFrame()

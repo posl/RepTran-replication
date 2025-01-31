@@ -5,7 +5,7 @@ from itertools import product
 import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import localize_neurons, localize_neurons_random, localize_weights, localize_weights_random, identfy_tgt_misclf
-from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2
 from utils.log import set_exp_logging
 from logging import getLogger
 
@@ -106,10 +106,13 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    num_neurons, num_weights = ExperimentRepair1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS # NOTE: 実験によって変える必要あり (exp-fl-1ならExperiment1クラスを使う)
-    for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
-            continue
-        n = num_neurons if fl_target == "neuron" else num_weights 
-        main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
+    exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
     
+    for exp in exp_list:
+        num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS
+        for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
+                continue
+            n = num_neurons if fl_target == "neuron" else num_weights 
+            main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
+        

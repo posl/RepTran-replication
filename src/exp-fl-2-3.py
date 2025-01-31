@@ -8,7 +8,7 @@ import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import ViTFromLastLayer
 from utils.de import set_new_weights, check_new_weights
-from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_method_list = ["ig", "bl"]
-    exp_list = [Experiment1, ExperimentRepair1]
+    exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
     
     for exp in exp_list:
         num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS

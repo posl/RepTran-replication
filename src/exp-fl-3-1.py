@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from utils.helper import get_device, json2dict
 from utils.vit_util import identfy_tgt_misclf, localize_neurons_with_mean_activation, get_batched_hs, get_batched_labels, ViTFromLastLayer
-from utils.constant import ViTExperiment, Experiment1, Experiment3
+from utils.constant import ViTExperiment, ExperimentRepair1
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -18,14 +18,10 @@ import torch.optim as optim
 logger = getLogger("base_logger")
 device = get_device()
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn):
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
-    
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, n_ratio: {n_ratio}, w_num: {w_num}")
     
     ts = time.perf_counter()
-    # 変更する対象を決定
-    n_ratio = Experiment3.NUM_IDENTIFIED_NEURONS_RATIO # exp-fl-3.md参照
-    w_num = Experiment3.NUM_TOTAL_WEIGHTS
     
     # datasetをロード (true_labelsが欲しいので)
     ds_dirname = f"{ds_name}_fold{k}"
@@ -204,6 +200,9 @@ if __name__ == "__main__":
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
+    n_ratio = ExperimentRepair1.NUM_IDENTIFIED_NEURONS_RATIO
+    w_num = ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS
+    w_num = 8 * w_num * w_num
     results = []
     
     for k, tgt_rank, misclf_type, fpfn in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list):
@@ -212,8 +211,8 @@ if __name__ == "__main__":
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn)
-        results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
+        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num)
+        results.append({"ds": ds, "k": k, "n_ratio": n_ratio, "w_num": w_num, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-3-1_time.csv", index=False)

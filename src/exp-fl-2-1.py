@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 from utils.helper import get_device, json2dict
 from utils.vit_util import transforms_c100
-from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -105,8 +105,8 @@ def main(ds_name, k, n):
 if __name__ == "__main__":
     ds = "c100"
     k_list = range(5)
-    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS]
-    n_list = [ExperimentRepair1.NUM_IDENTIFIED_NEURONS] # TODO REMOVE THIS LINE
+    # n_list = [Experiment1.NUM_IDENTIFIED_NEURONS, ExperimentRepair1.NUM_IDENTIFIED_NEURONS, ExperimentRepair2.NUM_IDENTIFIED_NEURONS]
+    n_list = [ExperimentRepair2.NUM_IDENTIFIED_NEURONS] # TODO REMOVE THIS LINE
     results = []
     for k, n in product(k_list, n_list):
         print(f"ds: {ds}, k: {k}, n: {n}")

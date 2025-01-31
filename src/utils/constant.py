@@ -19,9 +19,15 @@ class Experiment1(Experiment):
     
 class Experiment3(Experiment):
     NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # exp-fl-3.md参照
+    NUM_IDENTIFIED_WEIGHTS = 96
     NUM_TOTAL_WEIGHTS = 8 * 96 * 96 # exp-fl-3.md参照
-    NUM_REPS = 30 # adaprepairと同じ (多すぎるかも?)
     
 class ExperimentRepair1(Experiment):
     NUM_IDENTIFIED_NEURONS = 6 # exp-repair-1.md参照
-    NUM_IDENTIFIED_WEIGHTS = 24 # exp-repair-1.md参照
+    NUM_IDENTIFIED_WEIGHTS = 24 # exp-repair-1.md参照 8x24x24 = 4608
+    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # exp-fl-3.md参照
+
+class ExperimentRepair2(Experiment):
+    NUM_IDENTIFIED_NEURONS = 24 # exp-repair-1.md参照 768x24 = 18432
+    NUM_IDENTIFIED_WEIGHTS = 48 # exp-repair-1.md参照 8x48x48 = 18432
+    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # exp-fl-3.md参照

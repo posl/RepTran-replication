@@ -40,7 +40,7 @@ if __name__ == "__main__":
     # label列の値, op列の値, fl_method列の値 ごとにdiff_probaの平均を表にする
     grouped_df = (
         df_extracted
-        .groupby(["label", "op", "fl_method", "fl_target"])
+        .groupby(["label", "op", "fl_method", "fl_target", "num_weight"])
         .agg(mean_diff_proba=("diff_proba", "mean"), std_diff_proba=("diff_proba", "std"))
         .reset_index()
     )
@@ -48,29 +48,32 @@ if __name__ == "__main__":
     grouped_df["mean_diff_proba"] = grouped_df["mean_diff_proba"] * 100
     print(f"grouped_df.shape: {grouped_df.shape}")
     
-    for target in grouped_df["fl_target"].unique():
-        filename = f"./exp-fl-3_{ds}_proba_diff_{target}"
-        # op, fl_method, fl_targetの組み合わせごとにdiff_probaの平均をプロット
-        plt.figure(figsize=(8, 6))
-        color_list = ["red", "blue", "orange", "lightblue", "yellow", "green", "purple", "brown", "pink", "gray", "cyan", "magenta"]
-        for i, (fl_method, fl_target, op) in enumerate(
-            product(grouped_df["fl_method"].unique(), [target], grouped_df["op"].unique())
-        ):
-            subset = grouped_df[(grouped_df["op"] == op) & (grouped_df["fl_method"] == fl_method) & (grouped_df["fl_target"] == fl_target)]
-            if len(subset) == 0:
-                continue
-            if op == "enhance" and only_suppress:
-                filename = f"./exp-fl-3_{ds}_proba_diff_{target}_suppress"
-                continue # pruningした時の結果だけを載せたいので，suppressのみ
-            # subset["mean_diff_proba"]で0以上の数を数える
-            n_pos = len(subset[subset["mean_diff_proba"] > 0])
-            plt.plot(subset["label"], subset["mean_diff_proba"], label=f"{fl_method}, {op}, {fl_target} (n_pos={n_pos})", color=color_list[i], alpha=0.66)
-            mean_of_means = subset["mean_diff_proba"].mean()
-            plt.axhline(mean_of_means, color=color_list[i], linestyle="--")
-        plt.axhline(0, color="black", linestyle="-")
-        plt.xlabel("Class Label")
-        plt.ylabel("Average Change of Probability (%)")
-        plt.legend(loc='lower right', bbox_to_anchor=(1, 0))
-        plt.savefig(filename + ".pdf", dpi=300, bbox_inches="tight")
-        plt.savefig(filename + ".png", dpi=300, bbox_inches="tight")
-        # plt.show()
+    for num_weight_value in grouped_df["num_weight"].unique():
+        grouped_subset = grouped_df[grouped_df["num_weight"] == num_weight_value]
+        
+        for target in grouped_subset["fl_target"].unique():
+            filename = f"./exp-fl-3_{ds}_proba_diff_{target}_wnum{num_weight_value}"
+            # op, fl_method, fl_targetの組み合わせごとにdiff_probaの平均をプロット
+            plt.figure(figsize=(8, 6))
+            color_list = ["red", "blue", "orange", "lightblue", "yellow", "green", "purple", "brown", "pink", "gray", "cyan", "magenta"]
+            for i, (fl_method, fl_target, op) in enumerate(
+                product(grouped_subset["fl_method"].unique(), [target], grouped_subset["op"].unique())
+            ):
+                subset = grouped_subset[(grouped_subset["op"] == op) & (grouped_subset["fl_method"] == fl_method) & (grouped_subset["fl_target"] == fl_target)]
+                if len(subset) == 0:
+                    continue
+                if op == "enhance" and only_suppress:
+                    filename = f"./exp-fl-3_{ds}_proba_diff_{target}_suppress"
+                    continue # pruningした時の結果だけを載せたいので，suppressのみ
+                # subset["mean_diff_proba"]で0以上の数を数える
+                n_pos = len(subset[subset["mean_diff_proba"] > 0])
+                plt.plot(subset["label"], subset["mean_diff_proba"], label=f"{fl_method}, {op}, {fl_target} (n_pos={n_pos})", color=color_list[i], alpha=0.66)
+                mean_of_means = subset["mean_diff_proba"].mean()
+                plt.axhline(mean_of_means, color=color_list[i], linestyle="--")
+            plt.axhline(0, color="black", linestyle="-")
+            plt.xlabel("Class Label")
+            plt.ylabel("Average Change of Probability (%)")
+            plt.legend(loc='lower right', bbox_to_anchor=(1, 0))
+            plt.savefig(filename + ".pdf", dpi=300, bbox_inches="tight")
+            plt.savefig(filename + ".png", dpi=300, bbox_inches="tight")
+            # plt.show()

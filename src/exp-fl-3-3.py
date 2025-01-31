@@ -5,7 +5,7 @@ from collections import defaultdict
 from itertools import product
 import numpy as np
 import pandas as pd
-from utils.constant import ViTExperiment, Experiment3
+from utils.constant import ViTExperiment, ExperimentRepair1, Experiment3
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -27,16 +27,12 @@ def get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn):
         )
     return save_dir
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target):
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_target: {fl_target}")
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n_ratio, w_num):
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_target: {fl_target}, n_ratio: {n_ratio}, w_num: {w_num}")
     
     # 定数
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
-    
-    # 変更する対象を決定
-    n_ratio = Experiment3.NUM_IDENTIFIED_NEURONS_RATIO # exp-fl-3.md参照
-    w_num = Experiment3.NUM_TOTAL_WEIGHTS
     
     # datasetをロード (true_labelsが欲しいので)
     ds_dirname = f"{ds_name}_fold{k}"
@@ -100,18 +96,23 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
+    exp_list = [Experiment3, ExperimentRepair1]
     
     # 全ての結果を格納するDataFrame
     all_results = pd.DataFrame()
     
-    for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
-            continue
-        result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target)
-        all_results = pd.concat([all_results, result_df], ignore_index=True)
-        print(f"all_results.shape: {all_results.shape}")
+    for exp in exp_list:
+        n_ratio = exp.NUM_IDENTIFIED_NEURONS_RATIO
+        w_num = exp.NUM_IDENTIFIED_WEIGHTS
+        w_num = 8 * w_num * w_num
+        for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+                continue
+            if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
+                continue
+            result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n_ratio, w_num)
+            all_results = pd.concat([all_results, result_df], ignore_index=True)
+            print(f"all_results.shape: {all_results.shape}")
     # all_resultsを保存
     save_path = f"./exp-fl-3_{ds}_proba_diff.csv"
     all_results.to_csv(save_path, index=False)

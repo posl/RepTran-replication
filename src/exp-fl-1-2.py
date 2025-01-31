@@ -7,7 +7,7 @@ import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import ViTFromLastLayer
 from utils.de import set_new_weights, check_new_weights
-from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -65,12 +65,6 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, fl_method, n):
     # proba_save_dirの作成
     proba_save_dir = os.path.join(save_dir, f"exp-fl-1_proba_n{n}_{fl_target}_{fl_method}")
     os.makedirs(proba_save_dir, exist_ok=True)
-    # XXX SHOULD BE REMOVED
-    if fl_target == "neuron":
-        delete_dir = os.path.join(save_dir, f"exp-fl-1_proba_n24_{fl_target}_{fl_method}")
-        if os.path.exists(delete_dir):
-            shutil.rmtree(delete_dir)
-            print(f"deleted {delete_dir}")
     places_to_fix = np.load(location_save_path)
     
     # ==============================================================
@@ -148,11 +142,9 @@ if __name__ == "__main__":
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    # fl_target_list = ["neuron", "weight"]
-    fl_target_list = ["neuron"] # TODO REMOVE THIS LINE
+    fl_target_list = ["neuron", "weight"]
     fl_method_list = ["vdiff", "random"]
-    # exp_list = [Experiment1, ExperimentRepair1]
-    exp_list = [ExperimentRepair1] # TODO REMOVE THIS LINE
+    exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
     
     for exp in exp_list:
         num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS
