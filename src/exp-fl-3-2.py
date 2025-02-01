@@ -8,7 +8,7 @@ import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import ViTFromLastLayer
 from utils.de import set_new_weights, check_new_weights
-from utils.constant import ViTExperiment, ExperimentRepair1
+from utils.constant import ViTExperiment, ExperimentRepair1, Experiment3, ExperimentRepair2
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -150,15 +150,19 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]
-    n_ratio = ExperimentRepair1.NUM_IDENTIFIED_NEURONS_RATIO
-    w_num = ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS
-    w_num = 8 * w_num * w_num
+    # exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
+    exp_list = [ExperimentRepair2] # TODO: REMOVE LATER
     
-    for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
-        print(f"k: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            continue
-        if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
-            continue
-        main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n_ratio, w_num)
-    
+    for exp in exp_list:
+        n_ratio = exp.NUM_IDENTIFIED_NEURONS_RATIO
+        w_num = exp.NUM_IDENTIFIED_WEIGHTS
+        w_num = 8 * w_num * w_num
+
+        for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
+            print(f"k: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+                continue
+            if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
+                continue
+            main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n_ratio, w_num)
+        
