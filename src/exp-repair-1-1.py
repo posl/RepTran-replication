@@ -41,7 +41,6 @@ def get_location_save_path(fl_method, n, wnum=None):
     if fl_method != "vmg":
         location_save_path = f"exp-fl-{exp_id}_location_n{n}_weight_{fl_method}.npy"
     else:
-        assert exp_id == 3, f"exp_id: {exp_id} is not 3."
         assert wnum is not None, "wnum should be specified."
         location_save_path = f"exp-fl-{exp_id}_location_n{n}_w{wnum}_weight.npy"
     return location_save_path
@@ -58,6 +57,7 @@ if __name__ == "__main__":
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
     parser.add_argument('--only_eval', action='store_true', help="if True, only evaluate the saved patch", default=False)
     parser.add_argument("--custom_n", type=float, help="the custom n for the FL", default=None)
+    parser.add_argument("--custom_wnum", type=int, help="the custom custom_wnum for the FL", default=None)
     parser.add_argument("--custom_alpha", type=float, help="the custom alpha for the repair", default=None)
     parser.add_argument("--include_other_TP_for_fitness", action="store_true", help="if True, include other TP samples for fitness calculation", default=False)
     parser.add_argument("--fpfn", type=str, help="the type of misclassification (fp or fn)", default=None, choices=["fp", "fn"])
@@ -72,18 +72,15 @@ if __name__ == "__main__":
     misclf_type = args.misclf_type
     only_eval = args.only_eval
     custom_n = args.custom_n
-    wnum = None
+    custom_wnum = args.custom_wnum
     # custom_nが1以上なら整数として扱う (NOTE: 1以下なら割合を示すとしてfloatのまま)
     if custom_n is not None and custom_n >= 1:
         custom_n = int(custom_n)
-    # wnumの指定 (NOTE: hard coded)
-    if custom_n is not None and (custom_n == 0.03 or custom_n == 96):
-        wnum = Experiment3.NUM_TOTAL_WEIGHTS
     custom_alpha = args.custom_alpha
     include_other_TP_for_fitness = args.include_other_TP_for_fitness
     fpfn = args.fpfn
     custom_bounds = args.custom_bounds
-    print(f"ds_name: {ds_name}, k: {k}, tgt_rank: {tgt_rank}, reps_id: {reps_id}, setting_path: {setting_path}, fl_method: {fl_method}, misclf_type: {misclf_type}, only_eval: {only_eval}, custom_n: {custom_n}, custom_alpha: {custom_alpha}, include_other_TP_for_fitness: {include_other_TP_for_fitness}, fpfn: {fpfn}, custom_bounds: {custom_bounds}")
+    print(f"ds_name: {ds_name}, k: {k}, tgt_rank: {tgt_rank}, reps_id: {reps_id}, setting_path: {setting_path}, fl_method: {fl_method}, misclf_type: {misclf_type}, only_eval: {only_eval}, custom_n: {custom_n}, custom_wnum: {custom_wnum}, custom_alpha: {custom_alpha}, include_other_TP_for_fitness: {include_other_TP_for_fitness}, fpfn: {fpfn}, custom_bounds: {custom_bounds}")
 
     # 設定のjsonファイルが指定された場合
     if setting_path is not None:
@@ -96,19 +93,21 @@ if __name__ == "__main__":
         setting_dic = DEFAULT_SETTINGS
         # custom_n, custom_alpha, custom_boundsが1つでも指定されている場合はいったん空文字にする
         setting_id = "default" if (custom_n is None) and (custom_alpha is None) and (custom_bounds is None) else ""
-        is_first = True
+        parts = []
         if custom_n is not None:
             setting_dic["n"] = custom_n
-            setting_id += f"n{custom_n}"
-            is_first = False
+            parts.append(f"n{custom_n}")
+        if custom_wnum is not None:
+            setting_dic["wnum"] = custom_wnum
+            parts.append(f"wnum{custom_wnum}")
         if custom_alpha is not None:
             setting_dic["alpha"] = custom_alpha
-            setting_id += f"alpha{custom_alpha}" if is_first else f"_alpha{custom_alpha}"
-            is_first = False
+            parts.append(f"alpha{custom_alpha}")
         if custom_bounds is not None:
             setting_dic["bounds"] = custom_bounds
-            setting_id += f"bounds{custom_bounds}" if is_first else f"_bounds{custom_bounds}"
-            is_first = False
+            parts.append(f"bounds{custom_bounds}")
+        # リストの要素を'_'で連結
+        setting_id = "_".join(parts)
     # pretrained modelのディレクトリ
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
@@ -182,7 +181,7 @@ if __name__ == "__main__":
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    location_filename = get_location_save_path(fl_method, setting_dic["n"], wnum=wnum)
+    location_filename = get_location_save_path(fl_method, setting_dic["n"], wnum=custom_wnum)
     location_save_path = os.path.join(location_save_dir, location_filename)
     pos_before, pos_after = np.load(location_save_path, allow_pickle=True)
     # log表示
@@ -313,6 +312,7 @@ if __name__ == "__main__":
     # print(f"[after DE] {vit_from_last_layer.base_model_last_layer.intermediate.dense.weight.data[pos_before[0][0]][pos_before[0][1]]}")
     tot_time = e - s
     logger.info(f"Total execution time: {tot_time} sec.")
+    print(f"Total execution time: {tot_time} sec.")
     # 実行時間だけをメトリクスとしてjsonに保存
     # (このjsonはあとでrepair rateなども追記される (007f))
     metrics = {"tot_time": tot_time}

@@ -43,7 +43,7 @@ if __name__ == "__main__":
         for reps_id in range(NUM_REPS):
             cmd = [
                 "python", 
-                "exp-repair-1-1.py", 
+                "exp-repair-1-3.py", 
                 "c100",
                 str(k),
                 str(tgt_rank),
