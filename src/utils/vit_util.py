@@ -626,8 +626,11 @@ def get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, ba
     all_true_labels = np.array(all_true_labels)
     return all_pred_labels, all_true_labels
 
-def get_batched_hs(hs_save_path, batch_size, tgt_indices=None, device=torch.device("cuda")):
-    hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
+def get_batched_hs(hs_save_path, batch_size, tgt_indices=None, device=torch.device("cuda"), hs=None):
+    if hs is None:
+        hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
+    else:
+        hs_before_layernorm = hs
     if tgt_indices is not None:
         # 使うインデックスに対する状態だけを取り出す
         hs_before_layernorm_tgt = hs_before_layernorm[tgt_indices]

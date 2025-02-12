@@ -224,6 +224,7 @@ if __name__ == "__main__":
     if not os.path.exists(hs_save_path):
         logger_obj.error(f"[ERROR] {hs_save_path} does not exist.")
         sys.exit(1)
+    hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
 
     #==================================================
     # 5) repair対象データインデックス (1-1で保存)
@@ -239,11 +240,11 @@ if __name__ == "__main__":
     # 全repair setの hidden states
     batch_size = ViTExperiment.BATCH_SIZE
     ori_tgt_labels = labels[TGT_SPLIT]
-    batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device)
+    batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device, hs=hs_before_layernorm)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
 
     # 修正対象 (subset) の hidden states
-    batch_hs_before_layernorm_tgt = get_batched_hs(hs_save_path, batch_size, tgt_indices, device=device)
+    batch_hs_before_layernorm_tgt = get_batched_hs(hs_save_path, batch_size, tgt_indices, device=device, hs=hs_before_layernorm)
     batch_labels_tgt = get_batched_labels(ori_tgt_labels, batch_size, tgt_indices)
 
     # (A) 修正前: repair set 全体
@@ -271,7 +272,7 @@ if __name__ == "__main__":
     #==================================================
     # 6) パッチ適用 & 修正後の予測
     #==================================================
-    set_new_weights(patch, vit_from_last_layer, pos_before, pos_after, device=device)
+    set_new_weights(patch, pos_before, pos_after, vit_from_last_layer, device=device)
 
     # (C) 修正後: repair set 全体
     pred_labels_new, true_labels_new = get_new_model_predictions(
@@ -324,11 +325,9 @@ if __name__ == "__main__":
         f"exp-repair-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json"
     )
 
-    if not os.path.exists(metrics_json_path):
-        logger_obj.warning(f"[WARNING] {metrics_json_path} does not exist. Creating a new file.")
-        metrics_dict = {}
-    else:
-        metrics_dict = json2dict(metrics_json_path)
+    # metrics_json_pathは存在しないといけない
+    assert os.path.exists(metrics_json_path), f"{metrics_json_path} does not exist."
+    metrics_dict = json2dict(metrics_json_path)
 
     # 例と同じキーで追加
     metrics_dict["acc_old"] = acc_old
@@ -354,12 +353,33 @@ if __name__ == "__main__":
             misclf_type=misclf_type
         )
         logger_obj.info(f"misclf_pair={misclf_pair}, tgt_label={tgt_label}")
-        # (例) test set 全体における s->t の誤分類カウント比較など
-        # ここでは省略可能
+        slabel, tlabel = misclf_pair
+        tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxを保存するためのもの
+        for idx, (pl, tl) in enumerate(zip(pred_labels_old, true_labels_old)):
+            if pl == slabel and tl == tlabel:
+                tgt_mis_indices.append(idx)
+        tgt_misclf_cnt_old = len(tgt_mis_indices)
+        # tgt_misclf_cnt: repair setで特定したターゲットの間違いの種類がtest setでどれだけあったか？
+        # new_injected_faults: repair setで特定したターゲットの間違いの種類は修正後に新しく何個増えたか？
+        tgt_misclf_cnt_new = 0
+        new_injected_faults = 0
+        for idx, (pl, tl) in enumerate(zip(pred_labels_new, true_labels_new)):
+            if pl == slabel and tl == tlabel:
+                tgt_misclf_cnt_new += 1
+                if idx not in tgt_mis_indices:
+                    new_injected_faults += 1 # repair 前と違うサンプルに対してs->tの間違い方をした
+        metrics_dict["tgt_misclf_cnt_old"] = tgt_misclf_cnt_old
+        metrics_dict["tgt_misclf_cnt_new"] = tgt_misclf_cnt_new
+        metrics_dict["diff_tgt_misclf_cnt"] = tgt_misclf_cnt_new - tgt_misclf_cnt_old
+        metrics_dict["new_injected_faults"] = new_injected_faults
 
+    logger_obj.info(f"[INFO] metrics_dict:  {metrics_dict}")
+    
     # 更新したmetricsを保存
     with open(metrics_json_path, "w") as f:
         json.dump(metrics_dict, f, indent=4)
     logger_obj.info(f"[INFO] metrics saved => {metrics_json_path}")
+    print(f"[INFO] metrics saved => {metrics_json_path}")
 
     logger_obj.info("===== Completed exp-repair-1-3.py =====")
+    print("===== Completed exp-repair-1-3.py =====")

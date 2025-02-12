@@ -11,7 +11,7 @@ if __name__ == "__main__":
     
     # TODO: BELOW SHOULD BE CHANGED FOR EACH RUN.
     k_list = [0]
-    tgt_rank_list = [3]
+    tgt_rank_list = range(1, 3)
     
     # misclf_type_list = ["all", "src_tgt", "tgt"]
     misclf_type_list = ["src_tgt", "tgt"] # allはいらない説ある
