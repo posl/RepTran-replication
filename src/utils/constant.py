@@ -12,6 +12,9 @@ class ViTExperiment(Experiment):
     class c100:
         OUTPUT_DIR = "/src/src/out_vit_c100_fold{k}" # k: fold id
         NUM_EPOCHS = 2
+    class tiny_imagenet:
+        OUTPUT_DIR = "/src/src/out_tiny-imagenet"
+        NUM_EPOCHS = 2
         
 class Experiment1(Experiment):
     NUM_IDENTIFIED_NEURONS = 96 # exp-fl-1.md参照

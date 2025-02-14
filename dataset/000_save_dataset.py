@@ -2,7 +2,7 @@ import os
 import numpy as np
 from PIL import Image
 import datasets
-from datasets import load_dataset, load_from_disk, Dataset, DatasetInfo, DatasetDict
+from datasets import load_dataset, load_from_disk, Dataset, DatasetInfo, DatasetDict, ClassLabel, Features, Image as HFImage
 import argparse
 from sklearn.model_selection import KFold
 from tqdm import tqdm
@@ -39,6 +39,83 @@ def get_sublist(original_list, severity):
         return original_list[start_index:end_index]
     else:
         raise ValueError("severity must be an integer in the range 0 to 4 or -1")
+
+def load_tiny_imagenet(tiny_imagenet_dir):
+    """
+    Tiny ImageNet のデータを Hugging Face Dataset の形式に変換
+    """
+    train_dir = os.path.join(tiny_imagenet_dir, "train")
+    val_dir = os.path.join(tiny_imagenet_dir, "val")
+    test_dir = os.path.join(tiny_imagenet_dir, "test")
+
+    # クラス ID のリスト
+    with open(os.path.join(tiny_imagenet_dir, "wnids.txt"), "r") as f:
+        class_ids = [line.strip() for line in f.readlines()]
+    
+    class_to_label = {class_id: i for i, class_id in enumerate(class_ids)}
+    
+    # `words.txt` からクラス ID → ラベル名（英単語）の対応を取得
+    class_id_to_name = {}
+    with open(os.path.join(tiny_imagenet_dir, "words.txt"), "r") as f:
+        for line in f.readlines():
+            parts = line.strip().split("\t")
+            if len(parts) == 2:
+                class_id, label_name = parts
+                if class_id in class_ids:
+                    class_id_to_name[class_id] = label_name
+    
+    # クラス ID の順番を固定し、ラベル名リストを作成
+    class_labels = [class_id_to_name[class_id] for class_id in class_ids]  # 実際のラベル名
+
+    # ClassLabel オブジェクトを作成（整数 ID を持つが、`int2str()` でラベル名を取得可能）
+    class_label_feature = ClassLabel(names=class_labels)
+    
+    # Features を適切に設定
+    features = Features({
+        "img": HFImage(),
+        "label": class_label_feature  # ラベルは ID（整数）として保持
+    })
+    
+    def load_images_and_labels(root_dir, class_to_label=None, has_labels=True):
+        images, labels = [], []
+        if has_labels:
+            for class_id in os.listdir(root_dir):
+                class_path = os.path.join(root_dir, class_id, "images")
+                if not os.path.isdir(class_path):
+                    continue
+                for img_file in os.listdir(class_path):
+                    img_path = os.path.join(class_path, img_file)
+                    images.append(Image.open(img_path).convert("RGB"))
+                    labels.append(class_to_label[class_id])
+            return images, labels
+        else:
+            # テストデータ（ラベルなし）
+            images = [Image.open(os.path.join(root_dir, "images", img_file)).convert("RGB")
+                      for img_file in os.listdir(os.path.join(root_dir, "images"))]
+            return images, None
+
+    # 訓練データの読み込み
+    train_images, train_labels = load_images_and_labels(train_dir, class_to_label)
+
+    # 検証データの読み込み
+    val_annotations = os.path.join(val_dir, "val_annotations.txt")
+    val_images, val_labels = [], []
+    with open(val_annotations, "r") as f:
+        for line in f.readlines():
+            items = line.strip().split("\t")
+            img_file, class_id = items[0], items[1]
+            img_path = os.path.join(val_dir, "images", img_file)
+            val_images.append(Image.open(img_path).convert("RGB"))
+            val_labels.append(class_to_label[class_id])
+
+    # テストデータの読み込み（ラベルなし）
+    # test_images, _ = load_images_and_labels(test_dir, has_labels=False)
+
+    return {
+        "train": Dataset.from_dict({"img": train_images, "label": train_labels}, features=features),
+        "repair": Dataset.from_dict({"img": val_images, "label": val_labels}, features=features),
+        # "test": Dataset.from_dict({"img": test_images}, features=features),
+    }
 
 parser = argparse.ArgumentParser(description='Dataset selector')
 parser.add_argument('ds', type=str)
@@ -98,5 +175,12 @@ elif ds == "c10c" or ds == "c100c":
         ds_dict[key] = Dataset.from_dict({"img": arr2img(ds_arr), label_col: labels}, info=info)
     print(ds_dict)
     ds_dict.save_to_disk(f"{ds}_severity{severity}") if severity != -1 else ds_dict.save_to_disk(ds)
+# Tiny ImageNet
+elif ds == "tiny-imagenet":
+    tiny_imagenet_dir = "/src/dataset/ori_tiny-imagenet-200"
+    print(f"Processing Tiny ImageNet from {tiny_imagenet_dir} ...")
+    ds_dict = DatasetDict(load_tiny_imagenet(tiny_imagenet_dir))
+    print(ds_dict)
+    ds_dict.save_to_disk("tiny-imagenet-200")
 else:
     raise NotImplementedError

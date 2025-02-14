@@ -19,10 +19,18 @@ if __name__ == "__main__":
     device = get_device()
     dataset_dir = ViTExperiment.DATASET_DIR
     # datasetをロード (初回の読み込みだけやや時間かかる)
-    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    if ds_name == "tiny-imagenet":
+        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
+        output_dir = exp_obj.OUTPUT_DIR
+        eval_div = "repair"
+    else:
+        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+        output_dir = exp_obj.OUTPUT_DIR.format(k=k)
+        eval_div = "test"
 
     # datasetごとに違う変数のセット
-    if ds_name == "c10":
+    if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":
@@ -49,8 +57,8 @@ if __name__ == "__main__":
     batch_size = ViTExperiment.BATCH_SIZE
     logging_steps = len(ds_preprocessed["train"]) // batch_size
     training_args = TrainingArguments(
-        output_dir=getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k),
-        num_train_epochs=getattr(ViTExperiment, ds_name).NUM_EPOCHS,
+        output_dir=output_dir,
+        num_train_epochs=exp_obj.NUM_EPOCHS,
         learning_rate=2e-4,
         weight_decay=0.01,
         per_device_train_batch_size=batch_size,
@@ -74,7 +82,7 @@ if __name__ == "__main__":
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         train_dataset=ds_preprocessed["train"],
-        eval_dataset=ds_preprocessed["test"],
+        eval_dataset=ds_preprocessed[eval_div],
         tokenizer=processor,
     )
     train_results = trainer.train()
