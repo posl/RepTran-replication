@@ -11,7 +11,7 @@ if __name__ == "__main__":
     
     # TODO: BELOW SHOULD BE CHANGED FOR EACH RUN.
     k_list = [0]
-    tgt_rank_list = [3]
+    tgt_rank_list = range(4, 6)
     
     # misclf_type_list = ["all", "src_tgt", "tgt"]
     misclf_type_list = ["src_tgt", "tgt"] # allはいらない説ある
@@ -19,8 +19,8 @@ if __name__ == "__main__":
     fpfn_list = [None, "fp", "fn"]
     alpha_list = [0.2, 0.4, 0.6, 0.8]
     
-    fl_method_list = ["vmg", "random", "bl", "vdiff"]
-    # fl_method_list = ["vmg"] # いったんvmgだけやって時間みたい
+    fl_method_list = ["vmg", "random", "bl"]
+    # fl_method_list = ["vmg", "random", "bl", "vdiff"]
     
     exp_list = [ExperimentRepair1, ExperimentRepair2]
     
@@ -38,9 +38,10 @@ if __name__ == "__main__":
         else:
             n = exp.NUM_IDENTIFIED_WEIGHTS
             wnum = None # vmg以外はwnumがファイル名に入ってないので
-        print(f"{'='*90}\nProcessing: ds={ds}, k={k}, tgt_rank={tgt_rank}, n={n}, wnum={wnum}, alpha={alpha}, misclf_type={misclf_type}, fpfn={fpfn}, fl_method={fl_method}")
         # repair search自体にランダム性があるので繰り返し
-        for reps_id in range(NUM_REPS):
+        # for reps_id in range(NUM_REPS):
+        for reps_id in range(2, 6):
+            print(f"{'='*90}\nProcessing: ds={ds}, k={k}, tgt_rank={tgt_rank}, n={n}, wnum={wnum}, alpha={alpha}, misclf_type={misclf_type}, fpfn={fpfn}, fl_method={fl_method}, reps_id={reps_id}")
             cmd = [
                 "python", 
                 "exp-repair-1-1.py", 

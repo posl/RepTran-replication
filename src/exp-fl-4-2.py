@@ -35,6 +35,7 @@ if __name__ == "__main__":
     # num_weight のユニークな値ごとに処理
     for wnum in ori_df["num_weight"].unique():
         df = ori_df[ori_df["num_weight"] == wnum]
+        print(f"wnum: {wnum}, len(df): {len(df)}")
 
         #========================================================================
         # 1) (fl_method, fl_target) の行Index / misclf_type の列Index を準備
@@ -52,11 +53,12 @@ if __name__ == "__main__":
 
         # スクリプト2で使っていた5種類
         known_misclf_types = ["all", "src_tgt", "tgt_all", "tgt_fp", "tgt_fn"]
+        # known_misclf_types = ["src_tgt", "tgt_all", "tgt_fp", "tgt_fn"]
         # 1次元だけのカラム
         col_index = pd.Index(known_misclf_types, name="misclf_type")
 
         # 結果テーブル (行=(fl_method,fl_target), 列=misclf_type)
-        result_table = pd.DataFrame(index=row_index, columns=col_index, data=0)
+        result_table = pd.DataFrame(index=row_index, columns=col_index, data=-1)
 
         #========================================================================
         # 2) misclf_type と fpfn の組み合わせを取得してループ
@@ -128,7 +130,26 @@ if __name__ == "__main__":
             if len(df_extracted) == 0:
                 print("No data in df_extracted => skip")
 
-            print("df_extracted.shape:", df_extracted.shape)
+            # df_extractedの各列のユニーク値を表示
+            # for col in df_extracted.columns:
+            #     if col not in ["diff_proba"]:
+            #         print(f"{col}: {df_extracted[col].unique()}")
+            #         print(f"{col}: {df_extracted[col].value_counts()}")
+            # df_extractedの 'fl_method' 列のユニーク値ごとに，他の列のユニーク値を表示
+            # for method_val in df_extracted["fl_method"].unique():
+            #     print(f"fl_method={method_val} ({len(df_extracted[df_extracted['fl_method'] == method_val])})")
+            #     for col in df_extracted.columns:
+            #         if col not in ["diff_proba"]:
+                        # print(f"{col}: {df_extracted[df_extracted['fl_method'] == method_val][col].unique()}")
+                        # print(df_extracted[df_extracted['fl_method'] == method_val][col].value_counts())
+            
+            # df_extractedの 'n' 列のユニーク値ごとに，他の列のユニーク値を表示
+            # for n_val in df_extracted["n"].unique():
+            #     print(f"n={n_val} ({len(df_extracted[df_extracted['n'] == n_val])})")
+            #     for col in df_extracted.columns:
+            #         if col not in ["diff_proba"]:
+            #             # print(f"{col}: {df_extracted[df_extracted['n'] == n_val][col].unique()}")
+            #             print(df_extracted[df_extracted['n'] == n_val][col].value_counts())
 
             #====================================================================
             # 4) groupby(["label", "op", "fl_method", "fl_target"]) で mean_diff_proba
@@ -142,7 +163,6 @@ if __name__ == "__main__":
                     mean_diff_proba=("diff_proba", "mean"),
                     std_diff_proba=("diff_proba", "std"))
             )
-            # print(grouped_df.columns)
             
             # print(f"count_rows: {grouped_df['count_rows'].sum()}")
             # print(f"grouped_df.shape: {grouped_df.shape}")
@@ -152,10 +172,9 @@ if __name__ == "__main__":
             # 5) (fl_method, fl_target) ごとに「ラベルごと最大の行」を取り、>0 のクラスをカウント
             #====================================================================
             for (method_val, target_val), sub_df in grouped_df.groupby(["fl_method", "fl_target"]):
-                print(method_val, target_val)
-                print(f"sub_df.shape: {sub_df.shape}")
-                print(f"sub_df: {sub_df}")
-                exit()
+                print(method_val, target_val, f"({len(sub_df)})")
+                # print(f"sub_df.shape: {sub_df.shape}")
+                # print(f"sub_df: {sub_df}")
                 if len(sub_df) == 0:
                     continue
                 

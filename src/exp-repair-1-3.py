@@ -86,6 +86,7 @@ if __name__ == "__main__":
     parser.add_argument("--custom_wnum", type=int, default=None)
     parser.add_argument("--custom_alpha", type=float, default=None)
     parser.add_argument("--custom_bounds", type=str, default=None, choices=["Arachne", "ContrRep"])
+    parser.add_argument("--tgt_split", type=str, default="repair", choices=["repair", "test"])
     args = parser.parse_args()
 
     ds_name = args.ds
@@ -99,11 +100,12 @@ if __name__ == "__main__":
     custom_wnum = args.custom_wnum
     custom_alpha = args.custom_alpha
     custom_bounds = args.custom_bounds
+    tgt_split = args.tgt_split
 
     logger.info(f"[INFO] ds_name={ds_name}, fold_id={k}, tgt_rank={tgt_rank}, reps_id={reps_id}, "
                 f"fl_method={fl_method}, misclf_type={misclf_type}, fpfn={fpfn}, "
                 f"custom_n={custom_n}, custom_wnum={custom_wnum}, custom_alpha={custom_alpha}, "
-                f"custom_bounds={custom_bounds}")
+                f"custom_bounds={custom_bounds}, tgt_split={tgt_split}")
 
     #==================================================
     # 1) setting_id を決定 (1-1 と同様)
@@ -217,36 +219,20 @@ if __name__ == "__main__":
     vit_from_last_layer = ViTFromLastLayer(model)
     vit_from_last_layer.eval()
 
-    TGT_SPLIT = "repair"
     TGT_LAYER = 11
-    hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{TGT_SPLIT}")
+    hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     hs_save_path = os.path.join(hs_save_dir, f"hidden_states_before_layernorm_{TGT_LAYER}.npy")
     if not os.path.exists(hs_save_path):
         logger_obj.error(f"[ERROR] {hs_save_path} does not exist.")
         sys.exit(1)
     hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
 
-    #==================================================
-    # 5) repair対象データインデックス (1-1で保存)
-    #==================================================
-    tgt_indices_filename = f"exp-repair-1-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy"
-    tgt_indices_path = os.path.join(save_dir, tgt_indices_filename)
-    if not os.path.exists(tgt_indices_path):
-        logger_obj.error(f"[ERROR] {tgt_indices_path} not found.")
-        sys.exit(1)
-
-    tgt_indices = np.load(tgt_indices_path)
-
     # 全repair setの hidden states
     batch_size = ViTExperiment.BATCH_SIZE
-    ori_tgt_labels = labels[TGT_SPLIT]
+    ori_tgt_labels = labels[tgt_split]
     batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device, hs=hs_before_layernorm)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
-
-    # 修正対象 (subset) の hidden states
-    batch_hs_before_layernorm_tgt = get_batched_hs(hs_save_path, batch_size, tgt_indices, device=device, hs=hs_before_layernorm)
-    batch_labels_tgt = get_batched_labels(ori_tgt_labels, batch_size, tgt_indices)
-
+    
     # (A) 修正前: repair set 全体
     pred_labels_old, true_labels_old = get_new_model_predictions(
         vit_from_last_layer,
@@ -257,8 +243,51 @@ if __name__ == "__main__":
     is_correct_old = (pred_labels_old == true_labels_old)
     logger_obj.info("====== Before Patch (repair set ALL) ======")
     log_info_preds(pred_labels_old, true_labels_old, is_correct_old)
+    
+    #==================================================
+    # 5) repair対象データインデックス (1-1で保存)
+    #==================================================
+    misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
+    # repair set の誤分類ペアを識別
+    misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(
+        misclf_info_dir,
+        tgt_split="repair",
+        tgt_rank=tgt_rank,
+        misclf_type=misclf_type,
+        fpfn=fpfn
+    )
+    if tgt_split == "repair":
+        tgt_indices_filename = f"exp-repair-1-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy"
+        tgt_indices_path = os.path.join(save_dir, tgt_indices_filename)
+        if not os.path.exists(tgt_indices_path):
+            logger_obj.error(f"[ERROR] {tgt_indices_path} not found.")
+            sys.exit(1)
+        tgt_indices = np.load(tgt_indices_path)
+    else:
+        tgt_indices = []
+        assert tgt_split == "test", f"tgt_split={tgt_split} is not supported."
+        for idx, (pl, tl) in enumerate(zip(pred_labels_old, true_labels_old)):
+            if misclf_type == "src_tgt":
+                if pl == misclf_pair[0] and tl == misclf_pair[1]:
+                    tgt_indices.append(idx)
+            elif misclf_type == "tgt" and fpfn is None:
+                if pl == tgt_label or tl == tgt_label:
+                    tgt_indices.append(idx)
+            elif misclf_type == "tgt" and fpfn == "fp":
+                if pl == tgt_label:
+                    tgt_indices.append(idx)
+            elif misclf_type == "tgt" and fpfn == "fn":
+                if tl == tgt_label:
+                    tgt_indices.append(idx)
+            else:
+                raise ValueError(f"misclf_type={misclf_type} and fpfn={fpfn} is not supported.")
+        tgt_indices = np.array(tgt_indices)
 
-    # (B) 修正前: 修正に使ったsubset
+    # 修正対象 (subset) の hidden states
+    batch_hs_before_layernorm_tgt = get_batched_hs(hs_save_path, batch_size, tgt_indices, device=device, hs=hs_before_layernorm)
+    batch_labels_tgt = get_batched_labels(ori_tgt_labels, batch_size, tgt_indices)
+
+    # (B) 修正前: 修正対象の間違いだけを取り出したsubset
     pred_labels_old_tgt, true_labels_old_tgt = get_new_model_predictions(
         vit_from_last_layer,
         batch_hs_before_layernorm_tgt,
@@ -320,14 +349,20 @@ if __name__ == "__main__":
     break_rate_tgt = break_cnt_tgt / np.sum(is_correct_old_tgt) if np.sum(is_correct_old_tgt) > 0 else 0.0
 
     # JSONの更新: 1-1で既に tot_time などが書かれている前提
-    metrics_json_path = os.path.join(
-        save_dir,
-        f"exp-repair-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json"
-    )
-
-    # metrics_json_pathは存在しないといけない
-    assert os.path.exists(metrics_json_path), f"{metrics_json_path} does not exist."
-    metrics_dict = json2dict(metrics_json_path)
+    if tgt_split == "repair":
+        metrics_json_path = os.path.join(
+            save_dir,
+            f"exp-repair-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json"
+        )
+        # metrics_json_pathは存在しないといけない
+        assert os.path.exists(metrics_json_path), f"{metrics_json_path} does not exist."
+        metrics_dict = json2dict(metrics_json_path)
+    else:
+        metrics_json_path = os.path.join(
+            save_dir,
+            f"exp-repair-1-metrics_for_{tgt_split}_{setting_id}_{fl_method}_reps{reps_id}.json"
+        )
+        metrics_dict = {}
 
     # 例と同じキーで追加
     metrics_dict["acc_old"] = acc_old
@@ -344,14 +379,6 @@ if __name__ == "__main__":
 
     # misclf_type が src_tgt の場合の追加計測例
     if misclf_type == "src_tgt":
-        misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-        # repair set の誤分類ペアを識別
-        misclf_pair, tgt_label, _ = identfy_tgt_misclf(
-            misclf_info_dir,
-            tgt_split="repair",
-            tgt_rank=tgt_rank,
-            misclf_type=misclf_type
-        )
         logger_obj.info(f"misclf_pair={misclf_pair}, tgt_label={tgt_label}")
         slabel, tlabel = misclf_pair
         tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxを保存するためのもの

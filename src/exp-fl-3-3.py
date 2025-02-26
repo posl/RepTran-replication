@@ -95,7 +95,8 @@ if __name__ == "__main__":
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    fl_target_list = ["neuron", "weight"]
+    # fl_target_list = ["neuron", "weight"]
+    fl_target_list = ["weight"]
     exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
     
     # 全ての結果を格納するDataFrame

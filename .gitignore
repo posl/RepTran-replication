@@ -18,3 +18,4 @@ tmp*.sh
 *pkl
 dataset/*
 !dataset/*.py
+tmp*/

@@ -54,7 +54,7 @@ if __name__ == "__main__":
                 std_diff_proba=("diff_proba", "std"))
         )
         grouped_df["mean_diff_proba"] = grouped_df["mean_diff_proba"] * 100
-        print(grouped_df)
+        print("grouped_df: ", grouped_df)
 
         # fl_method, fl_target ごとに「ラベルごと最大の行」を取得し、>0 のクラスをカウント
         for (method_val, target_val), sub_df in grouped_df.groupby(["fl_method", "fl_target"]):
@@ -66,23 +66,32 @@ if __name__ == "__main__":
             sub_max = sub_df.groupby("label").apply(
                 lambda g: g.loc[g["mean_diff_proba"].idxmax()]
             )
-            print(sub_max)
+            # print(sub_max)
             n_pos = (sub_max["mean_diff_proba"] > 0).sum()
-            print(n_pos)
+            # print(n_pos)
+            
+            # ★ 変更点1: 平均・標準偏差を計算
+            sub_mean = sub_max["mean_diff_proba"].mean()
+            sub_std = sub_max["mean_diff_proba"].std()
+
+            # ★ 変更点2: 文字列として "n_pos (mean±std)" を作成
+            result_str = f"{n_pos} ({sub_mean:.3f}±{sub_std:.3f})"
+            print("result_str =", result_str)
 
             # `total_misclf` に書き込み
-            result_table.loc[(target_val, method_val), "total_misclf"] = n_pos
+            # result_table.loc[(target_val, method_val), "total_misclf"] = n_pos
+            # ★ 変更点3: 文字列をそのままテーブルに書き込み
+            result_table.loc[(target_val, method_val), "total_misclf"] = result_str
 
         # CSVに保存
         out_csv = f"./exp-fl-4-3_{ds}_no_rank_table_wnum{wnum}.csv"
         desired_index_order = [
             ("neuron", "random"),
-            ("weight", "random"),
             ("neuron", "ig"),
-            ("weight", "bl"),
             ("neuron", "vdiff"),
+            ("weight", "random"),
+            ("weight", "bl"),
             ("weight", "vdiff"),
-            ("neuron", "vdiff+mean_act"),
             ("weight", "vdiff+mean_act+grad"),
         ]
         result_table = result_table.reindex(desired_index_order)

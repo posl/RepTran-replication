@@ -201,8 +201,7 @@ if __name__ == "__main__":
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     results = []
-    # exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
-    exp_list = [ExperimentRepair2] # TODO: REMOVE LATER
+    exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
     
     for exp in exp_list:
         n_ratio, w_num = exp.NUM_IDENTIFIED_NEURONS_RATIO, exp.NUM_IDENTIFIED_WEIGHTS
