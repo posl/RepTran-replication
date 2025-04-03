@@ -2,7 +2,7 @@ import os, sys, subprocess
 import numpy as np
 from itertools import product
 from utils.constant import Experiment3, ExperimentRepair1, ExperimentRepair2
-NUM_REPS = 1
+NUM_REPS = 5
 
 if __name__ == "__main__":
     ds = "c100"
@@ -11,7 +11,7 @@ if __name__ == "__main__":
     
     # TODO: BELOW SHOULD BE CHANGED FOR EACH RUN.
     k_list = [0]
-    tgt_rank_list = range(4, 6)
+    tgt_rank_list = [1, 2, 3]
     
     # misclf_type_list = ["all", "src_tgt", "tgt"]
     misclf_type_list = ["src_tgt", "tgt"] # allはいらない説ある
@@ -40,7 +40,7 @@ if __name__ == "__main__":
             wnum = None # vmg以外はwnumがファイル名に入ってないので
         # repair search自体にランダム性があるので繰り返し
         # for reps_id in range(NUM_REPS):
-        for reps_id in range(2, 6):
+        for reps_id in range(NUM_REPS):
             print(f"{'='*90}\nProcessing: ds={ds}, k={k}, tgt_rank={tgt_rank}, n={n}, wnum={wnum}, alpha={alpha}, misclf_type={misclf_type}, fpfn={fpfn}, fl_method={fl_method}, reps_id={reps_id}")
             cmd = [
                 "python", 
