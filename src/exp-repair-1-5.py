@@ -206,7 +206,7 @@ if __name__ == "__main__":
 
     # 1) 可視化用の設定を追加
     rename_map = {"vmg": "Ours", "random": "Random", "bl": "Arachne"}
-    method_order = ["Ours", "Random", "Arachne"]  # x 軸や hue の並び順
+    method_order = ["Ours", "Arachne", "Random"]  # x 軸や hue の並び順
     my_palette = {
         "Ours":    "C0",  # Seaborn/matplotlibの色指定 (C0, C1, C2 などで揃える)
         "Random":  "C1",
@@ -253,7 +253,7 @@ if __name__ == "__main__":
                 ax=ax
             )
             ax.set_title(f"{mt} - {metric}", fontsize=12)
-            ax.set_xlabel("Method", fontsize=10)
+            ax.set_xlabel(None)
             ax.set_ylabel(metric, fontsize=10)
 
     plt.tight_layout()
