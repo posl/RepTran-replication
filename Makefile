@@ -2,7 +2,8 @@ export CONTAINER_NAME=terry
 export NONE_DOCKER_IMAGES=`docker images -f dangling=true -q`
 #================================================
 b: ## build docker image
-	docker compose -f docker-compose.gpu.yml build --no-cache
+# docker compose -f docker-compose.gpu.yml build --no-cache # DO WE NEED NO-CACHE?
+	docker compose -f docker-compose.gpu.yml build
 uc: ## docker-compose up -d and connect the container
 	@make u
 	@make c
