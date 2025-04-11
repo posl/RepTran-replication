@@ -80,8 +80,6 @@ def main(fl_method, n, w_num):
     # pretrained modelのロード
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
-    vit_from_last_layer = ViTFromLastLayer(model)
-    vit_from_last_layer.eval()
     # configuration
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     batch_size = ViTExperiment.BATCH_SIZE
@@ -118,10 +116,12 @@ def main(fl_method, n, w_num):
         print(f"Total number of batches: {len(clean_hs) + len(corrupted_hs)} = {len(clean_hs)} + {len(corrupted_hs)}")
         
         for op in ["enhance", "suppress"]:
+            vit_from_last_layer = ViTFromLastLayer(model)
+            vit_from_last_layer.eval()
             # 介入を加える (重みを2倍もしくは0倍にする)
             # 重み単位での介入は，推論前に静的にやる（事前に重みを変える）
-            dummy_in = [0] * (len(pos_before) + len(pos_after))
-            set_new_weights(dummy_in, pos_before, pos_after, vit_from_last_layer, op=op)
+            
+            
             
             # 予測の実行
             all_logits = []

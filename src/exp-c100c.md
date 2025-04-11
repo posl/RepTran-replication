@@ -17,5 +17,11 @@
 - ArachneのBLをやる
 
 `exp-c100c-fl-3.py`
-- 特定したlocationに介入を加え，その時の予測結果のnpyを保存する (exp-fl-2-4.pyを参照)
+- 特定したlocationに介入を加え，その時の予測結果のnpyを保存する (exp-fl-2-3.pyを参照)．なお結果はラベルごとのprobaで保存する．
 - ランダムな位置選択はこのソース内でやってしまって保存もする
+
+`exp-c100c-fl-4.py`
+- exp-fl-2-4.pyをもとにしてオリジナルのprobaとの差をとる
+
+`exp-c100c-fl-5.py`
+- exp-fl-4-1.pyをもとにしてexp-c100c-fl-4.pyの結果を可視化する
