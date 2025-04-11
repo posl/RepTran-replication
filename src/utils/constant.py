@@ -12,6 +12,7 @@ class ViTExperiment(Experiment):
     class c100:
         OUTPUT_DIR = "/src/src/out_vit_c100_fold{k}" # k: fold id
         NUM_EPOCHS = 2
+        ADDITIONAL_NOISE_TYPES = ["gaussian_blur", "speckle_noise", "spatter", "saturate"]
     class tiny_imagenet:
         OUTPUT_DIR = "/src/src/out_tiny-imagenet"
         NUM_EPOCHS = 2

@@ -370,8 +370,7 @@ if __name__ == "__main__":
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    # n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS]
-    n_list = [ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS] # TODO REMOVE THIS LINE
+    n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS]
     results = []
     for k, tgt_rank, misclf_type, fpfn, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list):
         print(f"Start: ds={ds}, k={k}, n={n}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")

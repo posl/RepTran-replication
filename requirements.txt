@@ -29,6 +29,7 @@ decorator==5.1.1
 defusedxml==0.7.1
 dill==0.3.6
 entrypoints==0.4
+evaluate==0.4.1
 fastjsonschema==2.16.2
 filelock==3.12.2
 flatbuffers==23.5.26
@@ -126,6 +127,7 @@ QtPy==2.3.0
 regex==2023.12.25
 requests==2.28.2
 requests-oauthlib==1.3.1
+responses==0.18.0
 rsa==4.9
 s3transfer==0.8.2
 safetensors==0.4.2
@@ -155,7 +157,8 @@ torchvision==0.14.1
 tornado==6.2
 tqdm==4.65.0
 traitlets==5.9.0
-# transformers==4.30.2
+# Editable install with no version control (transformers==4.30.2)
+-e /src/transformers-4.30.2
 typing_extensions==4.4.0
 umap-learn==0.5.5
 urllib3==1.26.14

@@ -235,7 +235,7 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs", alpha=None):
+def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None):
     vmap_dic = defaultdict(np.array)
     for cor_mis in ["cor", "mis"]:
         ds_type = f"ori_{tgt_split}"
@@ -251,6 +251,12 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
             if fpfn is not None:
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
+        if corruption_type is not None and cor_mis == "mis":
+            # misclf_pair, tgt_label, fpfnが全部Noneであることを保証
+            assert misclf_pair is None, f"Error: {misclf_pair}"
+            assert tgt_label is None, f"Error: {tgt_label}"
+            assert fpfn is None, f"Error: {fpfn}"
+            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{corruption_type}_{cor_mis}.npy")
         # vscoreを読み込む
         vscores = np.load(vscore_save_path)
         vmap_dic[cor_mis] = vscores.T
@@ -266,7 +272,11 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
     # cache_statesから中間ニューロンの値を取得
     # print(intermediate_states.shape) # shape: (num_tgt_mis_samples, num_neurons)
     # 活性化後値の全対象誤分類サンプルにわたっての平均をmean_activationに関するスコア
-    mean_activation = np.mean(intermediate_states[tgt_mis_indices], axis=0) # shape: (num_neurons,)
+    if tgt_mis_indices is None:
+        # tgt_mis_indicesがNoneの場合は，全ての中間ニューロンの値を使用
+        mean_activation = np.mean(intermediate_states, axis=0) # shape: (num_neurons,)
+    else:
+        mean_activation = np.mean(intermediate_states[tgt_mis_indices], axis=0) # shape: (num_neurons,)
     
     # vmap_diff_absとmean_activationをそれぞれmin-max正規化
     vmap_diff_abs = (vmap_diff_abs - np.min(vmap_diff_abs)) / (np.max(vmap_diff_abs) - np.min(vmap_diff_abs))
@@ -405,8 +415,7 @@ def get_vscore_diff_and_sim(vscore_before_dir, vscore_dir, vscore_after_dir, tgt
         vdiff_dic[ba]["cos_sim"] = cosine_similarity
     return vdiff_dic
 
-def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", 
-                            misclf_pair=None, tgt_label=None, fpfn=None, rank_type=None):
+def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type=None):
     def _get_vscore_shape(vscore_dir):
         for cor_mis in ["cor", "mis"]:
             ds_type = f"ori_{tgt_split}"
@@ -628,7 +637,7 @@ def get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, ba
 
 def get_batched_hs(hs_save_path, batch_size, tgt_indices=None, device=torch.device("cuda"), hs=None):
     if hs is None:
-        hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
+        hs_before_layernorm = torch.from_numpy(np.load(hs_save_path, mmap_mode="r")).to(device)
     else:
         hs_before_layernorm = hs
     if tgt_indices is not None:

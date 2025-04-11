@@ -34,3 +34,17 @@ def json2dict(json_path):
     with open(json_path, "r", encoding="utf-8") as f:
         d = json.load(f)
     return d
+
+def get_bottom3_keys_from_json(json_path):
+    """
+    指定されたJSONファイルから、値が小さい順にキーを3つ返す。
+    
+    Parameters:
+        json_path (str): JSONファイルのパス
+    
+    Returns:
+        List[str]: 値が小さい順の上位3つのキー
+    """
+    with open(json_path, 'r') as f:
+        data = json.load(f)
+    return sorted(data, key=data.get)[:3]
