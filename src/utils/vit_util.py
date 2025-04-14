@@ -235,7 +235,7 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None):
+def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False):
     vmap_dic = defaultdict(np.array)
     for cor_mis in ["cor", "mis"]:
         ds_type = f"ori_{tgt_split}"
@@ -314,7 +314,12 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
             assert return_rank(neuron_score, ti) == r, f"Error: {ti}, {r}"
         places_to_fix = [[tgt_layer, pos] for pos in top_idx]
         tgt_neuron_score = neuron_score[top_idx]
-    return places_to_fix, tgt_neuron_score
+    if not return_all_neuron_score:
+        # top_idxのニューロンのスコアだけ返す
+        return places_to_fix, tgt_neuron_score
+    else:
+        # 全ニューロンのスコアを返す
+        return places_to_fix, tgt_neuron_score, neuron_score
 
 def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
 

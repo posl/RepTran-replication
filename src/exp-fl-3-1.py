@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from utils.helper import get_device, json2dict
 from utils.vit_util import identfy_tgt_misclf, localize_neurons_with_mean_activation, get_batched_hs, get_batched_labels, ViTFromLastLayer
-from utils.constant import ViTExperiment, ExperimentRepair1, Experiment3, ExperimentRepair2
+from utils.constant import ViTExperiment, ExperimentRepair1, Experiment3, ExperimentRepair2, ExperimentRepair3
 from utils.log import set_exp_logging
 from logging import getLogger
 from datasets import load_from_disk
@@ -196,12 +196,14 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
 
 if __name__ == "__main__":
     ds = "c100"
-    k_list = range(5)
+    # k_list = range(5)
+    k_list = [0]
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     results = []
-    exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
+    # exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
+    exp_list = [ExperimentRepair3]
     
     for exp in exp_list:
         n_ratio, w_num = exp.NUM_IDENTIFIED_NEURONS_RATIO, exp.NUM_IDENTIFIED_WEIGHTS
