@@ -27,6 +27,20 @@ def get_location_path(n, w_num, beta, fl_method, location_dir, generate_random=T
     location_path = os.path.join(location_dir, location_file)
     return location_path
 
+def get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, cor_mis):
+    assert op in ["enhance", "suppress"], f"Unknown operation: {op}"
+    assert cor_mis in ["cor", "mis"], f"Unknown cor_mis: {cor_mis}"
+    if fl_method == "ours":
+        loss_diff_file = f"exp-fl-6_loss_diff_n{n}_beta{beta}_{op}_{cor_mis}_weight_ours.npy"
+    elif fl_method == "bl":
+        loss_diff_file = f"exp-fl-2_loss_diff_n{n}_{op}_{cor_mis}_weight_bl.npy"
+    elif fl_method == "random":
+        loss_diff_file = f"exp-fl-1_loss_diff_n{n}_{op}_{cor_mis}_weight_random.npy"
+    else:
+        raise ValueError(f"Unknown fl_method: {fl_method}")
+    loss_diff_path = os.path.join(loss_diff_dir, loss_diff_file)
+    return loss_diff_path
+
 def main(fl_method, n, w_num, rank, beta):
     # rank を tgt_rank として利用（int型）
     tgt_rank = rank
@@ -146,8 +160,15 @@ def main(fl_method, n, w_num, rank, beta):
             print("pos_before.shape:", np.array(pos_before).shape)
             print("pos_after.shape:", np.array(pos_after).shape)
 
+            # サンプルごとのロスの保存dir
+            loss_diff_dir = os.path.join(location_dir, "loss_diff_per_sample")
+            os.makedirs(loss_diff_dir, exist_ok=True)
+
             op_metrics = {}
             for op in ["enhance", "suppress"]:
+                # opかけたモデルのロス - original modelのロスの差を保存するパス
+                cor_loss_diff_path = get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, "cor")
+                mis_loss_diff_path = get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, "mis")
                 # モデルのコピーで初期状態から再構築
                 model_copy = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
                 vit_from_last_layer_mod = ViTFromLastLayer(model_copy)
@@ -207,6 +228,16 @@ def main(fl_method, n, w_num, rank, beta):
                     "mean_loss_incorrect_mod": mean_loss_incorr_mod,
                     "std_loss_incorrect_mod": std_loss_incorr_mod,
                 }
+                
+                # ロスの差分を計算して保存
+                assert len(correct_loss) == len(correct_loss_mod), "Length mismatch between original and modified loss arrays"
+                assert len(incorrect_loss) == len(incorrect_loss_mod), "Length mismatch between original and modified loss arrays"
+                cor_loss_diff = correct_loss_mod - correct_loss
+                mis_loss_diff = incorrect_loss_mod - incorrect_loss
+                print(f"cor_loss_diff.shape: {cor_loss_diff.shape}, mis_loss_diff.shape: {mis_loss_diff.shape}")
+                np.save(cor_loss_diff_path, cor_loss_diff)
+                np.save(mis_loss_diff_path, mis_loss_diff)
+                print(f"Saved loss diff for {op} operation: {cor_loss_diff_path}, {mis_loss_diff_path}")
                 
             # --- 結果エントリ作成 ---
             result_entry = {
