@@ -28,9 +28,10 @@ def get_location_path(n, w_num, fl_method, location_dir, generate_random=True):
     return location_path
 
 def get_loss_diff_path(n, w_num, fl_method, loss_diff_dir, op, cor_mis):
-    if fl_method == "ours":
-        loss_diff_file = f"exp-fl-3_loss_diff_n{n}_w{w_num}_{op}_{cor_mis}_weight.npy"
-    elif fl_method == "bl":
+    assert cor_mis in ["cor", "mis"], f"Unknown cor_mis: {cor_mis}"
+    # if fl_method == "ours":
+    #     loss_diff_file = f"exp-fl-3_loss_diff_n{n}_w{w_num}_{op}_{cor_mis}_weight.npy"
+    if fl_method == "bl":
         loss_diff_file = f"exp-fl-2_loss_diff_n{n}_{op}_{cor_mis}_weight_bl.npy"
     elif fl_method == "random":
         loss_diff_file = f"exp-fl-1_loss_diff_n{n}_{op}_{cor_mis}_weight_random.npy"
@@ -92,6 +93,7 @@ def main(fl_method, n, w_num, rank):
     misclf_type_list = ["src_tgt", "tgt"] # allは対象外にする
     fpfn_list = [None, "fp", "fn"]
     results_list = []
+    op_list = ["enhance", "suppress", "multiply-2"]
     
     for misclf_type in misclf_type_list:
         for fpfn in fpfn_list:
@@ -161,7 +163,13 @@ def main(fl_method, n, w_num, rank):
             os.makedirs(loss_diff_dir, exist_ok=True)
             
             op_metrics = {}
-            for op in ["enhance", "suppress"]:
+            # for op in ["enhance", "suppress"]:
+            for op in op_list:
+                if "multiply" in op:
+                    # "multiply" を含む場合はその係数を取り出す
+                    op_coeff = int(op.split("multiply")[-1])
+                else:
+                    op_coeff = op
                 # opかけたモデルのロス - original modelのロスの差を保存するパス
                 cor_loss_diff_path = get_loss_diff_path(n, w_num, fl_method, loss_diff_dir, op, "cor")
                 mis_loss_diff_path = get_loss_diff_path(n, w_num, fl_method, loss_diff_dir, op, "mis")
@@ -170,7 +178,7 @@ def main(fl_method, n, w_num, rank):
                 vit_from_last_layer_mod = ViTFromLastLayer(model_copy)
                 vit_from_last_layer_mod.eval()
                 dummy_in = [0] * (len(pos_before) + len(pos_after))
-                set_new_weights(dummy_in, pos_before, pos_after, vit_from_last_layer_mod, op=op)
+                set_new_weights(dummy_in, pos_before, pos_after, vit_from_last_layer_mod, op=op_coeff)
                 _ = vit_from_last_layer_mod(hidden_states_before_layernorm=clean_hs[0], tgt_pos=tgt_pos)
                 
                 all_logits_mod = []
@@ -252,7 +260,7 @@ def main(fl_method, n, w_num, rank):
                 "mean_loss_incorrect_baseline": mean_loss_incorr,
                 "std_loss_incorrect_baseline": std_loss_incorr,
             }
-            for op in ["enhance", "suppress"]:
+            for op in op_list:
                 result_entry[f"mean_diff_conf_correct_mod_{op}"] = op_metrics[op]["mean_diff_conf_correct_mod"]
                 result_entry[f"std_diff_conf_correct_mod_{op}"] = op_metrics[op]["std_diff_conf_correct_mod"]
                 result_entry[f"mean_diff_conf_incorrect_mod_{op}"] = op_metrics[op]["mean_diff_conf_incorrect_mod"]

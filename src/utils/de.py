@@ -65,6 +65,8 @@ def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cu
             tgt_weight_data[xi, yi] *= 2
         elif op is "sup" or op is "suppress":
             tgt_weight_data[xi, yi] *= 0
+        elif isinstance(op, int):
+            tgt_weight_data[xi, yi] *= op
         else:
             NotImplementedError(f"{op} is not supported yet")
 

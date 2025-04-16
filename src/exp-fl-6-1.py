@@ -253,7 +253,7 @@ if __name__ == "__main__":
     misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS]
-    beta_list = [0.1, 0.25, 0.5, 1.0]
+    beta_list = [0.1, 0.25, 0.5, 0.75, 1.0]
     
     results = []
     for k, tgt_rank, misclf_type, fpfn, n, beta in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list, beta_list):
