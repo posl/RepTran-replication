@@ -25,3 +25,9 @@
 
 `exp-c100c-fl-5.py`
 - exp-fl-4-1.pyをもとにしてexp-c100c-fl-4.pyの結果を可視化する
+
+`exp-c100c-fl-6.py`
+- exp-fl-6-1.pyの方法と同じ方法で, C100Cに対してFLしてみる
+
+`exp-c100c-fl-7.py`
+- `exp-c100c-fl-6.py` の結果を元に重み操作実験をする．exp-fl-6-2.py参照．
