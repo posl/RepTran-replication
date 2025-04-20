@@ -1,5 +1,5 @@
 from utils.vit_util import transforms_c100, get_batched_hs, get_batched_labels, ViTFromLastLayer, get_ori_model_predictions, identfy_tgt_misclf
-from utils.constant import ViTExperiment, Experiment1, Experiment3, ExperimentRepair1, ExperimentRepair2, ExperimentRepair3
+from utils.constant import ViTExperiment, Experiment3, ExperimentRepair1, Experiment4
 from utils.helper import get_device
 from utils.de import set_new_weights
 from transformers import ViTForImageClassification
@@ -280,14 +280,17 @@ def main(fl_method, n, w_num, rank, beta):
 
 if __name__ == "__main__":
     all_results = []
-    fl_method_list = ["ours"]
+    # fl_method_list = ["ours"]
+    fl_method_list = ["ours", "bl", "random"]
     # tgt_rank_list から各値を取り出して main に渡す
     tgt_rank_list = [1, 2, 3, 4, 5]
     beta_list = [0.1, 0.25, 0.5, 0.75, 1.0]
     
     for tgt_rank in tgt_rank_list:
         for fl_method in fl_method_list:
-            exp_list = [ExperimentRepair2]
+            # exp_list = [ExperimentRepair1, Experiment3] # n_ratio = 24, 96
+            # exp_list = [ExperimentRepair2] # n_ratio = 48
+            exp_list = [Experiment4] # n_ratio = 12
             for exp in exp_list:
                 n_ratio = exp.NUM_IDENTIFIED_WEIGHTS
                 w_num = None
@@ -297,6 +300,8 @@ if __name__ == "__main__":
                     df_tmp = main(fl_method=fl_method, n=n_ratio, w_num=w_num, rank=tgt_rank, beta=beta)
                     all_results.append(df_tmp)
     df_all = pd.concat(all_results, ignore_index=True)
-    output_csv_all = os.path.join(os.getcwd(), "exp-fl-6-2.csv")
+    unique_ns = df_all["n_ratio"].unique()
+    n_str = '_'.join(map(str, unique_ns))
+    output_csv_all = os.path.join(os.getcwd(), f"exp-fl-6-2_n{n_str}.csv")
     df_all.to_csv(output_csv_all, index=False)
     print(f"Aggregated results saved to: {output_csv_all}")

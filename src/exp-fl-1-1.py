@@ -5,7 +5,7 @@ from itertools import product
 import numpy as np
 from utils.helper import get_device, json2dict
 from utils.vit_util import localize_neurons, localize_neurons_random, localize_weights, localize_weights_random, identfy_tgt_misclf
-from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2
+from utils.constant import ViTExperiment, Experiment1, ExperimentRepair1, ExperimentRepair2, Experiment4
 from utils.log import set_exp_logging
 from logging import getLogger
 
@@ -101,18 +101,23 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
 
 if __name__ == "__main__":
     ds = "c100"
-    k_list = range(5)
+    # k_list = range(5)
+    k_list = [0]
     tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    fl_target_list = ["neuron", "weight"]
-    exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
+    fl_target_list = ["weight"]
+    # fl_target_list = ["neuron", "weight"]
+    # exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
+    exp_list = [Experiment4]
     
     for exp in exp_list:
-        num_neurons, num_weights = exp.NUM_IDENTIFIED_NEURONS, exp.NUM_IDENTIFIED_WEIGHTS
         for k, tgt_rank, misclf_type, fpfn, fl_target in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, fl_target_list):
             if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
                 continue
-            n = num_neurons if fl_target == "neuron" else num_weights 
+            if fl_target == "neuron":
+                n = exp.NUM_IDENTIFIED_NEURONS
+            elif fl_target == "weight":
+                n = exp.NUM_IDENTIFIED_WEIGHTS
             main(ds, k, tgt_rank, misclf_type, fpfn, fl_target, n)
         

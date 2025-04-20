@@ -7,7 +7,7 @@ import pandas as pd
 import torch
 from utils.helper import get_device, json2dict
 from utils.vit_util import identfy_tgt_misclf, localize_neurons_with_mean_activation, get_batched_hs, get_batched_labels, ViTFromLastLayer, get_ori_model_predictions
-from utils.constant import ViTExperiment, ExperimentRepair1, Experiment3, ExperimentRepair2, Experiment1
+from utils.constant import ViTExperiment, ExperimentRepair1, Experiment3, ExperimentRepair2, Experiment1, Experiment4
 from utils.log import set_exp_logging
 from utils.arachne import calculate_top_n_flattened, calculate_bi_fi
 from logging import getLogger
@@ -252,7 +252,9 @@ if __name__ == "__main__":
     # misclf_type_list = ["all", "src_tgt", "tgt"]
     misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS]
+    n_list = [Experiment4.NUM_IDENTIFIED_WEIGHTS]
+    # n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS]
+    n_str = "_".join([str(n) for n in n_list])
     beta_list = [0.1, 0.25, 0.5, 0.75, 1.0]
     
     results = []
@@ -266,4 +268,4 @@ if __name__ == "__main__":
         results.append({"ds": ds, "k": k, "n": n, "beta": beta, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
-    result_df.to_csv("./exp-fl-6-1_time.csv", index=False)
+    result_df.to_csv(f"./exp-fl-6-1_time_n{n_str}.csv", index=False)
