@@ -144,6 +144,10 @@ def get_vscore(batch_neuron_values):
     if batch_neuron_values.shape[0] <= 1:
         return np.full(batch_neuron_values.shape[1], np.nan)
     neuron_cov = np.cov(batch_neuron_values, rowvar=False) # (num_neurons_of_tgt_layer, num_neurons_of_tgt_layer)
+    # adding covariances may cancel the effect, so take absolute value
+    neuron_cov = np.abs(neuron_cov)
+    num_neg = np.sum(neuron_cov < 0) # マイナス要素の数を取得
+    assert num_neg == 0, f"Error: {num_neg} negative elements in neuron_cov"
     # ニューロン分散共分散行列の対角成分 = 各ニューロンの分散 を取得
     neuron_var = np.diag(neuron_cov)
     # neuron_covの各行の和

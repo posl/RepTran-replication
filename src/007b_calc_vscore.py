@@ -148,6 +148,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn):
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_{tlabel}_{ds_type}_mis.npy")
         np.save(vscore_save_path, vscores)
         logger.info(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
+        print(f"vscore ({vscores.shape}) saved at {vscore_save_path}")
     t3 = time.perf_counter()
     t_collect_hs = t2 - t1
     t_vscore = t3 - t2
@@ -186,7 +187,8 @@ if __name__ == "__main__":
     if run_all:
         # run_allがtrueなのにkとtgt_rankが指定されている場合はエラー
         assert k_list is None and tgt_rank_list is None, "run_all and k_list or tgt_rank_list cannot be specified at the same time"
-        k_list = range(5)
+        # k_list = range(5)
+        k_list = [0]
         tgt_rank_list = range(1, 6)
         misclf_type_list = ["src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
