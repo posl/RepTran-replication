@@ -50,6 +50,11 @@ def main(ds_name, k):
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}")
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
+    # intermediate.repairレイヤの恒等初期化を明示的にやり直す (訓練した時はrepairなかったので)
+    with torch.no_grad():
+        for i in range(len(model.vit.encoder.layer)):
+            model.vit.encoder.layer[i].intermediate.repair.weight.copy_(torch.eye(3072))
+            model.vit.encoder.layer[i].intermediate.repair.weight.requires_grad = False
     model.eval()
     # 学習時の設定をロード
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))

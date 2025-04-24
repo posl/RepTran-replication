@@ -20,3 +20,5 @@ dataset/*
 !dataset/*.py
 tmp*/
 vit-base-patch16-224-in21k-finetuned-lora-food101/
+playgrounds/checkpoint-*/
+playgrounds/runs/

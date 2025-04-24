@@ -697,7 +697,11 @@ class Trainer:
         self.current_flos = 0
         self.hp_search_backend = None
         self.use_tune_checkpoints = False
-        default_label_names = find_labels(self.model.__class__)
+        print(self.model.__class__.__name__)
+        if self.model.__class__.__name__ == "PeftModel":
+            default_label_names = find_labels(self.model.base_model.model.__class__)
+        else:
+            default_label_names = find_labels(self.model.__class__)
         self.label_names = default_label_names if self.args.label_names is None else self.args.label_names
         self.can_return_loss = can_return_loss(self.model.__class__)
         self.control = self.callback_handler.on_init_end(self.args, self.state, self.control)

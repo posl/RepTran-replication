@@ -304,6 +304,12 @@ class ViTIntermediate(nn.Module):
     def __init__(self, config: ViTConfig) -> None:
         super().__init__()
         self.dense = nn.Linear(config.hidden_size, config.intermediate_size)
+        # LoRAを後から適用するための修正対象層
+        self.repair = nn.Linear(config.intermediate_size, config.intermediate_size, bias=False)
+        with torch.no_grad():
+            self.repair.weight.copy_(torch.eye(config.intermediate_size))  # shape (config.intermediate_size, config.intermediate_size)
+            self.repair.weight.requires_grad = False
+            # print(self.repair.weight)
         if isinstance(config.hidden_act, str):
             self.intermediate_act_fn = ACT2FN[config.hidden_act]
         else:
@@ -312,6 +318,7 @@ class ViTIntermediate(nn.Module):
     def forward(self, hidden_states: torch.Tensor, tgt_pos=None, tmp_score=None, imp_pos=None, imp_op=None
 ) -> torch.Tensor:
         hidden_states = self.dense(hidden_states)
+        hidden_states = self.repair(hidden_states)  # ② ←★ ここで LoRA が効く
         # 特定の位置のニューロン値を置き換える
         # use delta to update the current value
         if imp_pos is not None:

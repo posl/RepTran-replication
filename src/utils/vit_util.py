@@ -85,7 +85,8 @@ def compute_metrics(eval_pred):
     f1 = met_f1.compute(predictions=predictions, references=labels, average="macro")
     return {
         "accuracy": acc,
-        "f1": f1
+        "f1": f1,
+        "loss": 0
     }
 
 def count_pred_change(old_pred, new_pred):
@@ -304,7 +305,6 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
     mean_activation = (mean_activation - np.min(mean_activation)) / (np.max(mean_activation) - np.min(mean_activation))
     # mean_activationの平均分散など
     print(np.min(mean_activation), np.max(mean_activation), np.mean(mean_activation), np.std(mean_activation))
-    return 
     
     if alpha is None:
         # neuron_score として，上の2つのベクトルの要素ごとの積を使う
