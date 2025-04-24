@@ -126,7 +126,7 @@ def count_pred_change(old_pred, new_pred):
     }
     return result
 
-def get_vscore(batch_neuron_values):
+def get_vscore(batch_neuron_values, abs=True, covavg=True):
     """
     ニューロンに対するvscoreを返す
     
@@ -144,18 +144,25 @@ def get_vscore(batch_neuron_values):
     if batch_neuron_values.shape[0] <= 1:
         return np.full(batch_neuron_values.shape[1], np.nan)
     neuron_cov = np.cov(batch_neuron_values, rowvar=False) # (num_neurons_of_tgt_layer, num_neurons_of_tgt_layer)
-    # adding covariances may cancel the effect, so take absolute value
-    neuron_cov = np.abs(neuron_cov)
-    num_neg = np.sum(neuron_cov < 0) # マイナス要素の数を取得
-    assert num_neg == 0, f"Error: {num_neg} negative elements in neuron_cov"
+    if abs:
+        # adding covariances may cancel the effect, so take absolute value
+        neuron_cov = np.abs(neuron_cov)
+        num_neg = np.sum(neuron_cov < 0) # マイナス要素の数を取得
+        assert num_neg == 0, f"Error: {num_neg} negative elements in neuron_cov"
     # ニューロン分散共分散行列の対角成分 = 各ニューロンの分散 を取得
     neuron_var = np.diag(neuron_cov)
     # neuron_covの各行の和
     neuron_cov_sum = np.nansum(neuron_cov, axis=0) # 自分の分散 + (他の共分散の総和)
     # 他ニューロンとの共分散の平均
-    mean_cov = (neuron_cov_sum - neuron_var) / (neuron_cov_sum.shape[0] - 1)
+    if covavg:
+        cov_term = (neuron_cov_sum - neuron_var) / (neuron_cov_sum.shape[0] - 1)
+    else:
+        cov_term = neuron_cov_sum - neuron_var
+    
     # vscoreを計算
-    vscore = neuron_var + mean_cov # (num_neurons_of_tgt_layer,)
+    vscore = neuron_var + cov_term # (num_neurons_of_tgt_layer,)
+    # vscoreの最小と最大を表示
+    print(f"vscore min: {np.min(vscore)}, max: {np.max(vscore)}")
     return vscore
 
 def localize_neurons(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
@@ -239,28 +246,38 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False):
+def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False, vscore_abs=False, covavg=True, vscore_cor_dir=None):
     vmap_dic = defaultdict(np.array)
+    # abs, covavg (vscore計算のバリエーション) によってファイル名が違う
+    vscore_path_prefix = ("vscore_abs" if abs else "vscore") + ("_covavg" if covavg else "")
     for cor_mis in ["cor", "mis"]:
         ds_type = f"ori_{tgt_split}"
         # vscore_save_pathの設定
-        vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
-        if misclf_pair is not None and cor_mis == "mis":
-            # misclf_pairが指定されている場合は，その対象のデータのみを取得
-            assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
-            slabel, tlabel = misclf_pair
-            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
-        if tgt_label is not None and cor_mis == "mis":
-            # tgt_labelが指定されている場合は，その対象のデータのみを取得
-            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
-            if fpfn is not None:
-                vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
-        if corruption_type is not None and cor_mis == "mis":
-            # misclf_pair, tgt_label, fpfnが全部Noneであることを保証
-            assert misclf_pair is None, f"Error: {misclf_pair}"
-            assert tgt_label is None, f"Error: {tgt_label}"
-            assert fpfn is None, f"Error: {fpfn}"
-            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{corruption_type}_{cor_mis}.npy")
+        vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
+        if cor_mis == "mis":
+            if misclf_pair is not None:
+                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
+                slabel, tlabel = misclf_pair
+                vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{slabel}to{tlabel}_{ds_type}_mis.npy")
+            if tgt_label is not None:
+                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{tgt_label}_{ds_type}_mis.npy")
+                if fpfn is not None:
+                    vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{tgt_label}_{ds_type}_{fpfn}_mis.npy")
+            if corruption_type is not None:
+                # misclf_pair, tgt_label, fpfnが全部Noneであることを保証
+                assert misclf_pair is None, f"Error: {misclf_pair}"
+                assert tgt_label is None, f"Error: {tgt_label}"
+                assert fpfn is None, f"Error: {fpfn}"
+                vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{tgt_label}_{corruption_type}_mis.npy")
+        elif cor_mis == "cor":
+            if misclf_pair is not None:
+                reference_label = misclf_pair[0]
+            else:
+                assert tgt_label is not None, f"Error: {tgt_label}"
+                reference_label = tgt_label
+            vscore_save_path = os.path.join(vscore_cor_dir, f"{vscore_path_prefix}_l1tol12_label_{reference_label}_{ds_type}_cor.npy")
         # vscoreを読み込む
         vscores = np.load(vscore_save_path)
         vmap_dic[cor_mis] = vscores.T
@@ -285,6 +302,9 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
     # vmap_diff_absとmean_activationをそれぞれmin-max正規化
     vmap_diff_abs = (vmap_diff_abs - np.min(vmap_diff_abs)) / (np.max(vmap_diff_abs) - np.min(vmap_diff_abs))
     mean_activation = (mean_activation - np.min(mean_activation)) / (np.max(mean_activation) - np.min(mean_activation))
+    # mean_activationの平均分散など
+    print(np.min(mean_activation), np.max(mean_activation), np.mean(mean_activation), np.std(mean_activation))
+    return 
     
     if alpha is None:
         # neuron_score として，上の2つのベクトルの要素ごとの積を使う

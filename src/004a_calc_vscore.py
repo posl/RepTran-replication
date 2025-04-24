@@ -14,10 +14,14 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
+    parser.add_argument('--take_abs', action="store_true", default=False, help="take absolute value of vscore")
+    parser.add_argument('--take_covavg', action="store_true", default=False, help="take average value of Cov for vscore")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
-    print(f"ds_name: {ds_name}, fold_id: {k}")
+    abs = args.take_abs
+    covavg = args.take_covavg
+    print(f"ds_name: {ds_name}, fold_id: {k}, abs: {abs}, covavg: {covavg}")
 
     # datasetごとに違う変数のセット
     if ds_name == "c10":
@@ -93,12 +97,16 @@ if __name__ == "__main__":
                 print(f"tgt_layer: {tgt_layer}")
                 tgt_mid_state = mid_states[:, tgt_layer, :] # (num_samples, num_neurons)
                 # vscoreを計算
-                vscore = get_vscore(tgt_mid_state)
+                vscore = get_vscore(tgt_mid_state, abs=abs, covavg=covavg) # (num_neurons, )
                 vscore_per_layer.append(vscore)
             vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
             # vscoresを保存
             ds_type = f"ori_{split}"
-            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_all_label_{ds_type}_{cor_mis}.npy")
+            prefix = ("vscore_abs" if abs else "vscore") + ("_covavg" if covavg else "")
+            vscore_save_path = os.path.join(
+                vscore_dir,
+                f"{prefix}_l1tol{end_li}_all_label_{ds_type}_{cor_mis}.npy"
+            )
             np.save(vscore_save_path, vscores)
             print(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
         

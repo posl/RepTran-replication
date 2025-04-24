@@ -176,10 +176,12 @@ def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_las
                 logits, tgt_component.weight, grad_outputs=torch.ones_like(logits), retain_graph=True
             )[0]
             tgt_weight_expanded = tgt_component.weight.unsqueeze(0)
+            print(f"cs: {cs.shape}") # shape: (32, 768)
             oi_expanded = cs.unsqueeze(1)
-            
+            print(f"oi_expanded: {oi_expanded.shape}")  # shape: (32, 1, 768)
+            print(f"tgt_weight_expanded: {tgt_weight_expanded.shape}")  # shape: (1, 3072, 768)
             # **までGPUで計算
-            impact_out_weight = tgt_weight_expanded * oi_expanded
+            impact_out_weight = tgt_weight_expanded * oi_expanded # shape: (32, 3072, 768)
             normalization_terms = impact_out_weight.sum(dim=2)
             normalized_impact_out_weight = impact_out_weight / (normalization_terms[:, :, None] + 1e-8)
             mean_normalized_impact_out_weight = normalized_impact_out_weight.mean(dim=0)

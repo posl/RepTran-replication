@@ -40,6 +40,19 @@ def get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, cor_mis):
     loss_diff_path = os.path.join(loss_diff_dir, loss_diff_file)
     return loss_diff_path
 
+def get_true_prob_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, cor_mis):
+    assert cor_mis in ["cor", "mis"], f"Unknown cor_mis: {cor_mis}"
+    if fl_method == "ours":
+        loss_diff_file = f"exp-fl-6_true_prob_diff_n{n}_beta{beta}_{op}_{cor_mis}_weight_ours.npy"
+    elif fl_method == "bl":
+        loss_diff_file = f"exp-fl-2_true_prob_diff_n{n}_{op}_{cor_mis}_weight_bl.npy"
+    elif fl_method == "random":
+        loss_diff_file = f"exp-fl-1_true_prob_diff_n{n}_{op}_{cor_mis}_weight_random.npy"
+    else:
+        raise ValueError(f"Unknown fl_method: {fl_method}")
+    loss_diff_path = os.path.join(loss_diff_dir, loss_diff_file)
+    return loss_diff_path
+
 def main(fl_method, n, w_num, rank, beta):
     # rank を tgt_rank として利用（int型）
     tgt_rank = rank
@@ -124,22 +137,9 @@ def main(fl_method, n, w_num, rank, beta):
             correct_proba = all_proba[correct_indices]
             incorrect_proba = all_proba[incorrect_indices]
             
-            top_idx_corr = correct_proba.argmax(axis=1) # 正解時の予測ラベルのリスト
-            top_conf_corr = correct_proba[np.arange(len(correct_proba)), top_idx_corr] # 正解時の予測ラベルに対する予測確率
             true_conf_corr = correct_proba[np.arange(len(correct_proba)), true_labels[correct_indices]] # 正解時の正解ラベルに対する予測確率
-            diff_conf_corr = top_conf_corr - true_conf_corr # オリジナルモデルでは0になるはず
-            
-            top_idx_incorr = incorrect_proba.argmax(axis=1) # 誤認識時の予測ラベルのリスト
-            top_conf_incorr = incorrect_proba[np.arange(len(incorrect_proba)), top_idx_incorr] # 誤認識時の予測ラベルに対する予測確率
             true_conf_incorr = incorrect_proba[np.arange(len(incorrect_proba)), true_labels[incorrect_indices]] # 誤認識時の正解ラベルに対する予測確率
-            diff_conf_incorr = top_conf_incorr - true_conf_incorr # オリジナルモデルでは>0になるはず
-
-            mean_diff_conf_corr = np.mean(diff_conf_corr)
-            std_diff_conf_corr = np.std(diff_conf_corr)
-            mean_diff_conf_incorr = np.mean(diff_conf_incorr)
-            std_diff_conf_incorr = np.std(diff_conf_incorr)
-            
-            print(f"diff_conf_corr.shape: {diff_conf_corr.shape}, diff_conf_incorr.shape: {diff_conf_incorr.shape}")
+            print(f"Baseline - correct: {np.mean(true_conf_corr)}, incorrect: {np.mean(true_conf_incorr)}")
             
             # Baseline Loss metrics
             correct_loss = loss_all[correct_indices]
@@ -163,6 +163,8 @@ def main(fl_method, n, w_num, rank, beta):
             # サンプルごとのロスの保存dir
             loss_diff_dir = os.path.join(location_dir, "loss_diff_per_sample")
             os.makedirs(loss_diff_dir, exist_ok=True)
+            true_prob_diff_dir = os.path.join(location_dir, "true_prob_diff_per_sample")
+            os.makedirs(true_prob_diff_dir, exist_ok=True)
 
             op_metrics = {}
             for op in op_list:
@@ -174,6 +176,8 @@ def main(fl_method, n, w_num, rank, beta):
                 # opかけたモデルのロス - original modelのロスの差を保存するパス
                 cor_loss_diff_path = get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, "cor")
                 mis_loss_diff_path = get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, "mis")
+                true_conf_corr_diff_path = get_true_prob_diff_path(n, w_num, beta, fl_method, true_prob_diff_dir, op, "cor")
+                true_conf_incorr_diff_path = get_true_prob_diff_path(n, w_num, beta, fl_method, true_prob_diff_dir, op, "mis")
                 # モデルのコピーで初期状態から再構築
                 model_copy = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
                 vit_from_last_layer_mod = ViTFromLastLayer(model_copy)
@@ -198,20 +202,9 @@ def main(fl_method, n, w_num, rank, beta):
                 correct_proba_mod = all_proba_mod[correct_indices]
                 incorrect_proba_mod = all_proba_mod[incorrect_indices]
                 
-                top_idx_corr_mod = correct_proba_mod.argmax(axis=1)
-                top_conf_corr_mod = correct_proba_mod[np.arange(len(correct_proba_mod)), top_idx_corr_mod]
                 true_conf_corr_mod = correct_proba_mod[np.arange(len(correct_proba_mod)), true_labels[correct_indices]]
-                diff_conf_corr_mod = top_conf_corr_mod - true_conf_corr_mod
-                
-                top_idx_incorr_mod = incorrect_proba_mod.argmax(axis=1)
-                top_conf_incorr_mod = incorrect_proba_mod[np.arange(len(incorrect_proba_mod)), top_idx_incorr_mod]
                 true_conf_incorr_mod = incorrect_proba_mod[np.arange(len(incorrect_proba_mod)), true_labels[incorrect_indices]]
-                diff_conf_incorr_mod = top_conf_incorr_mod - true_conf_incorr_mod
-                
-                mean_diff_conf_corr_mod = np.mean(diff_conf_corr_mod)
-                std_diff_conf_corr_mod = np.std(diff_conf_corr_mod)
-                mean_diff_conf_incorr_mod = np.mean(diff_conf_incorr_mod)
-                std_diff_conf_incorr_mod = np.std(diff_conf_incorr_mod)
+                print(f"{op} - correct: {np.mean(true_conf_corr_mod)}, incorrect: {np.mean(true_conf_incorr_mod)}")
                 
                 # Modified Loss metrics
                 logits_tensor_mod = torch.from_numpy(all_logits_mod)
@@ -224,10 +217,6 @@ def main(fl_method, n, w_num, rank, beta):
                 std_loss_incorr_mod = np.std(incorrect_loss_mod)
                 
                 op_metrics[op] = {
-                    "mean_diff_conf_correct_mod": mean_diff_conf_corr_mod,
-                    "std_diff_conf_correct_mod": std_diff_conf_corr_mod,
-                    "mean_diff_conf_incorrect_mod": mean_diff_conf_incorr_mod,
-                    "std_diff_conf_incorrect_mod": std_diff_conf_incorr_mod,
                     "mean_loss_correct_mod": mean_loss_corr_mod,
                     "std_loss_correct_mod": std_loss_corr_mod,
                     "mean_loss_incorrect_mod": mean_loss_incorr_mod,
@@ -244,6 +233,16 @@ def main(fl_method, n, w_num, rank, beta):
                 np.save(mis_loss_diff_path, mis_loss_diff)
                 print(f"Saved loss diff for {op} operation: {cor_loss_diff_path}, {mis_loss_diff_path}")
                 
+                # 正解への予測確率の差分を計算して保存
+                assert len(true_conf_corr) == len(true_conf_corr_mod), "Length mismatch between original and modified confidence arrays"
+                assert len(true_conf_incorr) == len(true_conf_incorr_mod), "Length mismatch between original and modified confidence arrays"
+                true_conf_corr_diff = true_conf_corr_mod - true_conf_corr
+                true_conf_incorr_diff = true_conf_incorr_mod - true_conf_incorr
+                print(f"true_conf_corr_diff.shape: {true_conf_corr_diff.shape}, true_conf_incorr_diff.shape: {true_conf_incorr_diff.shape}")
+                np.save(true_conf_corr_diff_path, true_conf_corr_diff)
+                np.save(true_conf_incorr_diff_path, true_conf_incorr_diff)
+                print(f"Saved confidence diff for {op} operation: {true_conf_corr_diff_path}, {true_conf_incorr_diff_path}")
+                
             # --- 結果エントリ作成 ---
             result_entry = {
                 "misclf_type": misclf_type,
@@ -253,20 +252,12 @@ def main(fl_method, n, w_num, rank, beta):
                 "n_ratio": n,
                 "w_num": w_num,
                 "beta": beta,
-                "mean_diff_conf_correct_baseline": mean_diff_conf_corr,
-                "std_diff_conf_correct_baseline": std_diff_conf_corr,
-                "mean_diff_conf_incorrect_baseline": mean_diff_conf_incorr,
-                "std_diff_conf_incorrect_baseline": std_diff_conf_incorr,
                 "mean_loss_correct_baseline": mean_loss_corr,
                 "std_loss_correct_baseline": std_loss_corr,
                 "mean_loss_incorrect_baseline": mean_loss_incorr,
                 "std_loss_incorrect_baseline": std_loss_incorr,
             }
             for op in op_list:
-                result_entry[f"mean_diff_conf_correct_mod_{op}"] = op_metrics[op]["mean_diff_conf_correct_mod"]
-                result_entry[f"std_diff_conf_correct_mod_{op}"] = op_metrics[op]["std_diff_conf_correct_mod"]
-                result_entry[f"mean_diff_conf_incorrect_mod_{op}"] = op_metrics[op]["mean_diff_conf_incorrect_mod"]
-                result_entry[f"std_diff_conf_incorrect_mod_{op}"] = op_metrics[op]["std_diff_conf_incorrect_mod"]
                 result_entry[f"mean_loss_correct_mod_{op}"] = op_metrics[op]["mean_loss_correct_mod"]
                 result_entry[f"std_loss_correct_mod_{op}"] = op_metrics[op]["std_loss_correct_mod"]
                 result_entry[f"mean_loss_incorrect_mod_{op}"] = op_metrics[op]["mean_loss_incorrect_mod"]

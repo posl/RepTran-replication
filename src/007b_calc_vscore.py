@@ -19,8 +19,8 @@ from logging import getLogger
 
 logger = getLogger("base_logger")
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn):
-    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
+    print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, abs: {abs}, covavg: {covavg}")
 
     # datasetごとに違う変数のセット
     if ds_name == "c10":
@@ -34,6 +34,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn):
 
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
+    prefix = ("vscore_abs" if abs else "vscore") + ("_covavg" if covavg else "")
     # デバイス (cuda, or cpu) の取得
     device = get_device()
     # datasetをロード (初回の読み込みだけやや時間かかる)
@@ -83,8 +84,8 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn):
     # 前提: すでに全データに対するv-scoreが計算済みであること
     # なので，正しい分類ができたデータのv-scoreは計算せずコピーしてくる
     for vname in ["vscores_before", "vscores_after", "vscores"]:
-        cor_vscore_path = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), vname, f"vscore_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
-        tgt_vscore_path = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"misclf_top{tgt_rank}", vname, f"vscore_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
+        cor_vscore_path = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), vname, f"{prefix}_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
+        tgt_vscore_path = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"misclf_top{tgt_rank}", vname, f"{prefix}_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
         os.system(f"cp {cor_vscore_path} {tgt_vscore_path}")
     all_bhs = []
     all_ahs = []
@@ -137,15 +138,15 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn):
             logger.info(f"tgt_layer: {tgt_layer}")
             tgt_mid_state = all_states[:, tgt_layer, :] # (num_samples, num_neurons)
             # vscoreを計算
-            vscore = get_vscore(tgt_mid_state)
+            vscore = get_vscore(tgt_mid_state, abs=abs, covavg=covavg) # (num_neurons, )
             vscore_per_layer.append(vscore)
         vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
         # vscoresを保存
         ds_type = f"ori_{tgt_split}" if fpfn is None else f"ori_{tgt_split}_{fpfn}"
         if misclf_type == "src_tgt":
-            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_{slabel}to{tlabel}_{ds_type}_mis.npy")
+            vscore_save_path = os.path.join(vscore_dir, f"{prefix}_l1tol{end_li}_{slabel}to{tlabel}_{ds_type}_mis.npy")
         elif misclf_type == "tgt":
-            vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_{tlabel}_{ds_type}_mis.npy")
+            vscore_save_path = os.path.join(vscore_dir, f"{prefix}_l1tol{end_li}_{tlabel}_{ds_type}_mis.npy")
         np.save(vscore_save_path, vscores)
         logger.info(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
         print(f"vscore ({vscores.shape}) saved at {vscore_save_path}")
@@ -192,11 +193,13 @@ if __name__ == "__main__":
         tgt_rank_list = range(1, 6)
         misclf_type_list = ["src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
+        abs_list = [True, False]
+        covavg_list = [True, False]
 
-        for k, tgt_rank, misclf_type, fpfn in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list):
+        for k, tgt_rank, misclf_type, fpfn, abs, covavg in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, abs_list, covavg_list):
             if misclf_type == "src_tgt" and fpfn is not None:
                 continue
-            main(ds, k, tgt_rank, misclf_type, fpfn)
+            main(ds, k, tgt_rank, misclf_type, fpfn, abs, covavg)
     else:
         assert k_list is not None and tgt_rank_list is not None, "k_list and tgt_rank_list should be specified"
         for k, tgt_rank in zip(k_list, tgt_rank_list):
