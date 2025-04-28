@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from collections import defaultdict, Counter
 from itertools import product
-from transformers import ViTImageProcessor
+from transformers import ViTImageProcessor, Trainer
 import sys
 sys.path.append('../')
 from utils.constant import ViTExperiment
@@ -51,6 +51,9 @@ def transforms_c100(batch):
 
     # ラベルのフィールドも前処理時に追加
     inputs["labels"] = batch["fine_label"]
+    
+    if "ori_correct" in batch:
+        inputs["ori_correct"] = batch["ori_correct"]
     return inputs
 
 def pred_to_proba(pred):
@@ -86,7 +89,6 @@ def compute_metrics(eval_pred):
     return {
         "accuracy": acc,
         "f1": f1,
-        "loss": 0
     }
 
 def count_pred_change(old_pred, new_pred):
@@ -694,16 +696,151 @@ def sample_from_correct_samples(num_sampled_from_correct, indices_to_correct):
         sampled_indices_to_correct = indices_to_correct
     return sampled_indices_to_correct
 
-def sample_true_positive_indices_per_class(num_sampled_from_correct, indices_to_correct, ori_pred_labels):
-    # 予測ラベルごとにTrue Positiveのインデックスを取得
-    true_positive_indices_per_class = defaultdict(list)
-    for i, pred_label in enumerate(ori_pred_labels):
-        if i in indices_to_correct:
-            true_positive_indices_per_class[pred_label].append(i)
-    # num_sampled_from_correctは合計のサンプル数なのでnum_classで割る
-    num_sampled_from_correct_per_class = num_sampled_from_correct // len(true_positive_indices_per_class.keys())
-    # 各クラスからnum_sampled_from_correct個ずつサンプリング
-    sampled_indices = []
-    for label, idx_list in true_positive_indices_per_class.items():
-        sampled_indices += np.random.choice(idx_list, num_sampled_from_correct_per_class, replace=False).tolist()
-    return np.array(sampled_indices)
+# def sample_true_positive_indices_per_class(num_sampled_from_correct, indices_to_correct, ori_pred_labels):
+#     # 予測ラベルごとにTrue Positiveのインデックスを取得
+#     true_positive_indices_per_class = defaultdict(list)
+#     for i, pred_label in enumerate(ori_pred_labels):
+#         if i in indices_to_correct:
+#             true_positive_indices_per_class[pred_label].append(i)
+#     # true_positive_indices_per_classの各クラスのリストの長さを表示
+#     tot = 0
+#     for label, idx_list in true_positive_indices_per_class.items():
+#         print(f"label: {label}, num_samples: {len(idx_list)}, num_sampled: {num_sampled_from_correct // len(idx_list)}")
+#         tot += num_sampled_from_correct // len(idx_list)
+#     print(f"total num_samples: {tot}")
+#     exit()
+#     # num_sampled_from_correctは合計のサンプル数なのでnum_classで割る
+#     num_sampled_from_correct_per_class = num_sampled_from_correct // len(true_positive_indices_per_class.keys())
+#     # 各クラスからnum_sampled_from_correct個ずつサンプリング
+#     sampled_indices = []
+#     for label, idx_list in true_positive_indices_per_class.items():
+#         sampled_indices += np.random.choice(idx_list, num_sampled_from_correct_per_class, replace=False).tolist()
+#     return np.array(sampled_indices)
+
+
+def sample_true_positive_indices_per_class(
+    num_sampled_from_correct,
+    indices_to_correct,
+    ori_pred_labels,
+):
+    """
+    True Positive からクラス分布に比例してインデックスを無作為抽出する。
+
+    Parameters
+    ----------
+    num_sampled_from_correct : int
+        取り出したいインデックスの総数 (上限)。
+    indices_to_correct : Iterable[int]
+        True Positive となっている元データのインデックス集合。
+    ori_pred_labels : Sequence[int]
+        各サンプルの予測ラベル。
+
+    Returns
+    -------
+    np.ndarray
+        抽出されたインデックス (dtype=int)。
+    """
+    rng = np.random.default_rng()
+
+    # --- 1) クラスごとの TP インデックスを収集 -----------------------------
+    tp_per_class = defaultdict(list)
+    indices_to_correct = set(indices_to_correct)  # O(1) 参照用にセット化
+    for idx, pred_label in enumerate(ori_pred_labels):
+        if idx in indices_to_correct:
+            tp_per_class[pred_label].append(idx)
+
+    if not tp_per_class:
+        return np.array([], dtype=int)
+
+    # --- 2) 抽出数をクラス分布に比例配分 -----------------------------------
+    counts = {lbl: len(lst) for lbl, lst in tp_per_class.items()}
+    total_tp = sum(counts.values())
+    num_to_sample = min(num_sampled_from_correct, total_tp)
+    print(f"sampling {num_to_sample} samples from {total_tp} samples...")
+
+    # 初期割当（床関数で丸める）
+    alloc = {lbl: (num_to_sample * cnt) // total_tp for lbl, cnt in counts.items()}
+    # この段階では割当の合計が num_to_sample より小さいことがある
+    assert sum(alloc.values()) <= num_to_sample, f"alloc: {alloc}, num_to_sample: {num_to_sample}, total_tp: {total_tp}"
+
+    # --- 3) 端数を余力のあるクラスへランダムに配分 --------------------------
+    remaining = num_to_sample - sum(alloc.values())
+    leftover = {lbl: counts[lbl] - alloc[lbl] for lbl in counts}
+    
+    while remaining > 0:
+        # まだ取り出せるクラスを候補に
+        candidates = [lbl for lbl, cap in leftover.items() if cap > 0]
+        if not candidates:
+            break  # 念のため
+        # 余力に比例して確率付け
+        probs = np.array([leftover[lbl] for lbl in candidates], dtype=float)
+        probs /= probs.sum()
+        chosen = rng.choice(candidates, p=probs)
+        alloc[chosen] += 1
+        leftover[chosen] -= 1
+        remaining -= 1
+    # この段階では割当の合計が num_to_sample と等しくないとおかしい
+    assert sum(alloc.values()) == num_to_sample, f"alloc: {alloc}, num_to_sample: {num_to_sample}, total_tp: {total_tp}"
+
+    # --- 4) サンプリング ----------------------------------------------------
+    sampled = []
+    for lbl, k in alloc.items():
+        if k > 0:
+            sampled.extend(rng.choice(tp_per_class[lbl], k, replace=False).tolist())
+    assert len(sampled) == num_to_sample, f"len(sampled): {len(sampled)}, num_to_sample: {num_to_sample}, total_tp: {total_tp}"
+    # sampledの各インデックスが正解インデックスに含まれていることを保証
+    for idx in sampled:
+        assert idx in indices_to_correct, f"Error: {idx} not in indices_to_correct"
+    return np.array(sampled, dtype=int)
+
+def maybe_initialize_repair_weights_(model, missing_keys):
+    if any("intermediate.repair.weight" in key for key in missing_keys):
+        print("🛠️ Initializing intermediate.repair.weight as identity matrix (for missing weights)")
+        with torch.no_grad():
+            for layer in model.vit.encoder.layer:
+                W = layer.intermediate.repair.weight
+                W.copy_(torch.eye(W.shape[0], device=W.device))
+                W.requires_grad = False
+    return model
+
+class WeightedTrainer(Trainer):
+    def __init__(self, *args, alpha=0.5, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.alpha = alpha # 正解/不正解サンプルへのロス計算における重み
+    def _prepare_inputs(self, inputs):
+        """
+        モデルへの入力として is_correct も渡せるようにする
+        """
+        inputs = super()._prepare_inputs(inputs)
+        if "is_correct" in inputs:
+            inputs["ori_correct"] = inputs["ori_correct"]
+        return inputs
+    def compute_loss(self, model, inputs, return_outputs=False):
+        labels = inputs.get("labels")
+        ori_correct = inputs.get("ori_correct", None)
+        inputs = {k: v for k, v in inputs.items() if k not in ["ori_correct"]}
+
+        outputs = model(**inputs)
+        logits = outputs.get("logits")
+
+        loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
+        loss_per_sample = loss_fct(logits, labels)
+
+        if ori_correct is None:
+            # 通常の平均とるCrossEntropy
+            loss = loss_per_sample.mean()
+        else:
+            device = loss_per_sample.device
+            n_correct_batch = max((ori_correct == 1).sum().item(), 1)
+            n_incorrect_batch = max((ori_correct == 0).sum().item(), 1)
+
+            # alphaを使って重みを調整
+            sample_weights = torch.where(
+                ori_correct == 1,
+                self.alpha / n_correct_batch,
+                (1 - self.alpha) / n_incorrect_batch
+            ).to(device)
+
+            loss = (loss_per_sample * sample_weights).sum()
+
+        return (loss, outputs) if return_outputs else loss

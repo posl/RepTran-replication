@@ -697,7 +697,6 @@ class Trainer:
         self.current_flos = 0
         self.hp_search_backend = None
         self.use_tune_checkpoints = False
-        print(self.model.__class__.__name__)
         if self.model.__class__.__name__ == "PeftModel":
             default_label_names = find_labels(self.model.base_model.model.__class__)
         else:

@@ -6,7 +6,7 @@ import pickle
 from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device
-from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, pred_to_proba
+from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, pred_to_proba, maybe_initialize_repair_weights
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from logging import getLogger
@@ -49,12 +49,10 @@ def main(ds_name, k):
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}")
-    model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
-    # intermediate.repairレイヤの恒等初期化を明示的にやり直す (訓練した時はrepairなかったので)
-    with torch.no_grad():
-        for i in range(len(model.vit.encoder.layer)):
-            model.vit.encoder.layer[i].intermediate.repair.weight.copy_(torch.eye(3072))
-            model.vit.encoder.layer[i].intermediate.repair.weight.requires_grad = False
+    model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
+    model = model.to(device) #in-placeなので代入なくてもいい
+    # loaded state dictに intermediate.repair.weight がない場合はここで初期化しないとダメ
+    maybe_initialize_repair_weights(model, loading_info["missing_keys"])
     model.eval()
     # 学習時の設定をロード
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
