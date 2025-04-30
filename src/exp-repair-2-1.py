@@ -309,5 +309,8 @@ if __name__ == "__main__":
     # pklで保存
     with open(os.path.join(lora_save_dir, "test_pred.pkl"), "wb") as f:
         pickle.dump(test_ds_pred, f)
+        
+    # tgt_indicesも保存
+    np.save(os.path.join(lora_save_dir, "tgt_indices.npy"), tgt_indices)
 
     logger.info("All predictions and metrics saved successfully.")
