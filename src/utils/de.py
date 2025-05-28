@@ -294,7 +294,7 @@ class DE_searcher(object):
         assert 0 <= fitness_for_wrong <= 1, f"fitness_for_wrong should be in [0, 1] (fitness_for_wrong: {fitness_for_wrong})"
         # print(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
         # print(f"fitness_for_correct: {fitness_for_correct}, fitness_for_wrong: {fitness_for_wrong}")
-        final_fitness = (1-self.alpha) * fitness_for_correct + self.alpha *  fitness_for_wrong
+        final_fitness = (1-self.alpha) * fitness_for_correct + self.alpha * fitness_for_wrong
         # 思い切ってintact_rateとpatched_rateだけにしちゃう
         # final_fitness = num_intact / len(self.indices_to_correct) + self.alpha * num_patched / len(self.indices_to_wrong)
         
