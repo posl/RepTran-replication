@@ -356,7 +356,10 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     # old_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
-    location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_n{n}_weight_bl.npy")
+    if strategy == "pareto":
+        location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_pareto_weight_bl.npy")
+    elif strategy == "weighted":
+        location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_n{n}_weight_bl.npy")
     np.save(location_save_path, (pos_before, pos_after))
     print(f"saved location information to {location_save_path}")
     # 終了時刻
@@ -368,12 +371,14 @@ if __name__ == "__main__":
     ds = "c100"
     # k_list = range(5)
     k_list = [0]
-    tgt_rank_list = range(1, 6)
+    tgt_rank_list = range(1, 4)
+    # tgt_rank_list = range(1, 6)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     # n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS]
     n_list = [Experiment4.NUM_IDENTIFIED_WEIGHTS]
     n_str = "_".join([str(n) for n in n_list])
+    strategy = "pareto" # "pareto" or "weighted"
     results = []
     for k, tgt_rank, misclf_type, fpfn, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list):
         print(f"Start: ds={ds}, k={k}, n={n}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")
@@ -381,8 +386,8 @@ if __name__ == "__main__":
             continue
         if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
             continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
+        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n, strategy=strategy)
         results.append({"ds": ds, "k": k, "n": n, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
-    result_df.to_csv(f"./exp-fl-2-2_time_n{n_str}.csv", index=False)
+    result_df.to_csv(f"./exp-fl-2-2_time_n{n_str}_{strategy}.csv", index=False)

@@ -15,7 +15,7 @@ if __name__ == "__main__":
     
     # misclf_type_list = ["all", "src_tgt", "tgt"]
     misclf_type_list = ["src_tgt", "tgt"] # allはいらない説ある
-    
+        
     fpfn_list = [None, "fp", "fn"]
     alpha_list = [0.2, 0.4, 0.6, 0.8]
     

@@ -174,11 +174,12 @@ if __name__ == "__main__":
     tgt_ds      = ds_preprocessed[TGT_SPLIT].select(tgt_indices)
     tgt_labels  = labels[TGT_SPLIT][tgt_indices]
     # 元々正解/不正解のフラグの列をつける
-    is_correct_flags = np.array([1]*len(sampled_indices_to_correct) + [0]*len(indices_to_incorrect))
-    tgt_ds = tgt_ds.add_column("ori_correct", is_correct_flags.tolist())
+    # is_correct_flags = np.array([1]*len(sampled_indices_to_correct) + [0]*len(indices_to_incorrect))
+    # tgt_ds = tgt_ds.add_column("ori_correct", is_correct_flags.tolist())
     
     # 使用する正解/不正解セットのサイズをチェック
     logger.info(f"len(sampled_indices_to_correct): {len(sampled_indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}, len(tgt_indices): {len(tgt_indices)}")
+    (f"len(sampled_indices_to_correct): {len(sampled_indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}, len(tgt_indices): {len(tgt_indices)}")
 
     # ------------------------------------------------
     # 5. LoRAによるrepair実行

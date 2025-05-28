@@ -22,8 +22,8 @@ if __name__ == "__main__":
     fl_method_list = ["vmg", "random", "bl"]
     # fl_method_list = ["vmg"] # いったんvmgだけやって時間みたい
     
-    # tgt_split_list = ["repair", "test"]
-    tgt_split_list = ["repair"] # NOTE: THIS IS HARD CODED FOR NOW.
+    tgt_split_list = ["repair", "test"]
+    # tgt_split_list = ["repair"] # NOTE: THIS IS HARD CODED FOR NOW.
     
     exp_list = [ExperimentRepair1, ExperimentRepair2]
     

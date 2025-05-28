@@ -8,7 +8,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device, json2dict
-from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, identfy_tgt_misclf, get_ori_model_predictions, get_new_model_predictions, get_batched_hs, get_batched_labels, sample_from_correct_samples, sample_true_positive_indices_per_class
+from utils.vit_util import transforms, transforms_c100, ViTFromLastLayer, identfy_tgt_misclf, get_ori_model_predictions, get_new_model_predictions, get_batched_hs, get_batched_labels, sample_from_correct_samples, sample_true_positive_indices_per_class, maybe_initialize_repair_weights_
 from utils.constant import ViTExperiment, Experiment3
 from utils.log import set_exp_logging
 from utils.de import DE_searcher
@@ -127,6 +127,10 @@ if __name__ == "__main__":
     # repair に使ったデータの tgt_indices を npy で保存
     tgt_indices_save_path = os.path.join(save_dir, f"exp-repair-1-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy") # TODO: tgt_indicesの特定にランダム性が入る場合はそれをトラックできるようなファイル名にする必要あり. 同じsetting_id, fl_methodでもrepetitionが異なる場合
     metrics_json_path = os.path.join(save_dir, f"exp-repair-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json") # 各設定での実行時間を記録
+    # 上のファイルたちがすでにそべて存在していたらreturn 0
+    if os.path.exists(patch_save_path) and os.path.exists(tracker_save_path) and os.path.exists(tgt_indices_save_path) and os.path.exists(metrics_json_path):
+        print(f"All results already exists. Skip this experiment.")
+        exit(0)
     # ==================================================================
     
     # このpythonのファイル名を取得
@@ -161,8 +165,9 @@ if __name__ == "__main__":
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     ds_preprocessed = ds.with_transform(tf_func)
     # pretrained modelのロード
-    model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
-    model.eval()
+    model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
+    model.to(device).eval()
+    model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
     tgt_split = TGT_SPLIT # NOTE: we only use repair split for repairing

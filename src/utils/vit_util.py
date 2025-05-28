@@ -807,40 +807,41 @@ class WeightedTrainer(Trainer):
     def __init__(self, *args, alpha=0.5, **kwargs):
         super().__init__(*args, **kwargs)
         self.alpha = alpha # 正解/不正解サンプルへのロス計算における重み
-    def _prepare_inputs(self, inputs):
-        """
-        モデルへの入力として is_correct も渡せるようにする
-        """
-        inputs = super()._prepare_inputs(inputs)
-        if "is_correct" in inputs:
-            inputs["ori_correct"] = inputs["ori_correct"]
-        return inputs
+        assert 0 <= alpha <= 1, f"alpha must be in [0, 1], but got {alpha}"
     def compute_loss(self, model, inputs, return_outputs=False):
+        # NOTE: この関数は1バッチに対するロスの計算
         labels = inputs.get("labels")
-        ori_correct = inputs.get("ori_correct", None)
-        inputs = {k: v for k, v in inputs.items() if k not in ["ori_correct"]}
-
         outputs = model(**inputs)
         logits = outputs.get("logits")
 
         loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
-        loss_per_sample = loss_fct(logits, labels)
+        loss_per_sample = loss_fct(logits, labels) # (バッチサイズ, )
+        
+        # 🔍 予測ラベル vs 正解ラベルから成否を計算
+        pred_labels = torch.argmax(logits, dim=1)
+        # バッチごとの正解/不正解によってロスに異なるフィルターをかける
+        is_correct = (pred_labels == labels).to(dtype=torch.float32)
+        # スコアの定義
+        score = torch.where(
+            is_correct == 1,
+            torch.ones_like(loss_per_sample),                      # 正解なら1
+            1.0 / (loss_per_sample + 1.0)                 # 不正解なら 1 / (Loss + 1)
+        )
+        # print(f"score: {score}")
+        
+        device = logits.device
+        n_correct_batch = max((is_correct == 1).sum().item(), 1)
+        n_incorrect_batch = max((is_correct == 0).sum().item(), 1)
 
-        if ori_correct is None:
-            # 通常の平均とるCrossEntropy
-            loss = loss_per_sample.mean()
-        else:
-            device = loss_per_sample.device
-            n_correct_batch = max((ori_correct == 1).sum().item(), 1)
-            n_incorrect_batch = max((ori_correct == 0).sum().item(), 1)
-
-            # alphaを使って重みを調整
-            sample_weights = torch.where(
-                ori_correct == 1,
-                self.alpha / n_correct_batch,
-                (1 - self.alpha) / n_incorrect_batch
-            ).to(device)
-
-            loss = (loss_per_sample * sample_weights).sum()
+        # alphaを使って重みを調整
+        sample_weights = torch.where(
+            is_correct == 1,
+            self.alpha / n_correct_batch,
+            (1 - self.alpha) / n_incorrect_batch
+        ).to(device)
+        
+        # print(f"weighted score: {score * sample_weights}")
+        loss = - (score * sample_weights).sum()
+        # print(f"loss: {loss}")
 
         return (loss, outputs) if return_outputs else loss
