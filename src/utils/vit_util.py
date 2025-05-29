@@ -252,7 +252,7 @@ def return_rank(x, i, order="desc"):
 def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False, vscore_abs=False, covavg=True, vscore_cor_dir=None):
     vmap_dic = defaultdict(np.array)
     # abs, covavg (vscore計算のバリエーション) によってファイル名が違う
-    vscore_path_prefix = ("vscore_abs" if abs else "vscore") + ("_covavg" if covavg else "")
+    vscore_path_prefix = ("vscore_abs" if vscore_abs else "vscore") + ("_covavg" if covavg else "")
     for cor_mis in ["cor", "mis"]:
         ds_type = f"ori_{tgt_split}"
         # vscore_save_pathの設定
@@ -276,12 +276,17 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
                 vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{tgt_label}_{corruption_type}_mis.npy")
         elif cor_mis == "cor":
             if misclf_pair is not None:
-                reference_label = misclf_pair[0]
+                label_str = f"label_{misclf_pair[1]}" # 正解ラベルに合わせたい
             else:
                 assert tgt_label is not None, f"Error: {tgt_label}"
-                reference_label = tgt_label
-            vscore_save_path = os.path.join(vscore_cor_dir, f"{vscore_path_prefix}_l1tol12_label_{reference_label}_{ds_type}_cor.npy")
+                if fpfn == "fn":
+                    label_str = f"label_{tgt_label}" # みのがされたラベルに合わせたい
+                else:
+                    assert fpfn == "fp", f"Error: {fpfn}"
+                    label_str = "all_label" # tgt_fpの時だけ正解ラベルがさまざまなので全体の正解を使う
+            vscore_save_path = os.path.join(vscore_cor_dir, f"{vscore_path_prefix}_l1tol12_{label_str}_{ds_type}_cor.npy")
         # vscoreを読み込む
+        print(f"vscore_save_path: {vscore_save_path}")
         vscores = np.load(vscore_save_path)
         vmap_dic[cor_mis] = vscores.T
     vmap_cor = vmap_dic["cor"]
@@ -305,8 +310,6 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
     # vmap_diff_absとmean_activationをそれぞれmin-max正規化
     vmap_diff_abs = (vmap_diff_abs - np.min(vmap_diff_abs)) / (np.max(vmap_diff_abs) - np.min(vmap_diff_abs))
     mean_activation = (mean_activation - np.min(mean_activation)) / (np.max(mean_activation) - np.min(mean_activation))
-    # mean_activationの平均分散など
-    print(np.min(mean_activation), np.max(mean_activation), np.mean(mean_activation), np.std(mean_activation))
     
     if alpha is None:
         # neuron_score として，上の2つのベクトルの要素ごとの積を使う

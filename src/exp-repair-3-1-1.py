@@ -14,6 +14,7 @@ from datasets import load_from_disk
 from transformers import ViTForImageClassification
 import torch
 import torch.optim as optim
+import matplotlib.pyplot as plt
 
 # デバイス (cuda, or cpu) の取得
 device = get_device()
@@ -362,6 +363,33 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
     # 終了時刻
     te = time.perf_counter()
     elapsed_time = te - ts
+    
+    # ===== 2次元散布図の保存 =====
+    # all_grad_loss = torch.cat([x.flatten() for x in grad_loss_list]).detach().cpu().numpy()
+    # all_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list]).detach().cpu().numpy()
+
+    # # パレートフロントに属するインデックスを1次元で取得
+    # pareto_indices = approximate_pareto_front(torch.tensor(all_grad_loss), torch.tensor(all_fwd_imp))
+
+    # # 散布図を描画
+    # plt.figure(figsize=(6, 6))
+    # plt.scatter(all_grad_loss, all_fwd_imp, color="blue", alpha=0.5, label="Others", s=10)
+    # plt.scatter(all_grad_loss[pareto_indices], all_fwd_imp[pareto_indices], color="red", marker="*", label="Pareto Front", s=80)
+
+    # plt.xlabel("Gradient Loss (BI)")
+    # plt.ylabel("Forward Impact (FI)")
+    # plt.title(f"Pareto Front (ds={ds_name}, k={k}, rank={tgt_rank}, type={misclf_type}, fpfn={fpfn})")
+    # plt.legend()
+
+    # # 保存先ディレクトリの作成と保存
+    # fig_filename = f"exp-repair-3-1-1_pareto_front_{ds_name}_k{k}_rank{tgt_rank}_{misclf_type}"
+    # if fpfn:
+    #     fig_filename += f"_{fpfn}"
+    # fig_path = os.path.join(f"{fig_filename}.png")
+    # plt.savefig(fig_path)
+    # plt.close()
+    # print(f"Saved Pareto scatter plot to {fig_path}")
+    
     return elapsed_time
     
 if __name__ == "__main__":

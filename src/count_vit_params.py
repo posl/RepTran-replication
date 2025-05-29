@@ -22,7 +22,7 @@ if __name__ == "__main__":
     # パラメータ数のカウント
     # ==============================================================
     num_params = 0
-    skipped_layer = ["layernorm"] # パラメータ数をカウントしないレイヤのリスト
+    skipped_layer = ["layernorm", "repair"] # パラメータ数をカウントしないレイヤのリスト
     # レイヤの種類ごとのパラメータ数集計用
     layer_types = { # このdictは，レイヤ名とレイヤ種類の対応を示す．valのlistの最初のlistはホワイトリストで，2番目のlistはブラックリスト
         "attention": [["attention"], []],
