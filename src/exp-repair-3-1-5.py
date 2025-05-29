@@ -297,6 +297,8 @@ if __name__ == "__main__":
     acc_old = float(sum(is_correct_old)) / len(is_correct_old)
     acc_new = float(sum(is_correct_new)) / len(is_correct_new)
     delta_acc = acc_new - acc_old
+    r_acc = acc_new / acc_old
+    diff_correct = int(sum(is_correct_new) - sum(is_correct_old))
 
     # repair/break全体
     repair_cnt_overall = np.sum(~is_correct_old & is_correct_new)
@@ -333,6 +335,8 @@ if __name__ == "__main__":
     metrics_dict["acc_old"] = acc_old
     metrics_dict["acc_new"] = acc_new
     metrics_dict["delta_acc"] = delta_acc
+    metrics_dict["r_acc"] = r_acc
+    metrics_dict["diff_correct"] = int(diff_correct)
     metrics_dict["repair_rate_overall"] = float(repair_rate_overall)
     metrics_dict["repair_cnt_overall"] = int(repair_cnt_overall)
     metrics_dict["break_rate_overall"] = float(break_rate_overall)
