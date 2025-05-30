@@ -55,19 +55,23 @@ if __name__ == "__main__":
                 row[f"BR_{tgt_split}"] = sum(br_list)/len(br_list)
                 row[f"Racc_{tgt_split} (#diff)"] = f"{sum(racc_list)/len(racc_list):.3f} ({sum(diff_corr_list)/len(diff_corr_list):.1f})"
                 if tgt_split == "repair":
-                    fl_time_path = "/src/src/exp-repair-3-1-1_time_pareto.csv"
-                    df_fl_time = pd.read_csv(fl_time_path)
-                    fpfn_match = "" if fpfn is None else fpfn
-                    matched_row = df_fl_time[
-                        (df_fl_time["ds"] == ds) &
-                        (df_fl_time["k"] == k) &
-                        (df_fl_time["tgt_rank"] == tgt_rank) &
-                        (df_fl_time["misclf_type"] == misclf_type) &
-                        (df_fl_time["fpfn"].fillna("") == fpfn_match)
-                    ]
-                    row["t_fl"] = matched_row["elapsed_time"].values[0]
+                    if fl_method == "ours":
+                        fl_time_path = "/src/src/exp-repair-3-2-1_time.csv"
+                        df_fl_time = pd.read_csv(fl_time_path)
+                        fpfn_match = "" if fpfn is None else fpfn
+                        matched_row = df_fl_time[
+                            (df_fl_time["ds"] == ds) &
+                            (df_fl_time["k"] == k) &
+                            (df_fl_time["tgt_rank"] == tgt_rank) &
+                            (df_fl_time["misclf_type"] == misclf_type) &
+                            (df_fl_time["fpfn"].fillna("") == fpfn_match)
+                        ]
+                        row["t_fl"] = matched_row["elapsed_time"].values[0]
+                    else:
+                        assert fl_method == "random", "Unknown FL method"
+                        row["t_fl"] = 0.0  # random methodではFL時間は0とする
                     row["t_repair"] = sum(t_repair_list)/len(t_repair_list)
-        results.append(row)
+            results.append(row)
         # データフレーム化
         df_flat = pd.DataFrame(results)
         # 小数表示のフォーマット設定（小数第3位）

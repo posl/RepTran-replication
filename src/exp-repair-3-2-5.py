@@ -18,6 +18,8 @@ if __name__ == "__main__":
     
     fpfn_list = [None, "fp", "fn"]
     alpha = float(10/11)
+    w_num = 11 # Arachneで特定された重み数の平均
+    beta = 1
     
     fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
     
@@ -40,6 +42,8 @@ if __name__ == "__main__":
                 str(k),
                 str(tgt_rank),
                 str(reps_id),
+                str(w_num),
+                str(beta),
                 "--custom_alpha", str(alpha), 
                 "--misclf_type", misclf_type, 
                 "--custom_bounds", "Arachne", 

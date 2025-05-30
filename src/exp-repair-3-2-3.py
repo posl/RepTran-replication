@@ -18,8 +18,8 @@ if __name__ == "__main__":
         
     fpfn_list = [None, "fp", "fn"]
     
-    fl_method = "ours"
-    # fl_method = "random" # TODO
+    # fl_method = "ours"
+    fl_method = "random" # TODO
     
     alpha = float(10/11) # same as the original Arachne paper, but the scale is different (we set this value so that the sum of weight becomes 1).
     w_num = 11 # Arachneで特定された重み数の平均
