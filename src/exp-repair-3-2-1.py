@@ -182,7 +182,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=0.5):
         fwd_imp_list[i] *= (1.0 + beta * broadcasted_neuron_scores)
     # 重みつきしてtopnの計算
     print(f"Calculating TopN for target weights...")
-    identified_indices = calculate_top_n_flattened(grad_loss_list, fwd_imp_list)
+    identified_indices = calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=w_num)
     print(f"len(identified_indices['bef']): {len(identified_indices['bef'])}, len(identified_indices['aft']): {len(identified_indices['aft'])}")
     
     # "before" と "after" に分けて格納
@@ -196,51 +196,53 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=0.5):
     print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
     print(f"len(weighted scores): {len(weighted_scores)}")
     
-    # こっからVdiffとBLの融合=====================
-    # BLで計算した重みごとのスコアにVdiffの係数をかける
-    wscore_gated = weighted_scores.copy()  # コピーして上書き（in-placeでゲーティング）
+    # # こっからVdiffとBLの融合===================== XXX: 不要なコードでした泣
+    # # BLで計算した重みごとのスコアにVdiffの係数をかける
+    # wscore_gated = weighted_scores.copy()  # コピーして上書き（in-placeでゲーティング）
     
-    num_wbef = len(pos_before)
-    # -------------------------------
-    # 1) Wbef 部分 (行=3072, 列=768)
-    # 行が中間ニューロン -> neuron_scoresの軸
-    # -------------------------------
-    wbef_2d = wscore_gated[:num_wbef].reshape(3072, 768)
-    # neuron_scores: shape=(3072,)
-    # => neuron_scores[:, np.newaxis]: shape=(3072,1)
-    # => ブロードキャストで (3072,768) に対応
-    wbef_2d *= (1.0 + beta * neuron_scores[:, np.newaxis])
+    # num_wbef = len(pos_before)
+    # # -------------------------------
+    # # 1) Wbef 部分 (行=3072, 列=768)
+    # # 行が中間ニューロン -> neuron_scoresの軸
+    # # -------------------------------
+    # wbef_2d = wscore_gated[:num_wbef].reshape(3072, 768)
+    # # neuron_scores: shape=(3072,)
+    # # => neuron_scores[:, np.newaxis]: shape=(3072,1)
+    # # => ブロードキャストで (3072,768) に対応
+    # wbef_2d *= (1.0 + beta * neuron_scores[:, np.newaxis])
 
-    # -------------------------------
-    # 2) Waft 部分 (行=768, 列=3072)
-    # 列が中間ニューロン -> neuron_scoresの軸
-    # -------------------------------
-    waft_2d = wscore_gated[num_wbef:].reshape(768, 3072)
-    # neuron_scores[np.newaxis,:]: shape=(1,3072)
-    # => ブロードキャストで (768,3072) に対応
-    waft_2d *= (1.0 + beta * neuron_scores[np.newaxis, :])
+    # # -------------------------------
+    # # 2) Waft 部分 (行=768, 列=3072)
+    # # 列が中間ニューロン -> neuron_scoresの軸
+    # # -------------------------------
+    # waft_2d = wscore_gated[num_wbef:].reshape(768, 3072)
+    # # neuron_scores[np.newaxis,:]: shape=(1,3072)
+    # # => ブロードキャストで (768,3072) に対応
+    # waft_2d *= (1.0 + beta * neuron_scores[np.newaxis, :])
     
-    # print(len(wscore_gated)) # shape: (num_wbef + num_waft,)
+    # # print(len(wscore_gated)) # shape: (num_wbef + num_waft,)
     
-    # スコアが高い順にソートして上位n件のインデックスを取得
-    top_n_indices = np.argsort(wscore_gated)[-w_num:][::-1]  # 降順で取得
-    # befとaftに分類し、元の形状に戻す（ここが重要な修正ポイント）
-    shape_bef = (3072, 768)
-    shape_aft = (768, 3072)
-    # befとaftに分類し、元の形状に戻す
-    top_n_bef = np.array([
-        np.unravel_index(idx, shape_bef) for idx in top_n_indices if idx < num_wbef
-    ])
-    top_n_aft = np.array([
-        np.unravel_index(idx - num_wbef, shape_aft) for idx in top_n_indices if idx >= num_wbef
-    ])
-    identified_indices = {"bef": top_n_bef, "aft": top_n_aft, "scores": wscore_gated[top_n_indices]}
-    # "before" と "after" に分けて格納
-    pos_before = identified_indices["bef"]
-    pos_after = identified_indices["aft"]
-    print(f"pos_before: {pos_before}, pos_after: {pos_after}")
-    print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
-    print(f"len(weighted scores): {len(wscore_gated[top_n_indices])}")
+    # # スコアが高い順にソートして上位n件のインデックスを取得
+    # top_n_indices = np.argsort(wscore_gated)[-w_num:][::-1]  # 降順で取得
+    # # befとaftに分類し、元の形状に戻す（ここが重要な修正ポイント）
+    # shape_bef = (3072, 768)
+    # shape_aft = (768, 3072)
+    # # befとaftに分類し、元の形状に戻す
+    # top_n_bef = np.array([
+    #     np.unravel_index(idx, shape_bef) for idx in top_n_indices if idx < num_wbef
+    # ])
+    # top_n_aft = np.array([
+    #     np.unravel_index(idx - num_wbef, shape_aft) for idx in top_n_indices if idx >= num_wbef
+    # ])
+    # identified_indices = {"bef": top_n_bef, "aft": top_n_aft, "scores": wscore_gated[top_n_indices]}
+    # # "before" と "after" に分けて格納
+    # pos_before = identified_indices["bef"]
+    # pos_after = identified_indices["aft"]
+    # print(f"pos_before: {pos_before}, pos_after: {pos_after}")
+    # print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
+    # print(f"len(weighted scores): {len(wscore_gated[top_n_indices])}")
+    # ここまでVdiffとBLの融合===================== XXX: 不要なコードでした泣
+    
     
     # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報を保存する
     if fpfn is not None and misclf_type == "tgt":

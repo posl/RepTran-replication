@@ -127,10 +127,10 @@ if __name__ == "__main__":
     # repair に使ったデータの tgt_indices を npy で保存
     tgt_indices_save_path = os.path.join(save_dir, f"exp-repair-3-2-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy") # TODO: tgt_indicesの特定にランダム性が入る場合はそれをトラックできるようなファイル名にする必要あり. 同じsetting_id, fl_methodでもrepetitionが異なる場合
     metrics_json_path = os.path.join(save_dir, f"exp-repair-3-2-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json") # 各設定での実行時間を記録
-    # 上のファイルたちがすでにそべて存在していたらreturn 0
-    if os.path.exists(patch_save_path) and os.path.exists(tracker_save_path) and os.path.exists(tgt_indices_save_path) and os.path.exists(metrics_json_path):
-        print(f"All results already exists. Skip this experiment.")
-        exit(0)
+    # # 上のファイルたちがすでにそべて存在していたらreturn 0
+    # if os.path.exists(patch_save_path) and os.path.exists(tracker_save_path) and os.path.exists(tgt_indices_save_path) and os.path.exists(metrics_json_path):
+    #     print(f"All results already exists. Skip this experiment.")
+    #     exit(0)
     # ==================================================================
     
     # このpythonのファイル名を取得

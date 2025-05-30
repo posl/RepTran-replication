@@ -21,7 +21,8 @@ if __name__ == "__main__":
     w_num = 11 # Arachneで特定された重み数の平均
     beta = 1
     
-    fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
+    fl_method_list = ["ours"]  # 追加: random methodも試す場合
+    # fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
     
     tgt_split_list = ["repair", "test"]
     
