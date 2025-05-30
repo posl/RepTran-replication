@@ -20,7 +20,7 @@ import matplotlib.pyplot as plt
 logger = getLogger("base_logger")
 device = get_device()
 
-def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=0.5):
+def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=None):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
     misclf_ptn = misclf_type if fpfn is None else f"{misclf_type}_{fpfn}"
     
@@ -178,8 +178,12 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=0.5):
     print(f"Adjusting grad_loss and fwd_imp with neuron_scores...")
     for i in range(2):
         broadcasted_neuron_scores = neuron_scores[:, np.newaxis, ] if i == 0 else neuron_scores[np.newaxis, :]
-        grad_loss_list[i] *= (1.0 + beta * broadcasted_neuron_scores)
-        fwd_imp_list[i] *= (1.0 + beta * broadcasted_neuron_scores)
+        if beta is None:
+            grad_loss_list[i] *= broadcasted_neuron_scores
+            fwd_imp_list[i] *= broadcasted_neuron_scores
+        else: # こっちはあんまりよくないかも
+            grad_loss_list[i] *= (1.0 + beta * broadcasted_neuron_scores)
+            fwd_imp_list[i] *= (1.0 + beta * broadcasted_neuron_scores)
     # 重みつきしてtopnの計算
     print(f"Calculating TopN for target weights...")
     identified_indices = calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=w_num)
@@ -193,56 +197,9 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=0.5):
     assert len(weighted_scores) == len(pos_before) + len(pos_after), f"len(weighted_scores): {len(weighted_scores)}, len(pos_before): {len(pos_before)}, len(pos_after): {len(pos_after)}"
     
     # 結果の出力
+    print(f"pos_before: {pos_before}, pos_after: {pos_after}")
     print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
     print(f"len(weighted scores): {len(weighted_scores)}")
-    
-    # # こっからVdiffとBLの融合===================== XXX: 不要なコードでした泣
-    # # BLで計算した重みごとのスコアにVdiffの係数をかける
-    # wscore_gated = weighted_scores.copy()  # コピーして上書き（in-placeでゲーティング）
-    
-    # num_wbef = len(pos_before)
-    # # -------------------------------
-    # # 1) Wbef 部分 (行=3072, 列=768)
-    # # 行が中間ニューロン -> neuron_scoresの軸
-    # # -------------------------------
-    # wbef_2d = wscore_gated[:num_wbef].reshape(3072, 768)
-    # # neuron_scores: shape=(3072,)
-    # # => neuron_scores[:, np.newaxis]: shape=(3072,1)
-    # # => ブロードキャストで (3072,768) に対応
-    # wbef_2d *= (1.0 + beta * neuron_scores[:, np.newaxis])
-
-    # # -------------------------------
-    # # 2) Waft 部分 (行=768, 列=3072)
-    # # 列が中間ニューロン -> neuron_scoresの軸
-    # # -------------------------------
-    # waft_2d = wscore_gated[num_wbef:].reshape(768, 3072)
-    # # neuron_scores[np.newaxis,:]: shape=(1,3072)
-    # # => ブロードキャストで (768,3072) に対応
-    # waft_2d *= (1.0 + beta * neuron_scores[np.newaxis, :])
-    
-    # # print(len(wscore_gated)) # shape: (num_wbef + num_waft,)
-    
-    # # スコアが高い順にソートして上位n件のインデックスを取得
-    # top_n_indices = np.argsort(wscore_gated)[-w_num:][::-1]  # 降順で取得
-    # # befとaftに分類し、元の形状に戻す（ここが重要な修正ポイント）
-    # shape_bef = (3072, 768)
-    # shape_aft = (768, 3072)
-    # # befとaftに分類し、元の形状に戻す
-    # top_n_bef = np.array([
-    #     np.unravel_index(idx, shape_bef) for idx in top_n_indices if idx < num_wbef
-    # ])
-    # top_n_aft = np.array([
-    #     np.unravel_index(idx - num_wbef, shape_aft) for idx in top_n_indices if idx >= num_wbef
-    # ])
-    # identified_indices = {"bef": top_n_bef, "aft": top_n_aft, "scores": wscore_gated[top_n_indices]}
-    # # "before" と "after" に分けて格納
-    # pos_before = identified_indices["bef"]
-    # pos_after = identified_indices["aft"]
-    # print(f"pos_before: {pos_before}, pos_after: {pos_after}")
-    # print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
-    # print(f"len(weighted scores): {len(wscore_gated[top_n_indices])}")
-    # ここまでVdiffとBLの融合===================== XXX: 不要なコードでした泣
-    
     
     # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報を保存する
     if fpfn is not None and misclf_type == "tgt":
@@ -251,7 +208,10 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=0.5):
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    location_save_path = os.path.join(location_save_dir, f"exp-repair-3-2_location_n{w_num}_beta{beta}_weight_ours.npy")
+    if beta is None:
+        location_save_path = os.path.join(location_save_dir, f"exp-repair-3-2_location_n{w_num}_weight_ours.npy")
+    else:
+        location_save_path = os.path.join(location_save_dir, f"exp-repair-3-2_location_n{w_num}_beta{beta}_weight_ours.npy")
     np.save(location_save_path, (pos_before, pos_after))
     print(f"saved location information to {location_save_path}")
     
@@ -267,9 +227,7 @@ if __name__ == "__main__":
     tgt_rank_list = range(1, 4)
     misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    # beta_list = [0.1, 0.25, 0.5, 0.75, 1.0]
     w_num = 11 # Arachneで特定された重み数の平均
-    beta = 1
     
     results = []
     for k, tgt_rank, misclf_type, fpfn in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list):
@@ -280,7 +238,7 @@ if __name__ == "__main__":
         if misclf_type == "tgt" and fpfn is None:
             # print(f"Skipping: misclf_type={misclf_type} with fpfn={fpfn} is not valid.")
             continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, w_num=w_num, beta=beta)
+        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, w_num=w_num)
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)

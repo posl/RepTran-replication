@@ -61,7 +61,7 @@ if __name__ == "__main__":
     parser.add_argument('tgt_rank', type=int, help="the rank of the target misclassification type")
     parser.add_argument('reps_id', type=int, help="the repetition id")
     parser.add_argument("wnum", type=int, help="the number of weights to repair")
-    parser.add_argument("beta", type=float, help="the beta value for the DE search")
+    parser.add_argument("--beta", type=float, help="the beta value for the DE search", default=None)
     parser.add_argument("--setting_path", type=str, help="path to the setting json file", default=None)
     parser.add_argument("--fl_method", type=str, help="the method used for FL", default="vdiff")
     parser.add_argument('--misclf_type', type=str, help="the type of misclassification (src_tgt or tgt or all)", default="tgt")
@@ -77,7 +77,8 @@ if __name__ == "__main__":
     reps_id = args.reps_id
     wnum = args.wnum
     beta = args.beta
-    beta = int(beta) if beta.is_integer() else float(beta)  # intに変換できるならintにする
+    if beta is not None:
+        beta = int(beta) if beta.is_integer() else float(beta)  # intに変換できるならintにする
     setting_path = args.setting_path
     fl_method = args.fl_method
     misclf_type = args.misclf_type
@@ -188,7 +189,10 @@ if __name__ == "__main__":
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     # 重みの位置情報の保存ファイル
     if fl_method == "ours":
-        location_filename = f"exp-repair-3-2_location_n{wnum}_beta{beta}_weight_ours.npy"
+        if beta is None:
+            location_filename = f"exp-repair-3-2_location_n{wnum}_weight_ours.npy"
+        else:
+            location_filename = f"exp-repair-3-2_location_n{wnum}_beta{beta}_weight_ours.npy"
         location_save_path = os.path.join(location_save_dir, location_filename)
     elif fl_method == "random":
         location_filename = f"exp-repair-3-2_location_n{wnum}_weight_random_reps{reps_id}.npy" # NOTE: randomの時はreps_idをつける(ランダム性の考慮)

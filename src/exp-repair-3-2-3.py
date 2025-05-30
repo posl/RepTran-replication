@@ -23,7 +23,7 @@ if __name__ == "__main__":
     
     alpha = float(10/11) # same as the original Arachne paper, but the scale is different (we set this value so that the sum of weight becomes 1).
     w_num = 11 # Arachneで特定された重み数の平均
-    beta = 1
+    beta = None # XXX beta = 1を指定してたけど指定しない方法にしてみた XXX
     
     for k, tgt_rank, misclf_type, fpfn in product(k_list, tgt_rank_list,  misclf_type_list, fpfn_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
@@ -44,12 +44,13 @@ if __name__ == "__main__":
                 str(tgt_rank),
                 str(reps_id),
                 str(w_num),
-                str(beta),
                 "--custom_alpha", str(alpha), 
                 "--misclf_type", misclf_type, 
                 "--custom_bounds", "Arachne", 
                 "--fl_method", fl_method
             ]
+            if beta:
+                cmd.extend(["--beta", str(beta)])
             if fpfn:  # fpfnがNoneでない場合のみ追加
                 cmd.extend(["--fpfn", fpfn])
             print(f"Executing the following cmd: {' '.join(cmd)}\n{'='*90}")

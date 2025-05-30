@@ -19,7 +19,7 @@ if __name__ == "__main__":
     fpfn_list = [None, "fp", "fn"]
     alpha = float(10/11)
     w_num = 11 # Arachneで特定された重み数の平均
-    beta = 1
+    beta = None # XXX beta = 1を指定してたけど指定しない方法にしてみた XXX
     
     fl_method_list = ["ours"]  # 追加: random methodも試す場合
     # fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
@@ -44,13 +44,14 @@ if __name__ == "__main__":
                 str(tgt_rank),
                 str(reps_id),
                 str(w_num),
-                str(beta),
                 "--custom_alpha", str(alpha), 
                 "--misclf_type", misclf_type, 
                 "--custom_bounds", "Arachne", 
                 "--fl_method", fl_method,
                 "--tgt_split", tgt_split
             ]
+            if beta:
+                cmd.extend(["--beta", str(beta)])
             if fpfn:  # fpfnがNoneでない場合のみ追加
                 cmd.extend(["--fpfn", fpfn])
             print(f"Executing the following cmd: {' '.join(cmd)}\n{'='*90}")
