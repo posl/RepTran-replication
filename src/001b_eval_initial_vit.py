@@ -186,5 +186,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ds_name = args.ds
     k_list = args.k_list
+    if ds_name == "tiny-imagenet":
+        k_list = [0]
     for k in k_list:
         main(ds_name, k)
