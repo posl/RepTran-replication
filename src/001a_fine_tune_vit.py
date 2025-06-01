@@ -3,7 +3,7 @@ import argparse
 from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, TrainingArguments, Trainer
 from utils.helper import get_device
-from utils.vit_util import processor, transforms, transforms_c100, compute_metrics
+from utils.vit_util import processor, transforms, transforms_c100, compute_metrics, maybe_initialize_repair_weights_
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
@@ -46,12 +46,15 @@ if __name__ == "__main__":
     labels = ds_preprocessed["train"].features[label_col].names
     
     # pretrained modelのロード
-    model = ViTForImageClassification.from_pretrained(
+    model, loading_info = ViTForImageClassification.from_pretrained(
         ViTExperiment.ViT_PATH,
         num_labels=len(labels),
         id2label={str(i): c for i, c in enumerate(labels)},
-        label2id={c: str(i) for i, c in enumerate(labels)}
-    ).to(device)
+        label2id={c: str(i) for i, c in enumerate(labels)},
+        output_loading_info=True
+    )
+    model.to(device).eval()
+    model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
 
     # 学習の設定
     batch_size = ViTExperiment.BATCH_SIZE

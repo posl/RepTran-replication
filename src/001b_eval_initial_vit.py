@@ -6,7 +6,7 @@ import pickle
 from datasets import load_from_disk
 from transformers import DefaultDataCollator, ViTForImageClassification, Trainer
 from utils.helper import get_device
-from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, pred_to_proba, maybe_initialize_repair_weights
+from utils.vit_util import processor, transforms, compute_metrics, transforms_c100, pred_to_proba, maybe_initialize_repair_weights_
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from logging import getLogger
@@ -22,16 +22,20 @@ def main(ds_name, k):
     dataset_dir = ViTExperiment.DATASET_DIR
     # バッチごとの処理のためのdata_collator
     data_collator = DefaultDataCollator()
-    # オリジナルのds name
-    ds_ori_name = ds_name.rstrip("c") if ds_name.endswith("c") else ds_name
-    # foldが記載されたdir name
-    ds_dirname = f"{ds_ori_name}_fold{k}"
-    # dsのload
-    ds = load_from_disk(os.path.join(dataset_dir, ds_dirname))
+    
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    if ds_name == "tiny-imagenet":
+        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
+        pretrained_dir = exp_obj.OUTPUT_DIR
+        eval_div = "repair"
+    else:
+        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+        eval_div = "test"
     ds_preprocessed = ds.with_transform(transforms)
     
     # datasetごとに違う変数のセット
-    if ds_name == "c10" or ds_name == "c10c":
+    if ds_name == "c10" or ds_name == "c10c" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100" or ds_name == "c100c":
@@ -45,14 +49,13 @@ def main(ds_name, k):
     labels = ds_preprocessed["train"].features[label_col].names
     
     # pretrained modelのロード
-    pretrained_dir = getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR.format(k=k)
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}")
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model = model.to(device) #in-placeなので代入なくてもいい
     # loaded state dictに intermediate.repair.weight がない場合はここで初期化しないとダメ
-    maybe_initialize_repair_weights(model, loading_info["missing_keys"])
+    maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
     model.eval()
     # 学習時の設定をロード
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
@@ -63,7 +66,7 @@ def main(ds_name, k):
         data_collator=data_collator,
         compute_metrics=compute_metrics,
         train_dataset=ds_preprocessed["train"],
-        eval_dataset=ds_preprocessed["test"],
+        eval_dataset=ds_preprocessed[eval_div],
         tokenizer=processor,
     )
     training_args_dict = training_args.to_dict()
@@ -155,6 +158,25 @@ def main(ds_name, k):
             # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
             with open(os.path.join(pred_out_dir, f"{ds_name}_{key}_pred.pkl"), "wb") as f:
                 pickle.dump(key_pred, f)
+    if ds_name =="tiny-imagenet":
+        eval_iter = math.ceil(len(ds_preprocessed["repair"]) / eval_batch_size)
+        # 推論の実行
+        print(f"predict {ds_name} repair data... #iter = {eval_iter} ({len(ds_preprocessed['repair'])} samples / {eval_batch_size} batches)")
+        repair_pred = trainer.predict(ds_preprocessed["repair"])
+        # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
+        with open(os.path.join(pred_out_dir, "repair_pred.pkl"), "wb") as f:
+            pickle.dump(repair_pred, f)
+            
+        # proba (各サンプルに対する予測確率) を正解ラベルごとにまとめたものも保存する
+        repair_labels = np.array(ds["repair"][label_col])
+        # PredictionOutputオブジェクト -> 予測確率に変換
+        repair_pred_proba = pred_to_proba(repair_pred)
+        # ラベルごとに違うファイルとして保存 (repair)
+        for c in range(len(labels)):
+            tgt_proba = repair_pred_proba[repair_labels == c]
+            # repair_pred_probaを保存
+            np.save(os.path.join(pretrained_dir, "pred_results", f"repair_proba_{c}.npy"), tgt_proba)
+            logger.info(f"repair_proba_{c}.npy ({tgt_proba.shape}) saved")
 
 if __name__ == "__main__":
     # データセットをargparseで受け取る
