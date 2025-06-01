@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import subprocess
 from PIL import Image
 import datasets
 from datasets import load_dataset, load_from_disk, Dataset, DatasetInfo, DatasetDict, ClassLabel, Features, Image as HFImage
@@ -178,6 +179,46 @@ elif ds == "c10c" or ds == "c100c":
 # Tiny ImageNet
 elif ds == "tiny-imagenet":
     tiny_imagenet_dir = "/src/dataset/ori_tiny-imagenet-200"
+    
+    if not os.path.exists(tiny_imagenet_dir):
+        # download from the source
+        url = "http://cs231n.stanford.edu/tiny-imagenet-200.zip"
+        zip_filename = "ori_tiny-imagenet-200.zip"     # ダウンロード先ファイル名
+        extracted_dir = "tiny-imagenet-200"            # unzip直後のディレクトリ名（中身に依存）
+        renamed_dir = "ori_tiny-imagenet-200"          # リネーム先（目的の保存ディレクトリ名）
+
+        # 1. wgetでダウンロード
+        if not os.path.exists(zip_filename):
+            try:
+                subprocess.run(["wget", url, "-O", zip_filename], check=True)
+                print(f"[INFO] Downloaded: {zip_filename}")
+            except subprocess.CalledProcessError as e:
+                print(f"[ERROR] Failed to download: {e}")
+                exit(1)
+        else:
+            print(f"[SKIP] {zip_filename} already exists.")
+
+        # 2. unzipで展開（すでに展開済みならスキップ）
+        if not os.path.exists(extracted_dir):
+            try:
+                subprocess.run(["unzip", zip_filename], check=True)
+                print(f"[INFO] Unzipped: {zip_filename}")
+            except subprocess.CalledProcessError as e:
+                print(f"[ERROR] Failed to unzip: {e}")
+                exit(1)
+        else:
+            print(f"[SKIP] {extracted_dir} already exists.")
+
+        # 3. ディレクトリをリネーム（すでに目的名が存在する場合はスキップ）
+        if os.path.exists(renamed_dir):
+            print(f"[SKIP] {renamed_dir} already exists.")
+        else:
+            try:
+                os.rename(extracted_dir, renamed_dir)
+                print(f"[INFO] Renamed '{extracted_dir}' → '{renamed_dir}'")
+            except Exception as e:
+                print(f"[ERROR] Failed to rename: {e}")
+
     print(f"Processing Tiny ImageNet from {tiny_imagenet_dir} ...")
     ds_dict = DatasetDict(load_tiny_imagenet(tiny_imagenet_dir))
     print(ds_dict)
