@@ -220,20 +220,33 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     tgt_pos = ViTExperiment.CLS_IDX
     
-    # datasetをロード (true_labelsが欲しいので)
-    ds_dirname = f"{ds_name}_fold{k}"
-    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    label_col = "fine_label"
-    # ラベルの取得 (shuffleされない)
-    labels = {
-        "train": np.array(ds["train"][label_col]),
-        "repair": np.array(ds["repair"][label_col]),
-        "test": np.array(ds["test"][label_col])
-    }
-    true_labels = labels[tgt_split]
-    
+    dataset_dir = ViTExperiment.DATASET_DIR
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    if ds_name == "c100":
+        # datasetをロード (true_labelsが欲しいので)
+        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+        label_col = "fine_label"
+        # ラベルの取得 (shuffleされない)
+        labels = {
+            "train": np.array(ds["train"][label_col]),
+            "repair": np.array(ds["repair"][label_col]),
+            "test": np.array(ds["test"][label_col])
+        }
+        true_labels = labels[tgt_split]
+        pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
+    elif ds_name == "tiny-imagenet":
+        ds_dirname = ds_name
+        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
+        pretrained_dir = exp_obj.OUTPUT_DIR
+        label_col = "label"
+        # ラベルの取得 (shuffleされない)
+        labels = {
+            "train": np.array(ds["train"][label_col]),
+            "repair": np.array(ds["repair"][label_col]),
+        }
+        
     # pretrained modelのロード
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # location informationの保存先
     # model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     # model.eval()
@@ -356,6 +369,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
         location_save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
+    os.makedirs(location_save_dir, exist_ok=True)
     # old_location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_weight_bl.npy")
     location_save_path = os.path.join(location_save_dir, f"exp-fl-2_location_pareto_weight_bl.npy")
     np.save(location_save_path, (pos_before, pos_after))
@@ -393,7 +407,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
     return elapsed_time
     
 if __name__ == "__main__":
-    ds = "c100"
+    ds = "tiny-imagenet"  # "c100" or "tiny-imagenet"
     # k_list = range(5)
     k_list = [0]
     tgt_rank_list = range(1, 4)
@@ -417,4 +431,4 @@ if __name__ == "__main__":
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
-    result_df.to_csv(f"./exp-repair-3-1-1_time_pareto.csv", index=False)
+    result_df.to_csv(f"./exp-repair-3-1-1_time_pareto_{ds}.csv", index=False)

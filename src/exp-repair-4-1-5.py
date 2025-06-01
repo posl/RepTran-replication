@@ -58,6 +58,7 @@ if __name__ == "__main__":
     parser.add_argument("k", type=int, help="fold id")
     parser.add_argument("tgt_rank", type=int, help="the rank of the target misclassification type")
     parser.add_argument("reps_id", type=int, help="the repetition id")
+    parser.add_argument("wnum", type=int, help="the number of weights to repair")
     parser.add_argument("--setting_path", type=str, default=None)
     parser.add_argument("--fl_method", type=str, default="vdiff")
     parser.add_argument("--misclf_type", type=str, default="tgt")
@@ -71,6 +72,7 @@ if __name__ == "__main__":
     k = args.k
     tgt_rank = args.tgt_rank
     reps_id = args.reps_id
+    wnum = args.wnum
     fl_method = args.fl_method
     misclf_type = args.misclf_type
     fpfn = args.fpfn
@@ -97,6 +99,9 @@ if __name__ == "__main__":
             custom_alpha is None and custom_bounds is None
         ) else ""
         parts = []
+        if wnum is not None:
+            setting_dic["wnum"] = wnum
+            parts.append(f"n{wnum}")
         if custom_alpha is not None:
             setting_dic["alpha"] = custom_alpha
             parts.append(f"alpha{custom_alpha}")
@@ -109,15 +114,7 @@ if __name__ == "__main__":
     #==================================================
     # 2) ロケーションとパッチファイルのパス構築
     #==================================================
-    dataset_dir = ViTExperiment.DATASET_DIR
-    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
-    if ds_name == "tiny-imagenet":
-        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
-        pretrained_dir = exp_obj.OUTPUT_DIR
-    else:
-        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
-        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
-    ds_preprocessed = ds.with_transform(transforms)
+    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
 
     # location_path
     if fpfn is not None and misclf_type == "tgt":
@@ -126,9 +123,15 @@ if __name__ == "__main__":
         location_save_dir = os.path.join(pretrained_dir, "all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    location_filename = "exp-fl-2_location_pareto_weight_bl.npy" # XXX: 今回はこれで固定
-    location_path = os.path.join(location_save_dir, location_filename)
-
+    # 重みの位置情報の保存ファイル
+    if fl_method == "ours" or fl_method == "bl":
+        location_filename = f"exp-repair-4-1_location_n{wnum}_weight_{fl_method}.npy"
+        location_path = os.path.join(location_save_dir, location_filename)
+    elif fl_method == "random":
+        location_filename = f"exp-repair-4-1_location_n{wnum}_weight_random_reps{reps_id}.npy" # NOTE: randomの時はreps_idをつける(ランダム性の考慮)
+        location_path = os.path.join(location_save_dir, location_filename)
+    assert os.path.exists(location_path), f"{location_path} does not exist. Please run the localization phase first."
+    
     # パッチファイル
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
@@ -137,7 +140,7 @@ if __name__ == "__main__":
     else:
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
 
-    patch_filename = f"exp-repair-3-1-best_patch_{setting_id}_{fl_method}_reps{reps_id}.npy"
+    patch_filename = f"exp-repair-4-1-best_patch_{setting_id}_{fl_method}_reps{reps_id}.npy"
     patch_save_path = os.path.join(save_dir, patch_filename)
 
     #==================================================
@@ -162,13 +165,15 @@ if __name__ == "__main__":
     #==================================================
     # 4) モデルをロード & 修正前の予測 (repair set 全体)
     #==================================================
-    exp_name = f"exp-repair-3-1-5_{setting_id}_{fl_method}"
+    exp_name = f"exp-repair-4-1-5_{setting_id}_{fl_method}"
     logger_obj = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger_obj.info("[INFO] Start evaluating patched model ...")
 
     device = get_device()
+    ds_dirname = f"{ds_name}_fold{k}"
+    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
 
-    if ds_name == "c10" or ds_name == "tiny-imagenet":
+    if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":
@@ -180,7 +185,9 @@ if __name__ == "__main__":
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
+        "test": np.array(ds["test"][label_col])
     }
+    ds_preprocessed = ds.with_transform(tf_func)
 
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model.to(device).eval()
@@ -226,7 +233,7 @@ if __name__ == "__main__":
         fpfn=fpfn
     )
     if tgt_split == "repair":
-        tgt_indices_filename = f"exp-repair-3-1-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy"
+        tgt_indices_filename = f"exp-repair-4-1-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy"
         tgt_indices_path = os.path.join(save_dir, tgt_indices_filename)
         if not os.path.exists(tgt_indices_path):
             logger_obj.error(f"[ERROR] {tgt_indices_path} not found.")
@@ -323,7 +330,7 @@ if __name__ == "__main__":
     if tgt_split == "repair":
         metrics_json_path = os.path.join(
             save_dir,
-            f"exp-repair-3-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json"
+            f"exp-repair-4-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json"
         )
         # metrics_json_pathは存在しないといけない
         assert os.path.exists(metrics_json_path), f"{metrics_json_path} does not exist."
@@ -331,7 +338,7 @@ if __name__ == "__main__":
     else:
         metrics_json_path = os.path.join(
             save_dir,
-            f"exp-repair-3-1-metrics_for_{tgt_split}_{setting_id}_{fl_method}_reps{reps_id}.json"
+            f"exp-repair-4-1-metrics_for_{tgt_split}_{setting_id}_{fl_method}_reps{reps_id}.json"
         )
         metrics_dict = {}
 
@@ -381,5 +388,5 @@ if __name__ == "__main__":
     logger_obj.info(f"[INFO] metrics saved => {metrics_json_path}")
     print(f"[INFO] metrics saved => {metrics_json_path}")
 
-    logger_obj.info("===== Completed exp-repair-3-1-5.py =====")
-    print("===== Completed exp-repair-3-1-5.py =====")
+    logger_obj.info("===== Completed exp-repair-4-1-5.py =====")
+    print("===== Completed exp-repair-4-1-5.py =====")

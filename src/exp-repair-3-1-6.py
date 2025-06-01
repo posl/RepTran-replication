@@ -5,7 +5,8 @@ from utils.constant import Experiment3, ExperimentRepair1, ExperimentRepair2
 NUM_REPS = 5
 
 if __name__ == "__main__":
-    ds = "c100"
+    ds = "tiny-imagenet"
+    # ds = "c100"
     # k_list = range(5)
     # tgt_rank_list = range(1, 6)
     
@@ -38,7 +39,7 @@ if __name__ == "__main__":
             cmd = [
                 "python", 
                 "exp-repair-3-1-5.py", 
-                "c100",
+                ds,
                 str(k),
                 str(tgt_rank),
                 str(reps_id),
