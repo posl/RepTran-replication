@@ -12,7 +12,7 @@ from itertools import product
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100, get_vscore, identfy_tgt_misclf
+from utils.vit_util import transforms, transforms_c100, get_vscore, identfy_tgt_misclf, maybe_initialize_repair_weights_
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
 from logging import getLogger
@@ -22,8 +22,18 @@ logger = getLogger("base_logger")
 def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, abs: {abs}, covavg: {covavg}")
 
+    # datasetの読み込み
+    dataset_dir = ViTExperiment.DATASET_DIR
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    if ds_name == "tiny-imagenet":
+        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
+        pretrained_dir = exp_obj.OUTPUT_DIR
+    else:
+        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+
     # datasetごとに違う変数のセット
-    if ds_name == "c10":
+    if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":
@@ -33,12 +43,10 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
         NotImplementedError
 
     tgt_pos = ViTExperiment.CLS_IDX
-    ds_dirname = f"{ds_name}_fold{k}"
     prefix = ("vscore_abs" if abs else "vscore") + ("_covavg" if covavg else "")
     # デバイス (cuda, or cpu) の取得
     device = get_device()
     # datasetをロード (初回の読み込みだけやや時間かかる)
-    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     tgt_split_names = list(ds.keys()) # [train, repair, test]
     # target_tgt_split_names = ["train", "repair"]
     target_tgt_split_names = ["repair"]
@@ -47,18 +55,18 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
     # ラベルの取得
     labels = {
         "train": np.array(ds["train"][label_col]),
-        "repair": np.array(ds["repair"][label_col]),
-        "test": np.array(ds["test"][label_col])
+        "repair": np.array(ds["repair"][label_col])
     }
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     ds_preprocessed = ds.with_transform(tf_func)
     # pretrained modelのロード
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
-    model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
-    model.eval()
+    # pretrained modelのロード
+    model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
+    model.to(device).eval()
+    model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
     
@@ -75,17 +83,19 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
     logger.info(f"Process {tgt_split}...")
     t1 = time.perf_counter()
     # 必要なディレクトリがない場合は先に作っておく
-    vscore_before_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"misclf_top{tgt_rank}", "vscores_before")
-    vscore_after_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"misclf_top{tgt_rank}", "vscores_after")
-    vscore_med_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"misclf_top{tgt_rank}", "vscores")
-    os.makedirs(vscore_before_dir, exist_ok=True)
-    os.makedirs(vscore_after_dir, exist_ok=True)
+    # vscore_before_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "vscores_before")
+    # vscore_after_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "vscores_after")
+    vscore_med_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "vscores")
+    # os.makedirs(vscore_before_dir, exist_ok=True)
+    # os.makedirs(vscore_after_dir, exist_ok=True)
     os.makedirs(vscore_med_dir, exist_ok=True)
     # 前提: すでに全データに対するv-scoreが計算済みであること
     # なので，正しい分類ができたデータのv-scoreは計算せずコピーしてくる
     for vname in ["vscores_before", "vscores_after", "vscores"]:
-        cor_vscore_path = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), vname, f"{prefix}_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
-        tgt_vscore_path = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"misclf_top{tgt_rank}", vname, f"{prefix}_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
+        if vname == "vscores_before" or vname == "vscores_after":
+            continue
+        cor_vscore_path = os.path.join(pretrained_dir, vname, f"{prefix}_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
+        tgt_vscore_path = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", vname, f"{prefix}_l1tol{end_li}_all_label_ori_{tgt_split}_cor.npy")
         os.system(f"cp {cor_vscore_path} {tgt_vscore_path}")
     all_bhs = []
     all_ahs = []
@@ -130,7 +140,8 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
 
     t2 = time.perf_counter()
     # 正解/不正解データに対するv-scoreの計算を行い，保存する
-    for all_states, vscore_dir in zip([all_bhs, all_ahs, all_mhs], [vscore_before_dir, vscore_after_dir, vscore_med_dir]): # bhs, ahs での繰り返し
+    # for all_states, vscore_dir in zip([all_bhs, all_ahs, all_mhs], [vscore_before_dir, vscore_after_dir, vscore_med_dir]): # bhs, ahs での繰り返し
+    for all_states, vscore_dir in zip([all_mhs], [vscore_med_dir]): # bhs, ahs での繰り返し
         # 対象のレイヤに対してvscoreを計算
         # =================================
         vscore_per_layer = []
@@ -193,8 +204,10 @@ if __name__ == "__main__":
         tgt_rank_list = range(1, 6)
         misclf_type_list = ["src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
-        abs_list = [True, False]
-        covavg_list = [True, False]
+        # abs_list = [True, False]
+        # covavg_list = [True, False]
+        abs_list = [True]
+        covavg_list = [False]
 
         for k, tgt_rank, misclf_type, fpfn, abs, covavg in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, abs_list, covavg_list):
             if misclf_type == "src_tgt" and fpfn is not None:

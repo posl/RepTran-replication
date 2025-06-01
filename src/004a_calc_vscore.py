@@ -6,7 +6,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100, get_vscore
+from utils.vit_util import transforms, transforms_c100, get_vscore, maybe_initialize_repair_weights_
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
@@ -22,6 +22,18 @@ if __name__ == "__main__":
     abs = args.take_abs
     covavg = args.take_covavg
     print(f"ds_name: {ds_name}, fold_id: {k}, abs: {abs}, covavg: {covavg}")
+    
+    # datasetの読み込み
+    dataset_dir = ViTExperiment.DATASET_DIR
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    if ds_name == "tiny-imagenet":
+        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
+        pretrained_dir = exp_obj.OUTPUT_DIR
+        eval_div = "repair"
+    else:
+        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+        eval_div = "test"
 
     # datasetごとに違う変数のセット
     if ds_name == "c10":
@@ -30,15 +42,16 @@ if __name__ == "__main__":
     elif ds_name == "c100":
         tf_func = transforms_c100
         label_col = "fine_label"
+    elif ds_name == "tiny-imagenet":
+        tf_func = transforms
+        label_col = "label"
     else:
         NotImplementedError
-
     tgt_pos = ViTExperiment.CLS_IDX
-    ds_dirname = f"{ds_name}_fold{k}"
     # デバイス (cuda, or cpu) の取得
     device = get_device()
+    
     # datasetをロード (初回の読み込みだけやや時間かかる)
-    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     split_names = list(ds.keys()) # [train, repair, test]
     target_split_names = ["repair"]
     # target_split_namesは全てsplit_namesに含まれていることを前提とする
@@ -47,23 +60,24 @@ if __name__ == "__main__":
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
-        "test": np.array(ds["test"][label_col])
     }
+    if eval_div == "test":
+        labels["test"] = np.array(ds["test"][label_col])
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     ds_preprocessed = ds.with_transform(tf_func)
     # pretrained modelのロード
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
-    model.eval()
+    model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
+    model.to(device).eval()
+    model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
 
     for split in target_split_names:
         print(f"Process {split}...")
         # 必要なディレクトリがない場合は先に作っておく
-        vscore_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), "vscores")
+        vscore_dir = os.path.join(pretrained_dir, "vscores")
         os.makedirs(vscore_dir, exist_ok=True)
-        cache_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"cache_states_{split}")
+        cache_dir = os.path.join(pretrained_dir, f"cache_states_{split}")
         os.makedirs(cache_dir, exist_ok=True)
         all_mid_states = []
         all_logits = []
