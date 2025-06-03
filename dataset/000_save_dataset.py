@@ -113,9 +113,8 @@ def load_tiny_imagenet(tiny_imagenet_dir):
     # test_images, _ = load_images_and_labels(test_dir, has_labels=False)
 
     return {
-        "train": Dataset.from_dict({"img": train_images, "label": train_labels}, features=features),
-        "repair": Dataset.from_dict({"img": val_images, "label": val_labels}, features=features),
-        # "test": Dataset.from_dict({"img": test_images}, features=features),
+        "train": Dataset.from_dict({"img": train_images, "label": train_labels}, features=features), # オリジナルのtrainはtrainとrepairになる
+        "val": Dataset.from_dict({"img": val_images, "label": val_labels}, features=features), # オリジナルのvalはtestになる
     }
 
 parser = argparse.ArgumentParser(description='Dataset selector')
@@ -188,7 +187,8 @@ elif ds == "tiny-imagenet":
         renamed_dir = "ori_tiny-imagenet-200"          # リネーム先（目的の保存ディレクトリ名）
 
         # 1. wgetでダウンロード
-        if not os.path.exists(zip_filename):
+        # if not os.path.exists(zip_filename):
+        if True:
             try:
                 subprocess.run(["wget", url, "-O", zip_filename], check=True)
                 print(f"[INFO] Downloaded: {zip_filename}")
@@ -220,8 +220,13 @@ elif ds == "tiny-imagenet":
                 print(f"[ERROR] Failed to rename: {e}")
 
     print(f"Processing Tiny ImageNet from {tiny_imagenet_dir} ...")
-    ds_dict = DatasetDict(load_tiny_imagenet(tiny_imagenet_dir))
-    print(ds_dict)
-    ds_dict.save_to_disk("tiny-imagenet-200")
+    ori_ds_dict = DatasetDict(load_tiny_imagenet(tiny_imagenet_dir))
+    ori_ds_dict.save_to_disk("tiny-imagenet-200")
+    print(ori_ds_dict)
+    train_fold_list, repair_fold_list = divide_train_repair(ori_ds_dict["train"], num_fold)
+    for k, (train_fold, repair_fold) in enumerate(zip(train_fold_list, repair_fold_list)):
+        ds_dict = DatasetDict({"train": train_fold, "repair": repair_fold, "test": ori_ds_dict["val"]})
+        print(ds_dict)
+        ds_dict.save_to_disk(f"tiny-imagenet_fold{k}")
 else:
     raise NotImplementedError
