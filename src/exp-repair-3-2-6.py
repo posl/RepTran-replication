@@ -8,7 +8,7 @@ from itertools import product
 
 if __name__ == "__main__":
     # 変数の定義
-    ds = "c100"
+    ds = "tiny-imagenet"
     k = 0
     tgt_rank_list = [1, 2, 3]
     misclf_type_list = ["src_tgt", "tgt"]
@@ -20,7 +20,8 @@ if __name__ == "__main__":
     setting_id = f"alpha{alpha}_boundsArachne"
 
     # 保存先ディレクトリ（仮定）
-    pretrained_dir = getattr(ViTExperiment, ds).OUTPUT_DIR.format(k=k)
+    exp_obj = getattr(ViTExperiment, ds.replace("-", "_"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
 
     
     for fl_method in fl_method_list:
@@ -56,7 +57,7 @@ if __name__ == "__main__":
                 row[f"Racc_{tgt_split} (#diff)"] = f"{sum(racc_list)/len(racc_list):.3f} ({sum(diff_corr_list)/len(diff_corr_list):.1f})"
                 if tgt_split == "repair":
                     if fl_method == "ours":
-                        fl_time_path = "/src/src/exp-repair-3-2-1_time.csv"
+                        fl_time_path = f"/src/src/exp-repair-3-2-1_time_{ds}.csv"
                         df_fl_time = pd.read_csv(fl_time_path)
                         fpfn_match = "" if fpfn is None else fpfn
                         matched_row = df_fl_time[
@@ -78,7 +79,7 @@ if __name__ == "__main__":
         float_cols = [col for col in df_flat.columns if is_float_dtype(df_flat[col])]
         # 表示桁数を揃える（実体は変えず文字列化せず）
         df_flat[float_cols] = df_flat[float_cols].round(3)
-        csv_path = f"./exp-repair-3-2-6-{setting_id}_{fl_method}.csv"
+        csv_path = f"./exp-repair-3-2-6-{setting_id}_{fl_method}_{ds}.csv"
         # 実行時間列を最後に移動
         time_cols = ["t_fl", "t_repair"]
         other_cols = [col for col in df_flat.columns if col not in time_cols]

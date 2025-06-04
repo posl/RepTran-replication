@@ -113,7 +113,6 @@ if __name__ == "__main__":
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
     ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
-    ds_preprocessed = ds.with_transform(transforms)
 
     # location_path
     if fpfn is not None and misclf_type == "tgt":
@@ -165,10 +164,8 @@ if __name__ == "__main__":
     device = get_device()
 
     if ds_name == "c10" or ds_name == "tiny-imagenet":
-        tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":
-        tf_func = transforms_c100
         label_col = "fine_label"
     else:
         raise NotImplementedError(ds_name)

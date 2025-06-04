@@ -5,7 +5,7 @@ from utils.constant import Experiment3, ExperimentRepair1, ExperimentRepair2
 NUM_REPS = 5
 
 if __name__ == "__main__":
-    ds = "c100"
+    ds = "tiny-imagenet"
     # k_list = range(5)
     # tgt_rank_list = range(1, 6)
     
@@ -21,8 +21,8 @@ if __name__ == "__main__":
     w_num = 11 # Arachneで特定された重み数の平均
     beta = None # XXX beta = 1を指定してたけど指定しない方法にしてみた XXX
     
-    fl_method_list = ["ours"]  # 追加: random methodも試す場合
-    # fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
+    # fl_method_list = ["ours"]  # 追加: random methodも試す場合
+    fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
     
     tgt_split_list = ["repair", "test"]
     
@@ -39,7 +39,7 @@ if __name__ == "__main__":
             cmd = [
                 "python", 
                 "exp-repair-3-2-4.py", 
-                "c100",
+                ds,
                 str(k),
                 str(tgt_rank),
                 str(reps_id),

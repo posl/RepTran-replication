@@ -5,7 +5,8 @@ from utils.constant import Experiment3, ExperimentRepair1, ExperimentRepair2
 NUM_REPS = 5
 
 if __name__ == "__main__":
-    ds = "c100"
+    ds = "tiny-imagenet"
+    # ds = "c100"
     # k_list = range(5)
     # tgt_rank_list = range(1, 6)
     
@@ -18,14 +19,15 @@ if __name__ == "__main__":
         
     fpfn_list = [None, "fp", "fn"]
     
-    fl_method = "ours"
+    # fl_method = "ours"
     # fl_method = "random" # TODO
+    fl_method_list = ["ours", "random"]
     
     alpha = float(10/11) # same as the original Arachne paper, but the scale is different (we set this value so that the sum of weight becomes 1).
     w_num = 11 # Arachneで特定された重み数の平均
     beta = None # XXX beta = 1を指定してたけど指定しない方法にしてみた XXX
     
-    for k, tgt_rank, misclf_type, fpfn in product(k_list, tgt_rank_list,  misclf_type_list, fpfn_list):
+    for k, tgt_rank, misclf_type, fpfn, fl_method in product(k_list, tgt_rank_list,  misclf_type_list, fpfn_list, fl_method_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             # print(f"Skipping: misclf_type={misclf_type} with fpfn={fpfn} is not valid.")
             continue
@@ -39,7 +41,7 @@ if __name__ == "__main__":
             cmd = [
                 "python", 
                 "exp-repair-3-2-2.py", 
-                "c100",
+                ds,
                 str(k),
                 str(tgt_rank),
                 str(reps_id),

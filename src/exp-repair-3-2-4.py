@@ -115,7 +115,10 @@ if __name__ == "__main__":
     #==================================================
     # 2) ロケーションとパッチファイルのパス構築
     #==================================================
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
+    dataset_dir = ViTExperiment.DATASET_DIR
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
 
     # location_path
     if fpfn is not None and misclf_type == "tgt":
@@ -173,14 +176,10 @@ if __name__ == "__main__":
     logger_obj.info("[INFO] Start evaluating patched model ...")
 
     device = get_device()
-    ds_dirname = f"{ds_name}_fold{k}"
-    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
 
-    if ds_name == "c10":
-        tf_func = transforms
+    if ds_name == "c10" or ds_name == "tiny-imagenet":
         label_col = "label"
     elif ds_name == "c100":
-        tf_func = transforms_c100
         label_col = "fine_label"
     else:
         raise NotImplementedError(ds_name)
@@ -190,7 +189,6 @@ if __name__ == "__main__":
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    ds_preprocessed = ds.with_transform(tf_func)
 
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model.to(device).eval()

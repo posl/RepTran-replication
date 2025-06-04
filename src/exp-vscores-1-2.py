@@ -6,7 +6,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
-from utils.vit_util import transforms, transforms_c100, get_vscore
+from utils.vit_util import transforms, transforms_c100, get_vscore, maybe_initialize_repair_weights_
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     print(f"ds_name: {ds_name}, fold_id: {k}, abs: {abs}, covavg: {covavg}")
 
     # datasetごとに違う変数のセット
-    if ds_name == "c10":
+    if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":
@@ -32,13 +32,15 @@ if __name__ == "__main__":
         label_col = "fine_label"
     else:
         NotImplementedError
+        
+    dataset_dir = ViTExperiment.DATASET_DIR
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
 
     tgt_pos = ViTExperiment.CLS_IDX
-    ds_dirname = f"{ds_name}_fold{k}"
     # デバイス (cuda, or cpu) の取得
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
-    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     split_names = list(ds.keys()) # [train, repair, test]
     target_split_names = ["repair"]
     # target_split_namesは全てsplit_namesに含まれていることを前提とする
@@ -52,8 +54,9 @@ if __name__ == "__main__":
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     ds_preprocessed = ds.with_transform(tf_func)
     # pretrained modelのロード
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
+    model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
+    model.to(device).eval()
+    model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
     model.eval()
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
@@ -61,9 +64,9 @@ if __name__ == "__main__":
     for split in target_split_names:
         print(f"Process {split}...")
         # 必要なディレクトリがない場合は先に作っておく
-        vscore_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), "vscores")
+        vscore_dir = os.path.join(pretrained_dir, "vscores")
         os.makedirs(vscore_dir, exist_ok=True)
-        cache_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k), f"cache_states_{split}")
+        cache_dir = os.path.join(pretrained_dir, f"cache_states_{split}")
         os.makedirs(cache_dir, exist_ok=True)
         all_mid_states = []
         all_logits = []

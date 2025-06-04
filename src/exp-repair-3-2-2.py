@@ -89,6 +89,25 @@ if __name__ == "__main__":
     custom_bounds = args.custom_bounds
     print(f"ds_name: {ds_name}, k: {k}, tgt_rank: {tgt_rank}, reps_id: {reps_id}, setting_path: {setting_path}, fl_method: {fl_method}, misclf_type: {misclf_type}, only_eval: {only_eval}, custom_alpha: {custom_alpha}, include_other_TP_for_fitness: {include_other_TP_for_fitness}, fpfn: {fpfn}, custom_bounds: {custom_bounds}")
 
+    dataset_dir = ViTExperiment.DATASET_DIR
+    exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+    if ds_name == "c100":
+        tf_func = transforms_c100
+        label_col = "fine_label"
+    elif ds_name == "tiny-imagenet":
+        tf_func = transforms
+        label_col = "label"
+    else:
+        NotImplementedError
+    # ラベルの取得 (shuffleされない)
+    labels = {
+        "train": np.array(ds["train"][label_col]),
+        "repair": np.array(ds["repair"][label_col]),
+        "test": np.array(ds["test"][label_col])
+    }
+
     # 設定のjsonファイルが指定された場合
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
@@ -109,8 +128,6 @@ if __name__ == "__main__":
             parts.append(f"bounds{custom_bounds}")
         # リストの要素を'_'で連結
         setting_id = "_".join(parts)
-    # pretrained modelのディレクトリ
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
     # save_dirは, 5種類の誤分類タイプのどれかを一意に表す
     if fpfn is not None and misclf_type == "tgt": # tgt_fp or tgt_fn
@@ -142,27 +159,10 @@ if __name__ == "__main__":
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, setting_path: {setting_path}")
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
-    # datasetごとに違う変数のセット
-    if ds_name == "c10":
-        tf_func = transforms
-        label_col = "label"
-    elif ds_name == "c100":
-        tf_func = transforms_c100
-        label_col = "fine_label"
-    else:
-        NotImplementedError
+    
     tgt_pos = ViTExperiment.CLS_IDX
-    ds_dirname = f"{ds_name}_fold{k}"
     # デバイス (cuda, or cpu) の取得
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
-    ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    # ラベルの取得 (shuffleされない)
-    labels = {
-        "train": np.array(ds["train"][label_col]),
-        "repair": np.array(ds["repair"][label_col]),
-        "test": np.array(ds["test"][label_col])
-    }
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     ds_preprocessed = ds.with_transform(tf_func)
     # pretrained modelのロード
