@@ -61,30 +61,22 @@ if __name__ == "__main__":
     
     dataset_dir = ViTExperiment.DATASET_DIR
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
     if ds_name == "c100":
         tf_func = transforms_c100
-        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
-        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
         label_col = "fine_label"
-        # ラベルの取得 (shuffleされない)
-        labels = {
-            "train": np.array(ds["train"][label_col]),
-            "repair": np.array(ds["repair"][label_col]),
-            "test": np.array(ds["test"][label_col])
-        }
-        pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     elif ds_name == "tiny-imagenet":
         tf_func = transforms
-        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
-        pretrained_dir = exp_obj.OUTPUT_DIR
         label_col = "label"
-        # ラベルの取得 (shuffleされない)
-        labels = {
-            "train": np.array(ds["train"][label_col]),
-            "repair": np.array(ds["repair"][label_col]),
-        }
     else:
         NotImplementedError
+    # ラベルの取得 (shuffleされない)
+    labels = {
+        "train": np.array(ds["train"][label_col]),
+        "repair": np.array(ds["repair"][label_col]),
+        "test": np.array(ds["test"][label_col])
+    }
 
     # 設定のjsonファイルが指定された場合
     if setting_path is not None:

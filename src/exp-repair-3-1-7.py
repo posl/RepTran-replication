@@ -20,12 +20,8 @@ if __name__ == "__main__":
     setting_id = f"alpha{alpha}_boundsArachne"
 
     # 保存先ディレクトリ（仮定）
-    if ds == "c100":
-        pretrained_dir = getattr(ViTExperiment, ds).OUTPUT_DIR.format(k=k)
-    elif ds == "tiny-imagenet":
-        pretrained_dir = ViTExperiment.tiny_imagenet.OUTPUT_DIR
-    else:
-        raise ValueError(f"Unsupported dataset: {ds}")
+    exp_obj = getattr(ViTExperiment, ds.replace("-", "_"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
 
     # 結果の格納用
     results = []
@@ -69,7 +65,7 @@ if __name__ == "__main__":
                     row[fmt_col] = f"{avg_racc:.3f} ({avg_diff:.1f})"
                     if tgt_split == "repair":
                         # 念の為FL実行時間も記録
-                        fl_time_path = "/src/src/exp-repair-3-1-1_time_pareto.csv"
+                        fl_time_path = f"/src/src/exp-repair-3-1-1_time_pareto_{ds}.csv"
                         df_fl_time = pd.read_csv(fl_time_path)
                         # fpfn=None のときは "" に置き換える（csv内の表記と合わせる）
                         fpfn_match = "" if fpfn is None else fpfn

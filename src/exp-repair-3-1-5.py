@@ -111,12 +111,8 @@ if __name__ == "__main__":
     #==================================================
     dataset_dir = ViTExperiment.DATASET_DIR
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
-    if ds_name == "tiny-imagenet":
-        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
-        pretrained_dir = exp_obj.OUTPUT_DIR
-    else:
-        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
-        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
     ds_preprocessed = ds.with_transform(transforms)
 
     # location_path
@@ -180,6 +176,7 @@ if __name__ == "__main__":
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
+        "test": np.array(ds["test"][label_col])
     }
 
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)

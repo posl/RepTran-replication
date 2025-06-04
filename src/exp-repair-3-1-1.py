@@ -222,30 +222,18 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, sample_from_correct=False):
     
     dataset_dir = ViTExperiment.DATASET_DIR
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
+    # datasetをロード (true_labelsが欲しいので)
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
     if ds_name == "c100":
-        # datasetをロード (true_labelsが欲しいので)
-        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
-        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
         label_col = "fine_label"
-        # ラベルの取得 (shuffleされない)
-        labels = {
-            "train": np.array(ds["train"][label_col]),
-            "repair": np.array(ds["repair"][label_col]),
-            "test": np.array(ds["test"][label_col])
-        }
-        true_labels = labels[tgt_split]
-        pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     elif ds_name == "tiny-imagenet":
-        ds_dirname = ds_name
-        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
-        pretrained_dir = exp_obj.OUTPUT_DIR
         label_col = "label"
-        # ラベルの取得 (shuffleされない)
-        labels = {
-            "train": np.array(ds["train"][label_col]),
-            "repair": np.array(ds["repair"][label_col]),
-        }
-        
+    labels = {
+        "train": np.array(ds["train"][label_col]),
+        "repair": np.array(ds["repair"][label_col]),
+        "test": np.array(ds["test"][label_col])
+    }
     # pretrained modelのロード
     # location informationの保存先
     # model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
