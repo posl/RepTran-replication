@@ -20,14 +20,10 @@ if __name__ == "__main__":
     dataset_dir = ViTExperiment.DATASET_DIR
     # datasetをロード (初回の読み込みだけやや時間かかる)
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
-    if ds_name == "tiny-imagenet":
-        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
-        output_dir = exp_obj.OUTPUT_DIR
-        eval_div = "repair"
-    else:
-        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
-        output_dir = exp_obj.OUTPUT_DIR.format(k=k)
-        eval_div = "test"
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    output_dir = exp_obj.OUTPUT_DIR.format(k=k)
+    os.makedirs(output_dir, exist_ok=True)
+    eval_div = "test"
 
     # datasetごとに違う変数のセット
     if ds_name == "c10" or ds_name == "tiny-imagenet":

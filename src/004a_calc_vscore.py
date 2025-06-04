@@ -26,14 +26,9 @@ if __name__ == "__main__":
     # datasetの読み込み
     dataset_dir = ViTExperiment.DATASET_DIR
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
-    if ds_name == "tiny-imagenet":
-        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
-        pretrained_dir = exp_obj.OUTPUT_DIR
-        eval_div = "repair"
-    else:
-        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
-        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
-        eval_div = "test"
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+    eval_div = "test"
 
     # datasetごとに違う変数のセット
     if ds_name == "c10":
@@ -60,9 +55,8 @@ if __name__ == "__main__":
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
+        "test": np.array(ds["test"][label_col])
     }
-    if eval_div == "test":
-        labels["test"] = np.array(ds["test"][label_col])
     # 読み込まれた時にリアルタイムで前処理を適用するようにする
     ds_preprocessed = ds.with_transform(tf_func)
     # pretrained modelのロード

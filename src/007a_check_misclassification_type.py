@@ -11,10 +11,7 @@ def main(ds_name, k, tgt_split):
 
     # datasetの読み込み
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
-    if ds_name == "tiny-imagenet":
-        pretrained_dir = exp_obj.OUTPUT_DIR
-    else:
-        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
         
     if ds_name == "c100":
         num_classes = 100

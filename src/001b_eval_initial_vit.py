@@ -24,14 +24,9 @@ def main(ds_name, k):
     data_collator = DefaultDataCollator()
     
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
-    if ds_name == "tiny-imagenet":
-        ds = load_from_disk(os.path.join(dataset_dir, "tiny-imagenet-200"))
-        pretrained_dir = exp_obj.OUTPUT_DIR
-        eval_div = "repair"
-    else:
-        ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
-        pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
-        eval_div = "test"
+    ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
+    pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
+    eval_div = "test"
     ds_preprocessed = ds.with_transform(transforms)
     
     # datasetごとに違う変数のセット
@@ -78,9 +73,9 @@ def main(ds_name, k):
     if not os.path.exists(pred_out_dir):
         os.makedirs(pred_out_dir)
 
-    # C10 or C100データセットに対する推論
+    # C10 or C100 or tiny-imagenet データセットに対する推論
     # ====================================================================
-    if ds_name == "c10" or ds_name == "c100":
+    if ds_name == "c10" or ds_name == "c100" or ds_name == "tiny-imagenet":
         # データセットのサイズとバッチサイズからイテレーション回数を計算
         train_iter = math.ceil(len(ds_preprocessed["train"]) / train_batch_size)
         repair_iter = math.ceil(len(ds_preprocessed["repair"]) / eval_batch_size)
@@ -158,25 +153,6 @@ def main(ds_name, k):
             # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
             with open(os.path.join(pred_out_dir, f"{ds_name}_{key}_pred.pkl"), "wb") as f:
                 pickle.dump(key_pred, f)
-    if ds_name =="tiny-imagenet":
-        eval_iter = math.ceil(len(ds_preprocessed["repair"]) / eval_batch_size)
-        # 推論の実行
-        print(f"predict {ds_name} repair data... #iter = {eval_iter} ({len(ds_preprocessed['repair'])} samples / {eval_batch_size} batches)")
-        repair_pred = trainer.predict(ds_preprocessed["repair"])
-        # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
-        with open(os.path.join(pred_out_dir, "repair_pred.pkl"), "wb") as f:
-            pickle.dump(repair_pred, f)
-            
-        # proba (各サンプルに対する予測確率) を正解ラベルごとにまとめたものも保存する
-        repair_labels = np.array(ds["repair"][label_col])
-        # PredictionOutputオブジェクト -> 予測確率に変換
-        repair_pred_proba = pred_to_proba(repair_pred)
-        # ラベルごとに違うファイルとして保存 (repair)
-        for c in range(len(labels)):
-            tgt_proba = repair_pred_proba[repair_labels == c]
-            # repair_pred_probaを保存
-            np.save(os.path.join(pretrained_dir, "pred_results", f"repair_proba_{c}.npy"), tgt_proba)
-            logger.info(f"repair_proba_{c}.npy ({tgt_proba.shape}) saved")
 
 if __name__ == "__main__":
     # データセットをargparseで受け取る
@@ -186,7 +162,5 @@ if __name__ == "__main__":
     args = parser.parse_args()
     ds_name = args.ds
     k_list = args.k_list
-    if ds_name == "tiny-imagenet":
-        k_list = [0]
     for k in k_list:
         main(ds_name, k)

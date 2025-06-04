@@ -14,7 +14,7 @@ class ViTExperiment(Experiment):
         NUM_EPOCHS = 2
         ADDITIONAL_NOISE_TYPES = ["gaussian_blur", "speckle_noise", "spatter", "saturate"]
     class tiny_imagenet:
-        OUTPUT_DIR = "/src/src/out_tiny-imagenet"
+        OUTPUT_DIR = "/src/src/out_vit_tiny-imagenet_fold{k}" # k: fold id
         NUM_EPOCHS = 2
         
 class Experiment1(Experiment):
