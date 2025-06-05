@@ -29,7 +29,12 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=None):
     # datasetをロード (true_labelsが欲しいので)
     ds_dirname = f"{ds_name}_fold{k}"
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    label_col = "fine_label"
+    if ds_name == "c10" or ds_name == "tiny-imagenet":
+        label_col = "label"
+    elif ds_name == "c100":
+        label_col = "fine_label"
+    else:
+        raise NotImplementedError(ds_name)
     # ラベルの取得 (shuffleされない)
     labels = {
         "train": np.array(ds["train"][label_col]),
@@ -40,7 +45,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=None):
     
     # 結果とかログの保存先を先に作っておく
     # pretrained modelのディレクトリ
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
+    pretrained_dir = getattr(ViTExperiment, ds_name.replace("-", "_")).OUTPUT_DIR.format(k=k)
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
         save_dir = os.path.join(pretrained_dir, f"all_weights_location")
@@ -220,7 +225,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num, beta=None):
     return elapsed_time
 
 if __name__ == "__main__":
-    ds = "c100"
+    ds = "tiny-imagenet"
     # k_list = range(5)
     k_list = [0]
     tgt_rank_list = range(1, 4)
@@ -241,4 +246,4 @@ if __name__ == "__main__":
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "w_num": w_num, "elapsed_time": elapsed_time})
     # results を csv にして保存
     result_df = pd.DataFrame(results)
-    result_df.to_csv(f"./exp-repair-4-1-1_time.csv", index=False)
+    result_df.to_csv(f"./exp-repair-4-1-1_time_{ds}.csv", index=False)

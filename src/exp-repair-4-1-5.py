@@ -114,7 +114,7 @@ if __name__ == "__main__":
     #==================================================
     # 2) ロケーションとパッチファイルのパス構築
     #==================================================
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
+    pretrained_dir = getattr(ViTExperiment, ds_name.replace("-", "_")).OUTPUT_DIR.format(k=k)
 
     # location_path
     if fpfn is not None and misclf_type == "tgt":
@@ -173,7 +173,7 @@ if __name__ == "__main__":
     ds_dirname = f"{ds_name}_fold{k}"
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
 
-    if ds_name == "c10":
+    if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":

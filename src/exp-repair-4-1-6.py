@@ -3,7 +3,7 @@ from itertools import product
 NUM_REPS = 5
 
 if __name__ == "__main__":
-    ds = "c100"
+    ds = "tiny-imagenet"  # or "c100"
     k_list = [0]
     tgt_rank_list = [1, 2, 3]
     misclf_type_list = ["src_tgt", "tgt"]
@@ -26,7 +26,7 @@ if __name__ == "__main__":
             cmd = [
                 "python", 
                 "exp-repair-4-1-5.py", 
-                "c100",
+                ds,
                 str(k),
                 str(tgt_rank),
                 str(reps_id),

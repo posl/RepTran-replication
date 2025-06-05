@@ -122,7 +122,7 @@ if __name__ == "__main__":
         # リストの要素を'_'で連結
         setting_id = "_".join(parts)
     # pretrained modelのディレクトリ
-    pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
+    pretrained_dir = getattr(ViTExperiment, ds_name.replace("-", "_")).OUTPUT_DIR.format(k=k)
     # 結果とかログの保存先を先に作っておく
     # save_dirは, 5種類の誤分類タイプのどれかを一意に表す
     if fpfn is not None and misclf_type == "tgt": # tgt_fp or tgt_fn
@@ -157,7 +157,7 @@ if __name__ == "__main__":
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
     # datasetごとに違う変数のセット
-    if ds_name == "c10":
+    if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
     elif ds_name == "c100":
