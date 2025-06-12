@@ -80,6 +80,7 @@ def cell(d, p):
     return f"'{d:+.2f} {stars(p)}"
 
 # ──────────── main ────────────────────────────────────────────
+per_metric_tables = {}            # ★ 追加：あとでマージするため保持
 for met_tag, (json_key, nice_name) in METRIC_INFO.items():
     rows = []
 
@@ -123,3 +124,34 @@ for met_tag, (json_key, nice_name) in METRIC_INFO.items():
     out_csv = f"exp-repair-4-1-8_wilcoxon_cliffs_{met_tag}.csv"
     df.to_csv(out_csv, index=False)
     print(f"[✓] {nice_name}  →  {out_csv}")
+    
+    per_metric_tables[met_tag] = df          # ★ 保存
+    
+# ─────────────────────────────────────────────
+# ★ ここから統合テーブル（split == test だけ）
+# ─────────────────────────────────────────────
+df_rr = per_metric_tables["RR"].query("split == 'test'").copy()
+df_br = per_metric_tables["BR"].query("split == 'test'").copy()
+
+# 列名を衝突しないように付け替え
+df_rr.rename(columns={"OvA":"RR_OvA","OvR":"RR_OvR","AvR":"RR_AvR"}, inplace=True)
+df_br.rename(columns={"OvA":"BR_OvA","OvR":"BR_OvR","AvR":"BR_AvR"}, inplace=True)
+
+# マージ（dataset, wnum, misclf_type で結合）
+merge_cols = ["dataset","wnum","misclf_type"]
+df_merge = (df_rr[merge_cols + ["RR_OvA","RR_OvR","RR_AvR"]]
+            .merge(df_br[merge_cols + ["BR_OvA","BR_OvR","BR_AvR"]],
+                on=merge_cols, how="inner")
+            .sort_values(["dataset","wnum","misclf_type"],
+                        key=lambda s: pd.Categorical(
+                            s, categories=(DATASETS if s.name=="dataset"
+                                            else WN_LIST if s.name=="wnum"
+                                            else MISCLF_TPS),
+                            ordered=True)))
+
+# 見出し #weights をラベル付きにしても OK
+df_merge.rename(columns={"wnum":"#weights"}, inplace=True)
+
+out_all = "exp-repair-4-1-8_merged_test.csv"
+df_merge.to_csv(out_all, index=False, quoting=1)   # quoting=1 → 全セルを "…" で囲む
+print(f"[✓] wrote merged table → {out_all}")
