@@ -71,12 +71,22 @@ def stats_for_plot(df_long):
     for (mtype, rank, wnum, method), g in df_long.groupby(
             ["misclf_type", "tgt_rank", "wnum", "method"]):
         rr = g["RR"];  br = g["BR"]
+        
+        rr_mean, rr_ci = mean_ci(rr)
+        br_mean, br_ci = mean_ci(br)
+
         out.append({
             "misclf_type": mtype, "tgt_rank": rank,
             "wnum": wnum, "method": method,
-            "RR_mean": rr.mean(), "RR_min": rr.min(), "RR_max": rr.max(),
-            "BR_mean": br.mean(), "BR_min": br.min(), "BR_max": br.max(),
+            "RR_mean": rr_mean, "RR_ci": rr_ci,
+            "BR_mean": br_mean, "BR_ci": br_ci,
         })
+        # out.append({
+        #     "misclf_type": mtype, "tgt_rank": rank,
+        #     "wnum": wnum, "method": method,
+        #     "RR_mean": rr.mean(), "RR_min": rr.min(), "RR_max": rr.max(),
+        #     "BR_mean": br.mean(), "BR_min": br.min(), "BR_max": br.max(),
+        # })
     return pd.DataFrame(out)
 
 # ---------------------------------------
@@ -103,11 +113,11 @@ def facet_plot_one(df_stats: pd.DataFrame, *, metric: str,
              472: "472\n(0.01%)",
              944: "944\n(0.02%)"}
     w_ticks   = sorted(df_stats["wnum"].unique())
-    metric_to_name = {"RR": "Repair Rate", "BR": "Broken Rate"}
+    metric_to_name = {"RR": "Repair Rate", "BR": "Break Rate"}
 
     g = sns.FacetGrid(df_stats,
                       row="misclf_type", col="tgt_rank",
-                      height=2.5, aspect=1.2,
+                      height=1.5, aspect=1.8,
                       sharex=True, sharey=True)
     
     for meth in methods:
@@ -123,8 +133,10 @@ def facet_plot_one(df_stats: pd.DataFrame, *, metric: str,
             x_pos = r["wnum"] + x_offset[meth]
 
             mean = r[f"{metric}_mean"]
-            ymin = r[f"{metric}_min"]
-            ymax = r[f"{metric}_max"]
+            # ymin = r[f"{metric}_min"]
+            # ymax = r[f"{metric}_max"]
+            ci   = r[f"{metric}_ci"]
+
 
             ax.plot(x_pos, mean,
                     color=palette[meth],
@@ -132,8 +144,12 @@ def facet_plot_one(df_stats: pd.DataFrame, *, metric: str,
                     markersize=marker_size[meth],
                     linestyle='-', lw=1.4,
                     label=meth)
+            # ax.errorbar(x_pos, mean,
+            #             yerr=[[mean - ymin], [ymax - mean]],
+            #             fmt='none', ecolor=palette[meth],
+            #             elinewidth=2, capsize=9, capthick=1.2)
             ax.errorbar(x_pos, mean,
-                        yerr=[[mean - ymin], [ymax - mean]],
+                        yerr=ci,
                         fmt='none', ecolor=palette[meth],
                         elinewidth=2, capsize=9, capthick=1.2)
 
@@ -148,11 +164,11 @@ def facet_plot_one(df_stats: pd.DataFrame, *, metric: str,
     g.set_titles(row_template="Type: {row_name}", col_template="Top: {col_name}")
     g.set_axis_labels("#weights", metric_to_name[metric])
     for ax in g.axes.flat:
-        axis_font_size = 10
-        ax.xaxis.label.set_size(12)  # x軸ラベルのフォントサイズ
-        ax.yaxis.label.set_size(12)  # y軸ラベルのフォントサイズ
+        axis_font_size = 8
+        ax.xaxis.label.set_size(10)  # x軸ラベルのフォントサイズ
+        ax.yaxis.label.set_size(10)  # y軸ラベルのフォントサイズ
         ax.tick_params(axis='both', labelsize=axis_font_size)  # x軸とy軸のtickのフォントサイズ
-    g.fig.subplots_adjust(top=0.92, wspace=0.25, hspace=0.25, bottom=0.08)
+    g.fig.subplots_adjust(top=0.9, wspace=0.25, hspace=0.33, bottom=0.08)
 
     # 共通凡例（手法３本）
     handles, labels = [], []
@@ -165,9 +181,91 @@ def facet_plot_one(df_stats: pd.DataFrame, *, metric: str,
     g.figure.legend(handles, labels, loc="upper center",
                     ncol=3, frameon=False, fontsize=9)
 
-    out_png = f"exp-repair-4-1-7_{metric}_{ds}_{split}.png"
-    g.savefig(out_png, dpi=300, bbox_inches="tight")
-    print(f"[✓] saved {out_png}")
+    out_file_name = f"exp-repair-4-1-7_{metric}_{ds}_{split}"
+    out_pdf = f"{out_file_name}.pdf"
+    g.savefig(out_pdf, dpi=300, bbox_inches="tight")
+    print(f"[✓] saved {out_pdf}")
+
+def facet_bar_one(df_stats: pd.DataFrame, *, metric: str,
+                  ds: str, split: str):
+    """
+    棒グラフ版 – 既存スタイルに合わせて
+    """
+    import seaborn as sns, matplotlib.pyplot as plt
+
+    sns.set(style="whitegrid", font_scale=0.95)
+
+    palette = {"Ours": "C0", "Arachne": "C2", "Random": "C1"}
+    label_map = {236: "236\n(0.005%)",
+                 472: "472\n(0.01%)",
+                 944: "944\n(0.02%)"}
+    w_ticks   = sorted(df_stats["wnum"].unique())
+    metric_to_name = {"RR": "Repair Rate", "BR": "Break Rate"}
+    methods_order = ["Arachne", "Ours", "Random"]
+
+    g = sns.FacetGrid(df_stats,
+                      row="misclf_type", col="tgt_rank",
+                      height=1.5, aspect=1.8,
+                      sharex=True, sharey=True)
+
+    # ── 棒を描く ──
+    g.map_dataframe(
+        sns.barplot,
+        x="wnum", y=f"{metric}_mean",
+        hue="method", palette=palette,
+        hue_order=methods_order,
+        linewidth=0,            # 枠線なし
+        dodge=True
+    )
+
+    # ── CI をバーの上端だけに描く ──
+    for ax, (_, sub) in zip(g.axes.flat, df_stats.groupby(["misclf_type", "tgt_rank"])):
+        for i, w in enumerate(w_ticks):
+            for j, meth in enumerate(methods_order):
+                row = sub[(sub["wnum"] == w) & (sub["method"] == meth)]
+                if row.empty:           # データなし
+                    continue
+                mean = row[f"{metric}_mean"].values[0]
+                ci   = row[f"{metric}_ci"  ].values[0]
+                # dodge 量は seaborn の内部計算に合わせる（幅 0.8 の ±)
+                xpos = i - 0.8/2 + (j+0.5)*(0.8/3)
+                ax.errorbar(x=xpos, y=mean,
+                            yerr=ci,
+                            fmt='none', capsize=0, capthick=1.1,
+                            ecolor="black", elinewidth=1.2)
+
+    # 軸体裁
+    for ax in g.axes.flat:
+        ax.set_xticks(range(len(w_ticks)))
+        ax.set_xticklabels([label_map[w] for w in w_ticks], rotation=45)
+        if metric == "RR":
+            ax.set_ylim(0, 1.05)
+        else:
+            ax.set_ylim(0, 0.105)
+
+    g.set_titles(row_template="Type: {row_name}", col_template="Top: {col_name}", size=10)
+    g.set_axis_labels("#weights", metric_to_name[metric])
+    for ax in g.axes.flat:
+        axis_font_size = 8
+        ax.xaxis.label.set_size(10)  # x軸ラベルのフォントサイズ
+        ax.yaxis.label.set_size(10)  # y軸ラベルのフォントサイズ
+        ax.tick_params(axis='both', labelsize=axis_font_size)  # x軸とy軸のtickのフォントサイズ
+    g.fig.subplots_adjust(top=0.88, wspace=0.25, hspace=0.4, bottom=0.08)
+    # 共通凡例（手法３本）
+    handles, labels = [], []
+    for ax in g.axes.flat:
+        h, l = ax.get_legend_handles_labels()
+        for hh, ll in zip(h, l):
+            if ll not in labels:
+                handles.append(hh); labels.append(ll)
+        if ax.get_legend(): ax.get_legend().remove()
+    g.figure.legend(handles, labels, loc="upper center",
+                    ncol=3, frameon=False, fontsize=9)
+
+    stem = f"exp-repair-4-1-7_{metric}_{ds}_{split}"
+    g.savefig(f"{stem}_bar.pdf", dpi=300, bbox_inches="tight")
+    print(f"[✓] saved {stem}_bar.pdf")
+    
 
 # -------------------- run all -------------------------
 for ds in DATASETS:
@@ -184,3 +282,6 @@ for ds in DATASETS:
         facet_plot_one(df_stats, metric="RR", ds=ds, split=split)
         # BR
         facet_plot_one(df_stats, metric="BR", ds=ds, split=split)
+        
+        facet_bar_one(df_stats, metric="RR", ds=ds, split=split)
+        facet_bar_one(df_stats, metric="BR", ds=ds, split=split)
