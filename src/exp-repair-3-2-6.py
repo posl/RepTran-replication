@@ -8,7 +8,7 @@ from itertools import product
 
 if __name__ == "__main__":
     # 変数の定義
-    ds = "tiny-imagenet"
+    ds = "c100"
     k = 0
     tgt_rank_list = [1, 2, 3]
     misclf_type_list = ["src_tgt", "tgt"]
@@ -46,7 +46,7 @@ if __name__ == "__main__":
                     with open(json_path, "r") as f:
                         d = json.load(f)
                     rr_list.append(d.get("repair_rate_tgt"))
-                    br_list.append(d.get("break_rate_tgt"))
+                    br_list.append(d.get("break_rate_overall"))
                     racc_list.append(d.get("r_acc"))
                     diff_corr_list.append(d.get("diff_correct"))
                     if tgt_split == "repair":
@@ -54,7 +54,7 @@ if __name__ == "__main__":
 
                 row[f"RR_{tgt_split}"] = sum(rr_list)/len(rr_list)
                 row[f"BR_{tgt_split}"] = sum(br_list)/len(br_list)
-                row[f"Racc_{tgt_split} (#diff)"] = f"{sum(racc_list)/len(racc_list):.3f} ({sum(diff_corr_list)/len(diff_corr_list):.1f})"
+                row[f"Racc_{tgt_split} (#diff)"] = f"{sum(racc_list)/len(racc_list):.4f} ({sum(diff_corr_list)/len(diff_corr_list):.1f})"
                 if tgt_split == "repair":
                     if fl_method == "ours":
                         fl_time_path = f"/src/src/exp-repair-3-2-1_time_{ds}.csv"
@@ -84,4 +84,4 @@ if __name__ == "__main__":
         time_cols = ["t_fl", "t_repair"]
         other_cols = [col for col in df_flat.columns if col not in time_cols]
         df_flat = df_flat[other_cols + time_cols]
-        df_flat.to_csv(csv_path, index=False, float_format="%.3f")
+        df_flat.to_csv(csv_path, index=False, float_format="%.4f")

@@ -8,7 +8,7 @@ from glob import glob
 
 if __name__ == "__main__":
     # 変数の定義
-    ds = "tiny-imagenet"  # データセット名
+    ds = "c100"  # データセット名
     k = 0
     tgt_rank_list = [1, 2, 3]
     misclf_type_list = ["src_tgt", "tgt"]
@@ -50,7 +50,7 @@ if __name__ == "__main__":
                         with open(json_path, "r") as f:
                             d = json.load(f)
                         rr_list.append(d.get("repair_rate_tgt"))
-                        br_list.append(d.get("break_rate_tgt"))
+                        br_list.append(d.get("break_rate_overall"))
                         racc_list.append(d.get("r_acc"))
                         diff_corr_list.append(d.get("diff_correct"))
                         # tgt_splitが"repair"の時は実行時間の記録も行う
@@ -62,7 +62,7 @@ if __name__ == "__main__":
                     avg_racc = sum(racc_list)/len(racc_list)
                     avg_diff = sum(diff_corr_list)/len(diff_corr_list)
                     fmt_col = f"Racc_{tgt_split} (#diff)"
-                    row[fmt_col] = f"{avg_racc:.3f} ({avg_diff:.1f})"
+                    row[fmt_col] = f"{avg_racc:.4f} ({avg_diff:.1f})"
                     if tgt_split == "repair":
                         # 念の為FL実行時間も記録
                         fl_time_path = f"/src/src/exp-repair-3-1-1_time_pareto_{ds}.csv"
@@ -92,4 +92,4 @@ if __name__ == "__main__":
     time_cols = ["t_fl", "t_repair"]
     other_cols = [col for col in df_flat.columns if col not in time_cols]
     df_flat = df_flat[other_cols + time_cols]
-    df_flat.to_csv(csv_path, index=False, float_format="%.3f")
+    df_flat.to_csv(csv_path, index=False, float_format="%.4f")
