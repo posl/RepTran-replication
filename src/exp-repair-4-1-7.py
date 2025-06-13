@@ -195,7 +195,11 @@ def facet_bar_one(df_stats: pd.DataFrame, *, metric: str,
 
     sns.set(style="whitegrid", font_scale=0.95)
 
-    palette = {"Ours": "C0", "Arachne": "C2", "Random": "C1"}
+    palette = {
+        "Ours":    "#4E79A7",   # 深めのブルー
+        "Arachne": "#E15759",   # 落ち着いたコーラル
+        "Random":  "#76B7B2",   # グレイッシュなグリーン
+    }
     label_map = {236: "236\n(0.005%)",
                  472: "472\n(0.01%)",
                  944: "944\n(0.02%)"}
@@ -331,10 +335,10 @@ def scatter_rr_br(df_long, ds, split):
                       hspace=0.4)
 
     leg1 = ax.legend(handles=handles_m, loc="upper center",
-                     bbox_to_anchor=(0.5, -0.175), ncol=3,
+                     bbox_to_anchor=(0.5, -0.18), ncol=3,
                      frameon=False, title="Method", fontsize=8, title_fontsize=8)
     leg2 = ax.legend(handles=handles_w, loc="upper center",
-                     bbox_to_anchor=(0.5, -0.3), ncol=3,
+                     bbox_to_anchor=(0.5, -0.325), ncol=3,
                      frameon=False, title="#weights", fontsize=8, title_fontsize=8)
     ax.add_artist(leg1)
 
