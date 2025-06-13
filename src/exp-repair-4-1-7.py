@@ -266,6 +266,118 @@ def facet_bar_one(df_stats: pd.DataFrame, *, metric: str,
     g.savefig(f"{stem}_bar.pdf", dpi=300, bbox_inches="tight")
     print(f"[✓] saved {stem}_bar.pdf")
     
+# ============================================================
+#  RR × BR 散布図  ── 色=method / 形=#weights
+# ============================================================
+def scatter_rr_br(df_long, ds, split):
+    import seaborn as sns, matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    keep = ["method", "wnum", "tgt_rank", "misclf_type", "rep_id"]
+    agg  = (df_long.groupby(keep)
+                     .agg(RR=("RR", "mean"),
+                          BR=("BR", "mean"))
+                     .reset_index())
+    sns.set(style="whitegrid", font_scale=0.95)
+
+    # ----------------  色と形 ----------------
+    combo_order    = [(m, w) for m in ["Arachne", "Ours", "Random"]
+                              for w in [236, 472, 944]]
+    palette_combo  = {c: col for c, col in
+                      zip(combo_order,
+                          sns.color_palette("tab10", n_colors=9))}
+    # 手法ごとのマーカーの形
+    marker_for_m = {"Arachne": "v", "Ours": "D", "Random": "o"}
+    size_for_m = {"Arachne": 45, "Ours": 40, "Random": 45}
+    # 1 つの基調色 (C0 = 青) を 3 段階の濃淡で
+    shades = sns.light_palette("#85023e", n_colors=3)
+    color_for_w = {236: shades[0], 472: shades[1], 944: shades[2]}
+
+    fig, ax = plt.subplots(figsize=(4.8, 4.8))
+
+    for (meth, wnum), sub in agg.groupby(["method", "wnum"], sort=False):
+        sub = sub.sort_values(["BR", "RR"])
+        col = palette_combo[(meth, wnum)]
+
+        # ax.plot(sub["BR"], sub["RR"], color=col, lw=1.1, alpha=0.75)
+        ax.scatter(sub["BR"], sub["RR"], color=color_for_w[wnum],
+                   marker=marker_for_m[meth], s=size_for_m[meth], zorder=3, alpha=0.75,
+                   edgecolors="black", linewidths=0.5)
+
+    # 軸・タイトル
+    ax.set_ylim(-0.05, 1.05)
+    ax.set_xlim(-0.005, 0.105)
+    if ds == "c100" and split == "test":
+        ax.set_xlim(-0.005, 0.045)
+    elif ds == "tiny-imagenet" and split == "test":  # tiny-imagenet
+        ax.set_xlim(0, 0.085)
+    ax.set_xlabel("Break Rate", fontsize=10)
+    ax.set_ylabel("Repair Rate", fontsize=10)
+    fig.suptitle(f"{ds} – {split}", fontsize=10, y=1.02)
+
+    handles_m = [Line2D([], [], marker=marker_for_m[m], linestyle="",
+                        color="k", markersize=7, label=m)
+                 for m in ["Arachne", "Ours", "Random"]]
+
+    #   下段：#weights（色濃淡）
+    handles_w = [Line2D([], [], marker="s", linestyle="",
+                        color=color_for_w[w], markersize=7,
+                        label=f"{w} weights")
+                 for w in [236, 472, 944]]
+
+    # キャンバスを下に少し拡張して凡例を置く
+    fig.subplots_adjust(top=0.95,     # ← 0.93〜0.97 で調整
+                      bottom=0.4,  # 凡例をキャンバス外に置く分だけ確保
+                      wspace=0.25,
+                      hspace=0.4)
+
+    leg1 = ax.legend(handles=handles_m, loc="upper center",
+                     bbox_to_anchor=(0.5, -0.175), ncol=3,
+                     frameon=False, title="Method", fontsize=8, title_fontsize=8)
+    leg2 = ax.legend(handles=handles_w, loc="upper center",
+                     bbox_to_anchor=(0.5, -0.3), ncol=3,
+                     frameon=False, title="#weights", fontsize=8, title_fontsize=8)
+    ax.add_artist(leg1)
+
+    stem = f"exp-repair-4-1-7_scatter_{ds}_{split}"
+    fig.savefig(f"{stem}.pdf", dpi=300, bbox_inches="tight")
+    print(f"[✓] saved {stem}.pdf")
+
+# ============================================================
+#  RR–BR Pearson correlation (per dataset × split × method)
+# ============================================================
+def corr_rr_br_by_split(df_long):
+    import numpy as np
+    import pandas as pd
+
+    # データをピボットして、methodごとにRRとBRを抽出できるようにする
+    df_pivot = df_long.pivot(
+        index=["ds", "split", "wnum", "tgt_rank", "misclf_type", "rep_id"],
+        columns="method",
+        values=["RR", "BR"]
+    )
+
+    methods = ["Arachne", "Ours", "Random"]
+    rows = []
+
+    # ds × split ごとに処理
+    for (ds, split), sub in df_pivot.groupby(level=["ds", "split"]):
+        row = {"dataset": ds, "split": split}
+        for method in methods:
+            try:
+                rr = sub["RR"][method]
+                br = sub["BR"][method]
+                corr = np.corrcoef(rr, br)[0, 1]
+                row[method] = f"{corr:.3f}"
+            except Exception:
+                row[method] = "n/a"
+        rows.append(row)
+
+    df_corr = pd.DataFrame(rows)
+    # df_corrをcsvで保存
+    out_csv = f"exp-repair-4-1-7_corr_rr_br_by_split.csv"
+    df_corr.to_csv(out_csv, index=False)
+    print(f"[✓] saved {out_csv}")
+    return df_corr
 
 # -------------------- run all -------------------------
 for ds in DATASETS:
@@ -273,6 +385,8 @@ for ds in DATASETS:
         print(f"\nProcessing {ds} {split} ...")
         print("=" * 90)
         df_long = collect_split(ds, split)
+        # 81点 (何もまとめない)
+        scatter_rr_br(df_long, ds, split)
         if df_long.empty:
             print(f"[WARN] no data for {ds}-{split}")
             continue
@@ -285,3 +399,9 @@ for ds in DATASETS:
         
         facet_bar_one(df_stats, metric="RR", ds=ds, split=split)
         facet_bar_one(df_stats, metric="BR", ds=ds, split=split)
+# ② 相関テーブル（DS × split 単位）
+all_long = pd.concat([collect_split(d, s)
+                      for d in DATASETS
+                      for s in ["repair", "test"]],
+                     ignore_index=True)
+corr_rr_br_by_split(all_long)
