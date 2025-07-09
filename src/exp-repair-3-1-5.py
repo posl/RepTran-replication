@@ -237,10 +237,10 @@ if __name__ == "__main__":
                 if pl == tgt_label or tl == tgt_label:
                     tgt_indices.append(idx)
             elif misclf_type == "tgt" and fpfn == "fp":
-                if pl == tgt_label:
+                if pl == tgt_label and tl != tgt_label:
                     tgt_indices.append(idx)
             elif misclf_type == "tgt" and fpfn == "fn":
-                if tl == tgt_label:
+                if tl == tgt_label and pl != tgt_label:
                     tgt_indices.append(idx)
             else:
                 raise ValueError(f"misclf_type={misclf_type} and fpfn={fpfn} is not supported.")
