@@ -15,7 +15,7 @@ SPLITS       = ["repair", "test"]          # 評価 split
 K            = 0                           # fold id
 TGT_RANKS    = [1, 2, 3]                   # 誤分類ランキング
 MISCLF_TPS   = ["src_tgt", "tgt_fp", "tgt_fn"]
-WN_LIST      = [236, 472, 944]             # 3 通りの重み数
+WN_LIST      = [11, 236, 472, 944]             # 3 通りの重み数
 REPS         = range(5)                    # 5 回リピート
 ALPHA_STR    = 10/11
 ROOT_TMPL    = "/src/src/out_vit_{ds}_fold{K}"
@@ -37,8 +37,18 @@ def metric_value(ds, split, mtype, rank, rep,
     """1 個の JSON を開き，目的メトリクスを返す"""
     base = Path(ROOT_TMPL.format(ds=ds, K=K))
     jdir = base / f"misclf_top{rank}" / f"{mtype}_repair_weight_by_de"
-    fn = (f"exp-repair-4-1-metrics_for_{split}_"
-          f"n{wnum}_alpha{ALPHA_STR}_boundsArachne_{meth_key}_reps{rep}.json")
+    if wnum != 11:
+        fn = (f"exp-repair-4-1-metrics_for_{split}_"
+            f"n{wnum}_alpha{ALPHA_STR}_boundsArachne_{meth_key}_reps{rep}.json")
+    else:
+        # rep_key (手法名) ごとに微妙にファイル名がちゃうねんな
+        if meth_key == "bl":
+            fn = f"exp-repair-3-1-metrics_for_{split}_alpha{ALPHA_STR}_boundsArachne_{meth_key}_reps{rep}.json"
+        elif meth_key == "ours" or meth_key == "random":
+            fn = f"exp-repair-3-2-metrics_for_{split}_alpha{ALPHA_STR}_boundsArachne_{meth_key}_reps{rep}.json"
+        else:
+            raise NotImplementedError
+    
     with open(jdir / fn) as f:
         return json.load(f)[json_key]
 
@@ -47,7 +57,7 @@ def paired_cliffs_delta(v1: np.ndarray, v2: np.ndarray) -> float:
     diff = v1 - v2
     return (np.sum(diff > 0) - np.sum(diff < 0)) / diff.size
 
-def wilcoxon_block(values: dict) -> dict:
+def wilcoxon_block(values: dict, show_flag: bool) -> dict:
     """
     values = {method: np.array(15)}
     → Holm 補正後 p 値 & Cliff’s Δ（符号付き）
@@ -55,6 +65,10 @@ def wilcoxon_block(values: dict) -> dict:
     out, p_raw = {}, []
     for m1, m2 in PAIRS:
         v1, v2 = values[m1], values[m2]
+        if show_flag:
+            print(m1, m2)
+            print(v1, v2)
+            print(paired_cliffs_delta(v1, v2))
         # p 値 (同値なら 1.0)
         if np.allclose(v1, v2):
             p = 1.0
@@ -81,6 +95,7 @@ def cell(d, p):
 
 # ──────────── main ────────────────────────────────────────────
 per_metric_tables = {}            # ★ 追加：あとでマージするため保持
+show_flag = False
 for met_tag, (json_key, nice_name) in METRIC_INFO.items():
     rows = []
 
@@ -96,7 +111,12 @@ for met_tag, (json_key, nice_name) in METRIC_INFO.items():
                                             key, json_key))
         vals = {m: np.asarray(v) for m, v in vals.items()}
 
-        stat = wilcoxon_block(vals)
+        if ds == "c100" and wnum == 236 and mtype == "src_tgt" and split == "test":
+            print(ds, wnum, mtype)
+            show_flag = True
+        else:
+            show_flag = False
+        stat = wilcoxon_block(vals, show_flag)
         rows.append(dict(
             dataset      = ds,
             split        = split,
@@ -151,7 +171,24 @@ df_merge = (df_rr[merge_cols + ["RR_OvA","RR_OvR","RR_AvR"]]
 
 # 見出し #weights をラベル付きにしても OK
 df_merge.rename(columns={"wnum":"#weights"}, inplace=True)
+df_merge["dataset"] = df_merge["dataset"].map({"c100": "C100", "tiny-imagenet": "TinyImg"})
+
+# --- 表示名マッピング ---
+pair_label_map = {
+    "RR_OvA": "Rep vs. AraW",
+    "RR_OvR": "Rep vs. Rand",
+    "RR_AvR": "AraW vs. Rand",
+    "BR_OvA": "Rep vs. AraW",
+    "BR_OvR": "Rep vs. Rand",
+    "BR_AvR": "AraW vs. Rand",
+}
+
+# --- 表示順序に並び替え（元のキーの順で並べたあとrename） ---
+col_order = ["dataset", "#weights", "misclf_type",
+             "RR_OvA", "RR_OvR", "RR_AvR", "BR_OvA", "BR_OvR", "BR_AvR"]
+
+df_ordered = df_merge[col_order].rename(columns=pair_label_map)
 
 out_all = "exp-repair-4-1-8_merged_test.csv"
-df_merge.to_csv(out_all, index=False, quoting=1)   # quoting=1 → 全セルを "…" で囲む
+df_ordered.to_csv(out_all, index=False, quoting=1)   # quoting=1 → 全セルを "…" で囲む
 print(f"[✓] wrote merged table → {out_all}")

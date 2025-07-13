@@ -10,8 +10,9 @@ import matplotlib.pyplot as plt
 # Parameters you may edit
 # ------------------------------------------------------------
 DATASETS      = ["c100", "tiny-imagenet"]          # e.g. ["c100","tiny-imagenet"]
+SPLIT_LIST    = ["test"]
 K             = 0                          # fold id
-WN_LIST       = [236, 472, 944]
+WN_LIST       = [11, 236, 472, 944]
 TGT_RANKS     = [1, 2, 3]
 MISCLF_TYPES  = ["src_tgt", "tgt_fp", "tgt_fn"]
 METHODS       = {"ours": "Ours", "bl": "Arachne", "random": "Random"}
@@ -47,8 +48,18 @@ def collect_split(ds, split):
         save_dir = os.path.join(base,
                                 f"misclf_top{tgt_rank}",
                                 f"{mtype}_repair_weight_by_de")
-        fname = (f"exp-repair-4-1-metrics_for_{split}_"
+        if wnum != 11:
+            fname = (f"exp-repair-4-1-metrics_for_{split}_"
                  f"n{wnum}_alpha{ALPHA_STR}_boundsArachne_{rep_key}_reps{rep_id}.json")
+        else:
+            # rep_key (手法名) ごとに微妙にファイル名がちゃうねんな
+            if rep_key == "bl":
+                fname = f"exp-repair-3-1-metrics_for_{split}_alpha{ALPHA_STR}_boundsArachne_{rep_key}_reps{rep_id}.json"
+            elif rep_key == "ours" or rep_key == "random":
+                fname = f"exp-repair-3-2-metrics_for_{split}_alpha{ALPHA_STR}_boundsArachne_{rep_key}_reps{rep_id}.json"
+            else:
+                raise NotImplementedError
+                
         jpath = os.path.join(save_dir, fname)
         data  = load_json_safe(jpath)
         if data is None:
@@ -109,7 +120,9 @@ def facet_plot_one(df_stats: pd.DataFrame, *, metric: str,
     marker_size  = {"Ours": 10,   "Arachne": 10, "Random": 7}
     methods = ["Ours", "Arachne", "Random"]
     x_offset = {"Ours": 18, "Arachne": -18, "Random": 0}
-    label_map = {236: "236\n(0.005%)",
+    label_map = {
+             11: "11",
+             236: "236\n(0.005%)",
              472: "472\n(0.01%)",
              944: "944\n(0.02%)"}
     w_ticks   = sorted(df_stats["wnum"].unique())
@@ -200,7 +213,8 @@ def facet_bar_one(df_stats: pd.DataFrame, *, metric: str,
         "Arachne": "#E15759",   # 落ち着いたコーラル
         "Random":  "#76B7B2",   # グレイッシュなグリーン
     }
-    label_map = {236: "236\n(0.005%)",
+    label_map = {11: "11",
+                 236: "236\n(0.005%)",
                  472: "472\n(0.01%)",
                  944: "944\n(0.02%)"}
     w_ticks   = sorted(df_stats["wnum"].unique())
@@ -271,80 +285,146 @@ def facet_bar_one(df_stats: pd.DataFrame, *, metric: str,
     print(f"[✓] saved {stem}_bar.pdf")
     
 # ============================================================
-#  RR × BR 散布図  ── 色=method / 形=#weights
+#  RR × BR 散布図  ── 色=method / 形=method  （重み数ごとに別ファイル）
 # ============================================================
-def scatter_rr_br(df_long, ds, split):
+def scatter_rr_br(df_long, ds, split, *, wnum_filter=None):
+    """
+    wnum_filter: 11 / 236 / 472 / 944 のいずれかを渡すと，
+                 その重み数だけで散布図を描く。
+    """
     import seaborn as sns, matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
+
+    # ------ フィルタリング ------
+    if wnum_filter is not None:
+        df_long = df_long[df_long["wnum"] == wnum_filter]
+
+    # ===== ピボットして平均を取る（rep_id ごとに集約） =====
     keep = ["method", "wnum", "tgt_rank", "misclf_type", "rep_id"]
     agg  = (df_long.groupby(keep)
-                     .agg(RR=("RR", "mean"),
-                          BR=("BR", "mean"))
+                     .agg(RR=("RR", "mean"), BR=("BR", "mean"))
                      .reset_index())
-    sns.set(style="whitegrid", font_scale=0.95)
 
-    # ----------------  色と形 ----------------
-    combo_order    = [(m, w) for m in ["Arachne", "Ours", "Random"]
-                              for w in [236, 472, 944]]
-    palette_combo  = {c: col for c, col in
-                      zip(combo_order,
-                          sns.color_palette("tab10", n_colors=9))}
-    # 手法ごとのマーカーの形
-    marker_for_m = {"Arachne": "v", "Ours": "D", "Random": "o"}
-    size_for_m = {"Arachne": 45, "Ours": 40, "Random": 45}
-    # 1 つの基調色 (C0 = 青) を 3 段階の濃淡で
-    shades = sns.light_palette("#85023e", n_colors=3)
-    color_for_w = {236: shades[0], 472: shades[1], 944: shades[2]}
+    # ------ 描画設定 ------
+    sns.set(style="whitegrid", font_scale=0.95)
+    color_for_meth  = {"Arachne": "C2", "Ours": "C0", "Random": "C1"}
+    marker_for_meth = {"Arachne": "v",  "Ours": "^",  "Random": "o"}
+    size_for_meth   = {"Arachne": 50,   "Ours": 50,   "Random": 50}
 
     fig, ax = plt.subplots(figsize=(4.8, 4.8))
 
-    for (meth, wnum), sub in agg.groupby(["method", "wnum"], sort=False):
-        sub = sub.sort_values(["BR", "RR"])
-        col = palette_combo[(meth, wnum)]
+    for (meth, _), sub in agg.groupby(["method", "wnum"], sort=False):
+        ax.scatter(sub["BR"], sub["RR"],
+                   color=color_for_meth[meth],
+                   marker=marker_for_meth[meth],
+                   s=size_for_meth[meth],
+                   edgecolors="black", linewidths=0.5, alpha=0.75,
+                   label=meth)
 
-        # ax.plot(sub["BR"], sub["RR"], color=col, lw=1.1, alpha=0.75)
-        ax.scatter(sub["BR"], sub["RR"], color=color_for_w[wnum],
-                   marker=marker_for_m[meth], s=size_for_m[meth], zorder=3, alpha=0.75,
-                   edgecolors="black", linewidths=0.5)
-
-    # 軸・タイトル
+    # 軸・凡例体裁
     ax.set_ylim(-0.05, 1.05)
-    ax.set_xlim(-0.005, 0.105)
-    if ds == "c100" and split == "test":
-        ax.set_xlim(-0.005, 0.045)
-    elif ds == "tiny-imagenet" and split == "test":  # tiny-imagenet
-        ax.set_xlim(0, 0.085)
+    # ax.set_xlim(-0.005, 0.065)
+    ax.set_xlim(-0.000, 0.060)
     ax.set_xlabel("Break Rate", fontsize=10)
     ax.set_ylabel("Repair Rate", fontsize=10)
-    fig.suptitle(f"{ds} – {split}", fontsize=10, y=1.02)
+    title_w = f" – {wnum_filter} weights" if wnum_filter else ""
+    fig.suptitle(f"{ds} – {split}{title_w}", fontsize=10, y=0.98)
 
-    handles_m = [Line2D([], [], marker=marker_for_m[m], linestyle="",
-                        color="k", markersize=7, label=m)
-                 for m in ["Arachne", "Ours", "Random"]]
+    # 共通凡例
+    handles, labels = [], []
+    for m in ["Arachne", "Ours", "Random"]:
+        handles.append(Line2D([], [], marker=marker_for_meth[m],
+                              color=color_for_meth[m],
+                              markersize=7, linestyle="",
+                              label=m))
+        labels.append(m)
+    ax.legend(handles, labels, loc="lower right", frameon=True, fontsize=10)
 
-    #   下段：#weights（色濃淡）
-    handles_w = [Line2D([], [], marker="s", linestyle="",
-                        color=color_for_w[w], markersize=7,
-                        label=f"{w} weights")
-                 for w in [236, 472, 944]]
-
-    # キャンバスを下に少し拡張して凡例を置く
-    fig.subplots_adjust(top=0.95,     # ← 0.93〜0.97 で調整
-                      bottom=0.4,  # 凡例をキャンバス外に置く分だけ確保
-                      wspace=0.25,
-                      hspace=0.4)
-
-    leg1 = ax.legend(handles=handles_m, loc="upper center",
-                     bbox_to_anchor=(0.5, -0.18), ncol=3,
-                     frameon=False, title="Method", fontsize=8, title_fontsize=8)
-    leg2 = ax.legend(handles=handles_w, loc="upper center",
-                     bbox_to_anchor=(0.5, -0.325), ncol=3,
-                     frameon=False, title="#weights", fontsize=8, title_fontsize=8)
-    ax.add_artist(leg1)
-
-    stem = f"exp-repair-4-1-7_scatter_{ds}_{split}"
+    # --------------- 保存 ---------------
+    stem = f"exp-repair-4-1-7_scatter_{ds}_{split}_w{wnum_filter}"
     fig.savefig(f"{stem}.pdf", dpi=300, bbox_inches="tight")
     print(f"[✓] saved {stem}.pdf")
+    
+# ============================================================
+#  RR × BR 散布図（236 / 472 / 944 を横に並べたパネル）
+# ============================================================
+def scatter_rr_br_panel(df_long, ds, split, *, wnums=(236, 472, 944)):
+    """
+    • 横方向に len(wnums) 枚並べ，1 つの PDF に保存
+    • 色・形は method 固定
+    """
+    import seaborn as sns, matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    import math
+
+    def nice_xmax(value, step=0.01, margin=0.001):
+        return step * math.ceil((value + margin) / step)
+
+    # ---------- 共通スタイル ----------
+    sns.set(style="whitegrid", font_scale=0.95)
+    color_for_meth  = {"Arachne": "C2", "Ours": "C0", "Random": "C1"}
+    marker_for_meth = {"Arachne": "v",  "Ours": "^",  "Random": "o"}
+    size_for_meth   = {"Arachne": 50,   "Ours": 50,   "Random": 50}
+
+    n_cols = len(wnums)
+    base_size = 3.2
+    fig, axes = plt.subplots(1, n_cols, figsize=(base_size*n_cols, base_size), sharex=True, sharey=True)
+    
+    # df_longのBRのマックスを取得
+    max_br = df_long["BR"].max()
+    x_max  = nice_xmax(max_br, step=0.01)   # ← ここで上限を決定
+
+    # ---------------------------------------------------------
+    for ax, wnum in zip(axes, wnums):
+        sub_df = df_long[df_long["wnum"] == wnum]
+
+        # rep_id 単位で平均 (散布図が見やすくなる)
+        keep = ["method", "wnum", "tgt_rank", "misclf_type", "rep_id"]
+        agg  = (sub_df.groupby(keep)
+                        .agg(RR=("RR", "mean"), BR=("BR", "mean"))
+                        .reset_index())
+
+        for meth, g in agg.groupby("method"):
+            ax.scatter(g["BR"], g["RR"],
+                       color=color_for_meth[meth],
+                       marker=marker_for_meth[meth],
+                       s=size_for_meth[meth],
+                       edgecolors="black", linewidths=0.5, alpha=0.75)
+
+        ax.set_title(f"$N_w = {wnum}$", fontsize=11)
+        ax.set_ylim(-0.05, 1.05)
+        ax.set_xlim(0, x_max)   # 必要なら調整
+        ax.grid(True, linestyle="--", linewidth=0.5)
+
+    # ---- 軸ラベルは外側だけ ----
+    axes[0].set_ylabel("Repair Rate", fontsize=11)
+    for ax in axes:
+        ax.set_xlabel("Break Rate", fontsize=11)
+
+    # fig.suptitle(f"{ds} – {split}", fontsize=11, y=0.95)
+
+    # ---- 共通凡例 ----
+    handles = [Line2D([], [], marker=marker_for_meth[m], linestyle="",
+                      color=color_for_meth[m], markersize=7, label=m)
+               for m in ["Arachne", "Ours", "Random"]]
+    # fig.legend(handles=handles, loc="lower center", ncol=3,
+    #            frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.04))
+
+    # fig.subplots_adjust(wspace=0.15, bottom=0.18)
+    # ── パネル間の横スペースを広げる
+    fig.subplots_adjust(wspace=0.25,   # ← ここを 0.15 ⇒ 0.25 など好みで
+                        bottom=0.22)   # ← 凡例をさらに下へ押し出す
+
+    # ── 凡例を下げる
+    fig.legend(handles=handles, loc="lower center",
+            ncol=3, frameon=True, fontsize=10,
+            bbox_to_anchor=(0.5, -0.07))  # ← -0.04 ⇒ -0.07 など
+
+    # ---- 保存 ----
+    stem = f"exp-repair-4-1-7_scatterPanel_{ds}_{split}"
+    fig.savefig(f"{stem}.pdf", dpi=300, bbox_inches="tight")
+    print(f"[✓] saved {stem}.pdf")
+
 
 # ============================================================
 #  RR–BR Pearson correlation (per dataset × split × method)
@@ -385,12 +465,16 @@ def corr_rr_br_by_split(df_long):
 
 # -------------------- run all -------------------------
 for ds in DATASETS:
-    for split in ["repair","test"]:
+    for split in SPLIT_LIST:
+    # for split in ["repair","test"]:
         print(f"\nProcessing {ds} {split} ...")
         print("=" * 90)
         df_long = collect_split(ds, split)
-        # 81点 (何もまとめない)
-        scatter_rr_br(df_long, ds, split)
+        # ★ 横 3 連のパネルを生成 ★
+        scatter_rr_br_panel(df_long, ds, split, wnums=WN_LIST)
+        # 重み数ごとに 3 枚の散布図を出力
+        # for w in WN_LIST:             # 236, 472, 944
+        #     scatter_rr_br(df_long, ds, split, wnum_filter=w)
         if df_long.empty:
             print(f"[WARN] no data for {ds}-{split}")
             continue
