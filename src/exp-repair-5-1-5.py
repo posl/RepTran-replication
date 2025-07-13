@@ -2,6 +2,7 @@ import os, re, json, sys, math
 import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
 
 # ライブラリ側の定数クラス
 from utils.constant import ViTExperiment
@@ -17,7 +18,8 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
     """
     big = []
     k_list          = [0]
-    tgt_rank_list   = [1, 2, 3]
+    tgt_rank_list   = [1]
+    # tgt_rank_list   = [1, 2, 3]
     misclf_list = ["src_tgt", "tgt_fp", "tgt_fn"]
     fl_method_li    = ["ours", "bl", "random"]
     w_num_list = [236] # exp-repair-5.md 参照
@@ -51,9 +53,16 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
                                 )
                                 if not os.path.exists(jp):
                                     raise FileNotFoundError(jp)
-
                                 with open(jp) as f:
                                     js = json.load(f)
+                                # testの場合もtot_time入れたい
+                                if tgt_split == "test":
+                                    jp_repair = os.path.join(
+                                        save_dir,
+                                        f"exp-repair-{exp_id}-1-metrics_for_repair_{setting_id}_{flm}_reps{reps}.json",
+                                    )
+                                    with open(jp_repair) as f:
+                                        js_repair = json.load(f)
 
                                 big.append(
                                     {
@@ -68,7 +77,7 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
                                         "RR_tgt":    js.get("repair_rate_tgt"),
                                         "BR_all":    js.get("break_rate_overall"),
                                         "ΔACC.":     js.get("delta_acc"),
-                                        "TOT_TIME": js.get("tot_time"),
+                                        "TOT_TIME": js_repair.get("tot_time"),
                                     }
                                 )
     return pd.DataFrame(big)
@@ -76,52 +85,101 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
 
 def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
     """
-    α_line plot を描画して png 保存
+    αごとのRR, BR, ΔACCをlineplotで表示し、共通凡例を1つだけ描画する
     """
+    alpha_in_arachne_list = [1, 4, 8, 10]
+    sns.set(style="whitegrid", font_scale=0.95)
+
+    # method名の変換
     replace = {"ours": "Ours", "bl": "Arachne", "random": "Random"}
     df["method"] = df["method"].map(replace)
 
-    # α(axis) をカテゴリとして登録 → 幅を均等に
-    alpha_cats = [str(a) for a in alpha_in_arachne_list]  # '1','4','8','10'
+    # αをカテゴリ化して順序を固定
+    alpha_cats = [str(a) for a in alpha_in_arachne_list]
     df["α_cat"] = pd.Categorical(df["alpha_raw"].astype(str), categories=alpha_cats, ordered=True)
 
     hue_order = ["Ours", "Arachne", "Random"]
     palette   = {"Ours": "C0", "Arachne": "C2", "Random": "C1"}
-    metrics   = ["RR_tgt", "BR_all", "ΔACC."]
-    row_types = ["src_tgt", "tgt_fp", "tgt_fn", "tgt"]
+    metrics   = ["RR_tgt", "BR_all"]
+    # metrics   = ["RR_tgt", "BR_all", "ΔACC."]
+    row_types = ["src_tgt", "tgt_fp", "tgt_fn"]
+    marker_for_meth = {"Arachne": "v",  "Ours": "^",  "Random": "o"}
+    
+    base_size = 3
+    fig, axes = plt.subplots(len(metrics), len(row_types), figsize=(base_size*4, base_size*2))
 
-    fig, axes = plt.subplots(len(row_types), len(metrics), figsize=(18, 16))
-    for i, mt in enumerate(row_types):
-        subset = df[df["tgt. misclf. type"] == mt]
-        for j, metric in enumerate(metrics):
+    for i, metric in enumerate(metrics):
+        for j, mt in enumerate(row_types):
+            subset = df[df["tgt. misclf. type"] == mt]
             ax = axes[i][j]
             if subset.empty:
                 ax.axis("off")
                 continue
-            sns.lineplot(
-                data=subset,
-                x="α_cat",
-                y=metric,
-                hue="method",
-                hue_order=hue_order,
-                palette=palette,
-                marker="o",
-                dashes=False,
-                sort=False,  # α_cat はカテゴリなので False で順序固定
-                ax=ax,
-            )
-            ax.set_title(f"{mt} – {metric}", fontsize=12)
-            ax.set_xlabel("alpha (Arachne parameter)")
-    plt.tight_layout()
-    out_png = f"exp-repair-5-1_{ds}_{tgt_split}_alpha_lineplots.png"
-    plt.savefig(out_png, dpi=150)
-    print("[INFO] saved", out_png)
+            for meth in hue_order:
+                sub_meth_df = subset[subset["method"] == meth]
+                sns.lineplot(
+                    data=sub_meth_df,
+                    x="α_cat",
+                    y=metric,
+                    label=meth,
+                    color=palette[meth],
+                    marker=marker_for_meth[meth],
+                    dashes=False,
+                    sort=False,
+                    ax=ax,
+                    mec="black",
+                    legend=False  # 共通凡例に任せる
+                )
+            ax.set_title(f"{mt.upper().replace('_', '-')}", fontsize=12)
+            # --- x軸 ---
+            ax.set_xlabel("")
+            if i == len(metrics) - 1:
+                ax.set_xlabel("$\\alpha$")
+
+            # --- y軸 ---
+            if j == 0:  # 左端だけ表示
+                if metric == "RR_tgt":
+                    ax.set_ylabel("RR")
+                elif metric == "BR_all":
+                    ax.set_ylabel("BR")
+                elif metric == "ΔACC.":
+                    ax.set_ylabel("ΔACC.")
+            else:
+                ax.set_ylabel("")
+            ax.grid(True, linestyle="--", linewidth=0.5)
+
+    # 共通凡例の描画
+    # handles = [
+    #     Line2D([], [], marker="o", linestyle="", color=palette[m], label=m)
+    #     for m in hue_order
+    # ]
+    handles = [
+        Line2D([], [], marker=marker_for_meth[m], linestyle="", color=palette[m], 
+            label=m, markersize=8, markerfacecolor=palette[m], markeredgecolor="black")
+        for m in hue_order
+    ]
+    fig.legend(
+        handles=handles,
+        loc="lower center",
+        bbox_to_anchor=(0.5, 0.1),
+        ncol=3,
+        frameon=True,
+        fontsize=12
+    )
+
+    fig.subplots_adjust(bottom=0.01, hspace=0.2, wspace=0.25)   # ← 凡例をさらに下へ押し出す
+    plt.tight_layout(rect=[0, 0.14, 1, 1])  # 下に凡例を表示できるスペースを確保
+    # fig.subplots_adjust(bottom=0.10)  # 下に余白を作る
+    out_png = f"exp-repair-5-1_{ds}_{tgt_split}_alpha_lineplots.pdf"
+    plt.savefig(out_png, dpi=150, bbox_inches="tight")
+    return out_png
 
 
 # ╭───────────────── エントリーポイント ─────────────────╮
 if __name__ == "__main__":
     ds_list = ["c100", "tiny-imagenet"]
-    tgt_split_list = ["repair", "test"]
+    tgt_split_list = ["test"]
+    # tgt_split_list = ["repair", "test"]
     
     for ds_arg in ds_list:
         for tgt_split_arg in tgt_split_list:

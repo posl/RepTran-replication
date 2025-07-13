@@ -404,9 +404,12 @@ def scatter_rr_br_panel(df_long, ds, split, *, wnums=(236, 472, 944)):
     # fig.suptitle(f"{ds} – {split}", fontsize=11, y=0.95)
 
     # ---- 共通凡例 ----
-    handles = [Line2D([], [], marker=marker_for_meth[m], linestyle="",
-                      color=color_for_meth[m], markersize=7, label=m)
-               for m in ["Arachne", "Ours", "Random"]]
+    legend_labels = {"Arachne": "Arachne", "Ours": "REPTRAN", "Random": "Random"}
+    handles = [
+        Line2D([], [], marker=marker_for_meth[m], linestyle="",
+            color=color_for_meth[m], markersize=7, label=legend_labels[m], markeredgecolor="black")
+        for m in ["Arachne", "Ours", "Random"]
+    ]
     # fig.legend(handles=handles, loc="lower center", ncol=3,
     #            frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.04))
 
