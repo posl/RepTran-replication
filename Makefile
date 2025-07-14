@@ -11,6 +11,12 @@ u: ## docker-compose up -d
 	docker compose -f docker-compose.gpu.yml up -d
 c: ## connect newest container
 	docker exec -it $(CONTAINER_NAME) bash
+s: ## stop the container
+	docker compose -f docker-compose.gpu.yml stop
+d: ## stop and remove the container
+	docker compose -f docker-compose.gpu.yml down
+r: ## restart the container
+	docker compose -f docker-compose.gpu.yml restart	
 rmi-none: ## remove NONE images
 	docker rmi $(NONE_DOCKER_IMAGES) -f
 #================================================
