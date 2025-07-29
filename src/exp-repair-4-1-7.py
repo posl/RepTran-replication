@@ -392,6 +392,16 @@ def scatter_rr_br_panel(df_long, ds, split, *, wnums=(236, 472, 944)):
                        edgecolors="black", linewidths=0.5, alpha=0.75)
 
         ax.set_title(f"$N_w = {wnum}$", fontsize=11)
+        # if wnum == 11:
+        #     ax.set_title(f"$N_w = {wnum}$", fontsize=11)
+        # else:
+        #     if wnum == 236:
+        #         ratio = 0.005
+        #     elif wnum == 472:
+        #         ratio = 0.01
+        #     elif wnum == 944:
+        #         ratio = 0.02
+        #     ax.set_title(f"$N_w = {wnum}$ ({ratio}%)", fontsize=11)
         ax.set_ylim(-0.05, 1.05)
         ax.set_xlim(0, x_max)   # 必要なら調整
         ax.grid(True, linestyle="--", linewidth=0.5)
@@ -404,7 +414,7 @@ def scatter_rr_br_panel(df_long, ds, split, *, wnums=(236, 472, 944)):
     # fig.suptitle(f"{ds} – {split}", fontsize=11, y=0.95)
 
     # ---- 共通凡例 ----
-    legend_labels = {"Arachne": "Arachne", "Ours": "REPTRAN", "Random": "Random"}
+    legend_labels = {"Arachne": "ArachneW", "Ours": "REPTRAN", "Random": "Random"}
     handles = [
         Line2D([], [], marker=marker_for_meth[m], linestyle="",
             color=color_for_meth[m], markersize=7, label=legend_labels[m], markeredgecolor="black")
@@ -466,6 +476,31 @@ def corr_rr_br_by_split(df_long):
     print(f"[✓] saved {out_csv}")
     return df_corr
 
+def harmonic_mean(rr, br):
+    if rr + (1 - br) == 0:
+        return 0
+    return 2 * rr * (1 - br) / (rr + (1 - br))
+
+def output_harmonic_summary(df_long):
+    df = df_long.copy()
+    print(df)
+    df["Dataset"] = df["ds"].map({"c100": "C100", "tiny-imagenet": "TinyImg"})
+    df["Method"] = df["method"].map({"Ours": "RepTran", "Arachne": "Arachne", "Random": "Random"})
+    df["Harmonic"] = df.apply(lambda row: harmonic_mean(row["RR"], row["BR"]), axis=1)
+
+    harmonic_summary = (
+        df.groupby(["Dataset", "wnum", "Method"])["Harmonic"]
+        .mean()
+        .reset_index()
+        .pivot(index=["Dataset", "wnum"], columns="Method", values="Harmonic")
+        .reset_index()
+    )
+    harmonic_summary = harmonic_summary[["Dataset", "wnum", "RepTran", "Arachne", "Random"]]
+    harmonic_summary.columns = ["Dataset", "N_w", "RepTran", "Arachne", "Random"]
+    harmonic_summary.to_csv("./exp-repair-4-1-7_harmonic_mean_summary.csv", index=False)
+    print("[✓] saved harmonic_mean_summary.csv")
+    print(harmonic_summary)
+
 # -------------------- run all -------------------------
 for ds in DATASETS:
     for split in SPLIT_LIST:
@@ -496,3 +531,5 @@ all_long = pd.concat([collect_split(d, s)
                       for s in ["repair", "test"]],
                      ignore_index=True)
 corr_rr_br_by_split(all_long)
+# 調和平均テーブル出力
+output_harmonic_summary(all_long)

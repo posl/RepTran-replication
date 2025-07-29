@@ -249,7 +249,7 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False, vscore_abs=False, covavg=True, vscore_cor_dir=None):
+def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False, vscore_abs=False, covavg=True, vscore_cor_dir=None, return_before_norm=False):
     vmap_dic = defaultdict(np.array)
     # abs, covavg (vscore計算のバリエーション) によってファイル名が違う
     vscore_path_prefix = ("vscore_abs" if vscore_abs else "vscore") + ("_covavg" if covavg else "")
@@ -307,6 +307,10 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
     else:
         mean_activation = np.mean(intermediate_states[tgt_mis_indices], axis=0) # shape: (num_neurons,)
     
+    # min-max正規化する前の値を取っておく
+    _vmap_diff_abs = vmap_diff_abs.copy()
+    _mean_activation = mean_activation.copy()
+    
     # vmap_diff_absとmean_activationをそれぞれmin-max正規化
     vmap_diff_abs = (vmap_diff_abs - np.min(vmap_diff_abs)) / (np.max(vmap_diff_abs) - np.min(vmap_diff_abs))
     mean_activation = (mean_activation - np.min(mean_activation)) / (np.max(mean_activation) - np.min(mean_activation))
@@ -348,7 +352,10 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
         return places_to_fix, tgt_neuron_score
     else:
         # 全ニューロンのスコアを返す
-        return places_to_fix, tgt_neuron_score, neuron_score
+        if return_before_norm:
+            return places_to_fix, tgt_neuron_score, neuron_score, _mean_activation, _vmap_diff_abs
+        else:
+            return places_to_fix, tgt_neuron_score, neuron_score
 
 def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
 

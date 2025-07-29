@@ -18,8 +18,8 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
     """
     big = []
     k_list          = [0]
-    tgt_rank_list   = [1]
-    # tgt_rank_list   = [1, 2, 3]
+    # tgt_rank_list   = [1]
+    tgt_rank_list   = [1, 2, 3]
     misclf_list = ["src_tgt", "tgt_fp", "tgt_fn"]
     fl_method_li    = ["ours", "bl", "random"]
     w_num_list = [236] # exp-repair-5.md 参照
@@ -101,6 +101,7 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
     hue_order = ["Ours", "Arachne", "Random"]
     palette   = {"Ours": "C0", "Arachne": "C2", "Random": "C1"}
     metrics   = ["RR_tgt", "BR_all"]
+    # metrics   = ["RR_tgt", "BR_all", "TOT_TIME"]
     # metrics   = ["RR_tgt", "BR_all", "ΔACC."]
     row_types = ["src_tgt", "tgt_fp", "tgt_fn"]
     marker_for_meth = {"Arachne": "v",  "Ours": "^",  "Random": "o"}
@@ -130,7 +131,7 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
                     mec="black",
                     legend=False  # 共通凡例に任せる
                 )
-            ax.set_title(f"{mt.upper().replace('_', '-')}", fontsize=12)
+            ax.set_title(f"{mt.upper().replace('_', '-')}", fontsize=12, fontstyle="italic")
             # --- x軸 ---
             ax.set_xlabel("")
             if i == len(metrics) - 1:
@@ -139,9 +140,9 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
             # --- y軸 ---
             if j == 0:  # 左端だけ表示
                 if metric == "RR_tgt":
-                    ax.set_ylabel("RR")
+                    ax.set_ylabel("Repair Rate")
                 elif metric == "BR_all":
-                    ax.set_ylabel("BR")
+                    ax.set_ylabel("Break Rate")
                 elif metric == "ΔACC.":
                     ax.set_ylabel("ΔACC.")
             else:
@@ -153,9 +154,10 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
     #     Line2D([], [], marker="o", linestyle="", color=palette[m], label=m)
     #     for m in hue_order
     # ]
+    legend_labels = {"Arachne": "ArachneW", "Ours": "REPTRAN", "Random": "Random"}
     handles = [
         Line2D([], [], marker=marker_for_meth[m], linestyle="", color=palette[m], 
-            label=m, markersize=8, markerfacecolor=palette[m], markeredgecolor="black")
+            label=legend_labels[m], markersize=8, markerfacecolor=palette[m], markeredgecolor="black")
         for m in hue_order
     ]
     fig.legend(
@@ -175,6 +177,50 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
     return out_png
 
 
+def run_kruskal_over_alpha(df: pd.DataFrame, ds: str, tgt_split: str) -> pd.DataFrame:
+    from scipy.stats import kruskal
+    """
+    αごとのRRおよびBRの差に対して、データセットごとに全メソッドを統合して
+    Kruskal–Wallis検定を実行する
+
+    Parameters:
+        df (pd.DataFrame): 実験結果（collect_recordsで得たもの）
+        ds (str): "c100" または "tiny-imagenet"
+        tgt_split (str): "repair" または "test"
+
+    Returns:
+        pd.DataFrame: 各データセットと指標に対する検定結果（H値とp値）
+    """
+    results = []
+    metrics = {"RR_tgt": "RR", "BR_all": "BR"}
+
+    for metric_col, metric_label in metrics.items():
+        df_sub = df[df["dataset"] == ds]
+        grouped = df_sub.groupby("alpha_raw")[metric_col].apply(list)
+
+        if len(grouped) >= 2:  # 2グループ以上で検定可能
+            try:
+                h_val, p_val = kruskal(*grouped)
+                n = df_sub.shape[0]
+                k = len(grouped)
+                eta2 = (h_val - k + 1) / (n - k) if n > k else float("nan")
+            except Exception:
+                h_val, p_val, eta2 = float("nan"), float("nan"), float("eta2")
+        else:
+            h_val, p_val, eta2 = float("nan"), float("nan"), float("nan")
+
+        results.append({
+            "Dataset": ds,
+            "Split": tgt_split,
+            "Metric": metric_label,
+            "H-statistic": h_val,
+            "p-value": p_val,
+            "η²": eta2,
+        })
+
+    return pd.DataFrame(results)
+
+
 # ╭───────────────── エントリーポイント ─────────────────╮
 if __name__ == "__main__":
     ds_list = ["c100", "tiny-imagenet"]
@@ -192,6 +238,15 @@ if __name__ == "__main__":
 
             # --- プロット ----------------------------------------------------------
             plot_alpha(df_all, ds_arg, tgt_split_arg)
+            
+            # --- kruskal -----------------------------------------------------------
+            kruskal_results = run_kruskal_over_alpha(df_all, ds_arg, tgt_split_arg)
+            
+            # ── kruskal 結果の保存 ──
+            kruskal_out_csv = f"exp-repair-5-1_{ds_arg}_{tgt_split_arg}_kruskal_alpha.csv"
+            kruskal_results.to_csv(kruskal_out_csv, index=False)
+            print("[INFO] kruskal results saved to", kruskal_out_csv)
+            print(kruskal_results)
             
             # ========= α と RR / BR 相関 (dataset × misclf_type × method) =========
             from scipy.stats import pearsonr
