@@ -7,12 +7,12 @@ if __name__ == "__main__":
     ds_list = ["c100", "tiny-imagenet"]
     k_list = [0]
     tgt_rank_list = [1, 2, 3]
-    misclf_type_list = ["tgt"]
-    # misclf_type_list = ["src_tgt", "tgt"]
+    misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     alpha = float(10/11)
     w_num_list = [236, 472, 944] # exp-repair-4.md 参照
-    fl_method_list = ["ours", "bl", "random"]
+    fl_method_list = ["ours", "bl"]
+    # fl_method_list = ["ours", "bl", "random"]
     tgt_split_list = ["test"]
     # tgt_split_list = ["repair", "test"]
     

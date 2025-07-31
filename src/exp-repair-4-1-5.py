@@ -316,6 +316,8 @@ if __name__ == "__main__":
     break_cnt_overall = np.sum(is_correct_old & ~is_correct_new)
     repair_rate_overall = repair_cnt_overall / np.sum(~is_correct_old) if np.sum(~is_correct_old) > 0 else 0.0
     break_rate_overall = break_cnt_overall / np.sum(is_correct_old) if np.sum(is_correct_old) > 0 else 0.0
+    # 全体においてbreakが起きたインデックス
+    break_indices_overall = np.where(is_correct_old & ~is_correct_new)[0]
 
     # subset acc
     acc_old_tgt = float(sum(is_correct_old_tgt)) / len(is_correct_old_tgt)
@@ -325,6 +327,8 @@ if __name__ == "__main__":
     break_cnt_tgt = np.sum(is_correct_old_tgt & ~is_correct_new_tgt)
     repair_rate_tgt = repair_cnt_tgt / np.sum(~is_correct_old_tgt) if np.sum(~is_correct_old_tgt) > 0 else 0.0
     break_rate_tgt = break_cnt_tgt / np.sum(is_correct_old_tgt) if np.sum(is_correct_old_tgt) > 0 else 0.0
+    # target subsetにおいてrepairが起きたインデックス
+    repair_indices_tgt = np.where(~is_correct_old_tgt & is_correct_new_tgt)[0]
 
     # JSONの更新: 1-1で既に tot_time などが書かれている前提
     if tgt_split == "repair":
@@ -336,11 +340,18 @@ if __name__ == "__main__":
         assert os.path.exists(metrics_json_path), f"{metrics_json_path} does not exist."
         metrics_dict = json2dict(metrics_json_path)
     else:
+        # metrics保存用ディレクトリ
         metrics_json_path = os.path.join(
             save_dir,
             f"exp-repair-4-1-metrics_for_{tgt_split}_{setting_id}_{fl_method}_reps{reps_id}.json"
         )
         metrics_dict = {}
+        # test setにおける tgt repair, overall breakのindexの保存用ディレクトリ
+        change_indices_path = os.path.join(
+            save_dir,
+            f"exp-repair-4-1-change_indices_{tgt_split}_{setting_id}_{fl_method}_reps{reps_id}.npz"
+        )
+        np.savez(change_indices_path, repair_indices_tgt=repair_indices_tgt, break_indices_overall=break_indices_overall)
 
     # 例と同じキーで追加
     metrics_dict["acc_old"] = acc_old
