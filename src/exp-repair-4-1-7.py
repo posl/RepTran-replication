@@ -349,9 +349,9 @@ def scatter_rr_br(df_long, ds, split, *, wnum_filter=None):
 #  RR × BR 散布図（236 / 472 / 944 を横に並べたパネル）
 # ============================================================
 def scatter_rr_br_panel(df_long, ds, split, *, wnums=(236, 472, 944)):
-    """
-    • 横方向に len(wnums) 枚並べ，1 つの PDF に保存
-    • 色・形は method 固定
+    """ 
+    • 2x2 grid layout for the scatter plots
+    • 色・形は method 固定 
     """
     import seaborn as sns, matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
@@ -362,76 +362,83 @@ def scatter_rr_br_panel(df_long, ds, split, *, wnums=(236, 472, 944)):
 
     # ---------- 共通スタイル ----------
     sns.set(style="whitegrid", font_scale=0.95)
-    color_for_meth  = {"Arachne": "C2", "Ours": "C0", "Random": "C1"}
-    marker_for_meth = {"Arachne": "v",  "Ours": "^",  "Random": "o"}
-    size_for_meth   = {"Arachne": 50,   "Ours": 50,   "Random": 50}
+    color_for_meth = {"Arachne": "C2", "Ours": "C0", "Random": "C1"}
+    marker_for_meth = {"Arachne": "v", "Ours": "^", "Random": "o"}
+    size_for_meth = {"Arachne": 70, "Ours": 70, "Random": 70}
 
-    n_cols = len(wnums)
-    base_size = 3.2
-    fig, axes = plt.subplots(1, n_cols, figsize=(base_size*n_cols, base_size), sharex=True, sharey=True)
+    # Calculate grid dimensions
+    n_plots = len(wnums)
+    n_rows = 2
+    n_cols = 2
+    
+    # 縦横比を調整可能にする
+    base_width = 3.2   # 各パネルの幅
+    base_height = 2.4  # 各パネルの高さ（幅より小さくして横長に）
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(base_width*n_cols, base_height*n_rows), 
+                            sharex=True, sharey=True)
+    
+    # Flatten axes array for easier indexing
+    axes_flat = axes.flatten()
     
     # df_longのBRのマックスを取得
     max_br = df_long["BR"].max()
-    x_max  = nice_xmax(max_br, step=0.01)   # ← ここで上限を決定
+    x_max = nice_xmax(max_br, step=0.01)
 
     # ---------------------------------------------------------
-    for ax, wnum in zip(axes, wnums):
+    for i, wnum in enumerate(wnums):
+        if i >= len(axes_flat):  # Safety check
+            break
+            
+        ax = axes_flat[i]
         sub_df = df_long[df_long["wnum"] == wnum]
-
+        
         # rep_id 単位で平均 (散布図が見やすくなる)
         keep = ["method", "wnum", "tgt_rank", "misclf_type", "rep_id"]
-        agg  = (sub_df.groupby(keep)
-                        .agg(RR=("RR", "mean"), BR=("BR", "mean"))
-                        .reset_index())
+        agg = (sub_df.groupby(keep)
+               .agg(RR=("RR", "mean"), BR=("BR", "mean"))
+               .reset_index())
 
         for meth, g in agg.groupby("method"):
             ax.scatter(g["BR"], g["RR"],
-                       color=color_for_meth[meth],
-                       marker=marker_for_meth[meth],
-                       s=size_for_meth[meth],
-                       edgecolors="black", linewidths=0.5, alpha=0.75)
+                      color=color_for_meth[meth],
+                      marker=marker_for_meth[meth],
+                      s=size_for_meth[meth],
+                      edgecolors="black",
+                      linewidths=0.5,
+                      alpha=0.75)
 
         ax.set_title(f"$N_w = {wnum}$", fontsize=11)
-        # if wnum == 11:
-        #     ax.set_title(f"$N_w = {wnum}$", fontsize=11)
-        # else:
-        #     if wnum == 236:
-        #         ratio = 0.005
-        #     elif wnum == 472:
-        #         ratio = 0.01
-        #     elif wnum == 944:
-        #         ratio = 0.02
-        #     ax.set_title(f"$N_w = {wnum}$ ({ratio}%)", fontsize=11)
         ax.set_ylim(-0.05, 1.05)
-        ax.set_xlim(0, x_max)   # 必要なら調整
+        ax.set_xlim(0, x_max)
         ax.grid(True, linestyle="--", linewidth=0.5)
 
-    # ---- 軸ラベルは外側だけ ----
-    axes[0].set_ylabel("Repair Rate", fontsize=11)
-    for ax in axes:
-        ax.set_xlabel("Break Rate", fontsize=11)
+    # Hide unused subplot if we have fewer than 4 plots
+    for i in range(len(wnums), len(axes_flat)):
+        axes_flat[i].set_visible(False)
 
-    # fig.suptitle(f"{ds} – {split}", fontsize=11, y=0.95)
+    # ---- 軸ラベル設定 ----
+    # Left column gets y-labels
+    for i in range(n_rows):
+        axes[i, 0].set_ylabel("Repair Rate", fontsize=11)
+    
+    # Bottom row gets x-labels
+    for j in range(n_cols):
+        if j < len(wnums):  # Only if we have data for this column
+            axes[-1, j].set_xlabel("Break Rate", fontsize=11)
 
     # ---- 共通凡例 ----
     legend_labels = {"Arachne": "ArachneW", "Ours": "REPTRAN", "Random": "Random"}
     handles = [
-        Line2D([], [], marker=marker_for_meth[m], linestyle="",
-            color=color_for_meth[m], markersize=7, label=legend_labels[m], markeredgecolor="black")
+        Line2D([], [], marker=marker_for_meth[m], linestyle="", 
+               color=color_for_meth[m], markersize=7, label=legend_labels[m],
+               markeredgecolor="black")
         for m in ["Arachne", "Ours", "Random"]
     ]
-    # fig.legend(handles=handles, loc="lower center", ncol=3,
-    #            frameon=False, fontsize=10, bbox_to_anchor=(0.5, -0.04))
 
-    # fig.subplots_adjust(wspace=0.15, bottom=0.18)
-    # ── パネル間の横スペースを広げる
-    fig.subplots_adjust(wspace=0.25,   # ← ここを 0.15 ⇒ 0.25 など好みで
-                        bottom=0.22)   # ← 凡例をさらに下へ押し出す
-
-    # ── 凡例を下げる
-    fig.legend(handles=handles, loc="lower center",
-            ncol=3, frameon=True, fontsize=10,
-            bbox_to_anchor=(0.5, -0.07))  # ← -0.04 ⇒ -0.07 など
+    # Adjust layout and add legend
+    fig.subplots_adjust(wspace=0.15, hspace=0.20, bottom=0.15)
+    fig.legend(handles=handles, loc="lower center", ncol=3,
+               frameon=True, fontsize=10, bbox_to_anchor=(0.5, -0.02))
 
     # ---- 保存 ----
     stem = f"exp-repair-4-1-7_scatterPanel_{ds}_{split}"
