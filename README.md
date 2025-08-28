@@ -144,3 +144,26 @@ Based on the results obtained so far:
 cd /src/script
 python 400_run_summarize.py
 ```
+
+---
+
+## 📁 Directory Structure
+
+```
+/src/
+├── 📁 dataset/                         # Dataset storage and preparation
+├── 📁 playgrounds/                     # Jupyter notebooks for analysis
+├── 📁 repair_neuron_settings/          # Neuron repair configuration files
+├── 📁 repair_weight_settings/          # Weight repair configuration files
+├── 📁 script/                          # Main experiment scripts
+├── 📁 src/                             # Core RepTran implementation
+├── 📁 transformers-4.30.2/             # Modified Hugging Face Transformers library
+├── 📄 .gitignore                       # Git ignore rules
+├── ⚙️ bash_setting                     # Bash environment configuration
+├── 🐳 docker-compose.gpu.yml           # Docker Compose for GPU support
+├── 🐳 Dockerfile                       # Docker container configuration
+├── 🔧 Makefile                         # Build and run automation
+└── 📖 README.md                        # This documentation file
+├── 📋 requirements.txt                 # Python dependencies
+├── 🐍 torch_gpu_check.py               # GPU availability check
+```
