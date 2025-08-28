@@ -163,7 +163,7 @@ python 400_run_summarize.py
 ├── 🐳 docker-compose.gpu.yml           # Docker Compose for GPU support
 ├── 🐳 Dockerfile                       # Docker container configuration
 ├── 🔧 Makefile                         # Build and run automation
-└── 📖 README.md                        # This documentation file
+├── 📖 README.md                        # This documentation file
 ├── 📋 requirements.txt                 # Python dependencies
-├── 🐍 torch_gpu_check.py               # GPU availability check
+└── 🐍 torch_gpu_check.py               # GPU availability check
 ```
