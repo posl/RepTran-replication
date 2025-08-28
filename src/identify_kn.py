@@ -24,7 +24,7 @@ if __name__ == "__main__":
         print(f"ig_method: {ig_method}")
         for tgt_label in tgt_labels:
             print(f"tgt_label: {tgt_label}")
-            # neuronごとのscoreの保存されているnpy
+            # neuronごとのscoreのSaveされているnpy
             res_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
             # scoreをロード
             ig_path = os.path.join(res_dir, f"{ig_method}_l{start_layer_idx}tol12_{tgt_label}.npy")
@@ -52,7 +52,7 @@ if __name__ == "__main__":
             # numpy.int64 を組み込みの整数型に変換
             kn = [(int(l), int(n)) for l, n in kn]
 
-            # 結果を保存
+            # 結果をSave
             save_dict = {}
             save_dict["num_kn"] = len(kn)
             save_dict["num_kn_per_layer"] = {l: len([n for l_id, n in kn if l_id == l]) for l in range(start_layer_idx, 12)}

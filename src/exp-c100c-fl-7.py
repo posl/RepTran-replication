@@ -79,9 +79,9 @@ def get_output_dict(vit_from_last_layer, hs, true_labels, tgt_pos=ViTExperiment.
 def main(fl_method, n, beta):
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -93,7 +93,7 @@ def main(fl_method, n, beta):
     labels = {
         key: np.array(ds[key][label_col]) for key in ds.keys()
     }
-    # クリーンデータ (C100) のロード
+    # Load clean data (C100)
     ori_ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, "c100_fold0"))
     ori_labels = {
         "train": np.array(ori_ds["train"][label_col]),
@@ -101,7 +101,7 @@ def main(fl_method, n, beta):
         "test": np.array(ori_ds["test"][label_col])
     }
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     vit_from_last_layer = ViTFromLastLayer(model)
@@ -110,7 +110,7 @@ def main(fl_method, n, beta):
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     batch_size = ViTExperiment.BATCH_SIZE
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     # ノイズタイプごとの誤ったサンプルのインデックスを取得
     with open(os.path.join(pretrained_dir, "corruption_error_indices.json"), 'r') as f:
@@ -145,7 +145,7 @@ def main(fl_method, n, beta):
         print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
         print(f"Total number of weights: {pos_before.shape[0] + pos_after.shape[0]}")
         
-        # サンプルごとのロスの保存dir
+        # サンプルごとのロスのSavedir
         loss_diff_dir = os.path.join(location_dir, "loss_diff_per_sample")
         os.makedirs(loss_diff_dir, exist_ok=True)
         
@@ -157,7 +157,7 @@ def main(fl_method, n, beta):
                 op_coeff = int(op.split("multiply")[-1])
             else:
                 op_coeff = op
-            # opかけたモデルのロス - original modelのロスの差を保存するパス
+            # opかけたモデルのロス - original modelのロスの差をSaveするパス
             cor_loss_diff_path = get_loss_diff_path(n, beta, fl_method, loss_diff_dir, op, "cor")
             mis_loss_diff_path = get_loss_diff_path(n, beta, fl_method, loss_diff_dir, op, "mis")
             # モデルのコピーで初期状態から再構築
@@ -187,7 +187,7 @@ if __name__ == "__main__":
     beta_list = [0.1, 0.25, 0.5, 0.75, 1.0]
     
     
-    # 全ての結果を格納するDataFrame
+    # DataFrame to store all results
     all_results = pd.DataFrame()
     
     for fl_method in fl_method_list:

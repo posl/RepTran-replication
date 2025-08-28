@@ -16,9 +16,9 @@ logger = getLogger("base_logger")
 
 if __name__ == "__main__":
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -32,14 +32,14 @@ if __name__ == "__main__":
     }
     ds_preprocessed = ds.with_transform(transforms_c100)
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # configuration
     batch_size = ViTExperiment.BATCH_SIZE
     end_li = model.vit.config.num_hidden_layers
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     
     # tqdmで進捗表示しながら処理
@@ -52,7 +52,7 @@ if __name__ == "__main__":
         tgt_labels = labels[key]
         tgt_layer = 11 # NOTE: we only use the last layer for repairing
 
-        # キャッシュの保存用のディレクトリ
+        # キャッシュのSave用のディレクトリ
         cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{key}")
         os.makedirs(cache_dir, exist_ok=True)
         cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
@@ -81,7 +81,7 @@ if __name__ == "__main__":
         te_without_cache = time.perf_counter()
         t_without_cache = te_without_cache - ts_without_cache
 
-        # all_hidden_states_before_layernormはキャッシュとして保存
+        # all_hidden_states_before_layernormはキャッシュとしてSave
         np.save(cache_path, all_hidden_states_before_layernorm)
         logger.info(f"all_hidden_states_before_layernorm {all_hidden_states_before_layernorm.shape} has been saved at cache_path: {cache_path}")
         

@@ -7,7 +7,7 @@ from utils.vit_util import processor, transforms, transforms_c100, compute_metri
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -15,17 +15,17 @@ if __name__ == "__main__":
     ds_name = args.ds
     k = args.k
     print(f"ds_name: {ds_name}, fold_id: {k}")
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     dataset_dir = ViTExperiment.DATASET_DIR
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
     ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
     output_dir = exp_obj.OUTPUT_DIR.format(k=k)
     os.makedirs(output_dir, exist_ok=True)
     eval_div = "test"
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
@@ -34,14 +34,14 @@ if __name__ == "__main__":
         label_col = "fine_label"
     else:
         NotImplementedError
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # バッチごとの処理のためのdata_collator
+    # data_collator for batch processing
     data_collator = DefaultDataCollator()
-    # ラベルを示す文字列のlist
+    # List of strings representing labels
     labels = ds_preprocessed["train"].features[label_col].names
     
-    # pretrained modelのロード
+    # Load pretrained model
     model, loading_info = ViTForImageClassification.from_pretrained(
         ViTExperiment.ViT_PATH,
         num_labels=len(labels),
@@ -52,7 +52,7 @@ if __name__ == "__main__":
     model.to(device).eval()
     model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
 
-    # 学習の設定
+    # Training configuration
     batch_size = ViTExperiment.BATCH_SIZE
     logging_steps = len(ds_preprocessed["train"]) // batch_size
     training_args = TrainingArguments(
@@ -62,8 +62,8 @@ if __name__ == "__main__":
         weight_decay=0.01,
         per_device_train_batch_size=batch_size,
         per_device_eval_batch_size=batch_size,
-        remove_unused_columns=False, # img列がないとエラーになるので必要
-        evaluation_strategy="epoch", # エポックの終わりごとにeval_datasetで評価
+        remove_unused_columns=False, # Required because error occurs without img column
+        evaluation_strategy="epoch", # Evaluate on eval_dataset at the end of each epoch
         logging_strategy="epoch",
         save_strategy="epoch",
         push_to_hub=False,
@@ -73,8 +73,8 @@ if __name__ == "__main__":
         load_best_model_at_end=True,
     )
 
-    # 学習の実行
-    # NOTE: 表示されるプログレスバーの分母の数字は，num_epoch*num_sample/batch_size
+    # Execute training
+    # NOTE: The denominator number in the progress bar is num_epoch*num_sample/batch_size
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -86,6 +86,6 @@ if __name__ == "__main__":
     )
     train_results = trainer.train()
 
-    # 保存
-    trainer.save_model() # from_pretrained()から読み込めるようになる
-    trainer.save_state() # save_model()よりも多くの情報を保存する
+    # Save
+    trainer.save_model() # Can be loaded with from_pretrained()
+    trainer.save_state() # Saves more information than save_model()

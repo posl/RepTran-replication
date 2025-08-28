@@ -16,11 +16,11 @@ logger = getLogger("base_logger")
 def main(ds_name, k):
     print(f"ds_name: {ds_name}, fold_id: {k}")
     
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     dataset_dir = ViTExperiment.DATASET_DIR
-    # バッチごとの処理のためのdata_collator
+    # data_collator for batch processing
     data_collator = DefaultDataCollator()
     
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
@@ -29,7 +29,7 @@ def main(ds_name, k):
     eval_div = "test"
     ds_preprocessed = ds.with_transform(transforms)
     
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10" or ds_name == "c10c" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
@@ -38,23 +38,23 @@ def main(ds_name, k):
         label_col = "fine_label"
     else:
         NotImplementedError
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # ラベルを示す文字列のlist
+    # List of strings representing labels
     labels = ds_preprocessed["train"].features[label_col].names
     
-    # pretrained modelのロード
+    # Load pretrained model
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}")
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
-    model = model.to(device) #in-placeなので代入なくてもいい
-    # loaded state dictに intermediate.repair.weight がない場合はここで初期化しないとダメ
+    model = model.to(device) #in-place so assignment is not necessary
+    # If intermediate.repair.weight is not in loaded state dict, must initialize here
     maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
     model.eval()
-    # 学習時の設定をロード
+    # Load training configuration
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
-    # Trainerオブジェクトの作成
+    # Create Trainer object
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -67,20 +67,20 @@ def main(ds_name, k):
     training_args_dict = training_args.to_dict()
     train_batch_size = training_args_dict["per_device_train_batch_size"]
     eval_batch_size = training_args_dict["per_device_eval_batch_size"]
-    # 予測結果格納ディレクトリ
+    # Directory for storing prediction results
     pred_out_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    # pred_out_dirがなければ作成
+    # Create pred_out_dir if it doesn't exist
     if not os.path.exists(pred_out_dir):
         os.makedirs(pred_out_dir)
 
-    # C10 or C100 or tiny-imagenet データセットに対する推論
+    # Inference on C10 or C100 or tiny-imagenet datasets
     # ====================================================================
     if ds_name == "c10" or ds_name == "c100" or ds_name == "tiny-imagenet":
-        # データセットのサイズとバッチサイズからイテレーション回数を計算
+        # Calculate number of iterations from dataset size and batch size
         train_iter = math.ceil(len(ds_preprocessed["train"]) / train_batch_size)
         repair_iter = math.ceil(len(ds_preprocessed["repair"]) / eval_batch_size)
         test_iter = math.ceil(len(ds_preprocessed["test"]) / eval_batch_size)
-        # train, repair, testデータに対する推論の実行
+        # Execute inference on train, repair, test data
         # train
         logger.info(f"predict training data... #iter = {train_iter} ({len(ds_preprocessed['train'])} samples / {train_batch_size} batches)")
         st = time.perf_counter()
@@ -102,60 +102,60 @@ def main(ds_name, k):
         et = time.perf_counter()
         t_test = et - st
         logger.info(f"elapsed time: {t_test} sec")
-        # いったんログ表示
+        # Display logs temporarily
         for key, pred in zip(["train", "repair", "test"], [train_pred, repair_pred, test_pred]):
             logger.info(f'metrics for {key} set:\n {pred.metrics}')
 
-        # 予測結果を格納するPredictioOutputオブジェクトをpickleで保存
+        # Save PredictionOutput object containing prediction results with pickle
         with open(os.path.join(pred_out_dir, "train_pred.pkl"), "wb") as f:
             pickle.dump(train_pred, f)
         with open(os.path.join(pred_out_dir, "repair_pred.pkl"), "wb") as f:
             pickle.dump(repair_pred, f)
         with open(os.path.join(pred_out_dir, "test_pred.pkl"), "wb") as f:
             pickle.dump(test_pred, f)
-        # proba (各サンプルに対する予測確率) を正解ラベルごとにまとめたものも保存する
-        train_labels = np.array(ds["train"][label_col]) # サンプルごとの正解ラベル
+        # Also save proba (prediction probability for each sample) grouped by correct label
+        train_labels = np.array(ds["train"][label_col]) # Correct label for each sample
         repair_labels = np.array(ds["repair"][label_col])
         test_labels = np.array(ds["test"][label_col])
-        # PredictionOutputオブジェクト -> 予測確率に変換
+        # Convert PredictionOutput object -> prediction probability
         train_pred_proba = pred_to_proba(train_pred)
         repair_pred_proba = pred_to_proba(repair_pred)
         test_pred_proba = pred_to_proba(test_pred)
-        # ラベルごとに違うファイルとして保存 (train)
+        # Save as different files by label (train)
         for c in range(len(labels)):
             tgt_proba = train_pred_proba[train_labels == c]
-            # train_pred_probaを保存
+            # Save train_pred_proba
             np.save(os.path.join(pretrained_dir, "pred_results", f"train_proba_{c}.npy"), tgt_proba)
             logger.info(f"train_proba_{c}.npy ({tgt_proba.shape}) saved")
-        # ラベルごとに違うファイルとして保存 (repair)
+        # Save as different files by label (repair)
         for c in range(len(labels)):
             tgt_proba = repair_pred_proba[repair_labels == c]
-            # repair_pred_probaを保存
+            # Save repair_pred_proba
             np.save(os.path.join(pretrained_dir, "pred_results", f"repair_proba_{c}.npy"), tgt_proba)
             logger.info(f"repair_proba_{c}.npy ({tgt_proba.shape}) saved")
-        # ラベルごとに違うファイルとして保存 (test)
+        # Save as different files by label (test)
         for c in range(len(labels)):
             tgt_proba = test_pred_proba[test_labels == c]
-            # test_pred_probaを保存
+            # Save test_pred_proba
             np.save(os.path.join(pretrained_dir, "pred_results", f"test_proba_{c}.npy"), tgt_proba)
             logger.info(f"test_proba_{c}.npy ({tgt_proba.shape}) saved")
 
         logger.info(f"all pred_results saved, total elapsed time: {t_train+t_repair+t_test} sec")
-    # C10Cデータセットに対する推論
+    # Inference on C10C dataset
     # ====================================================================
     if ds_name == "c10c" or ds_name == "c100c":
-        # 20種類のcorruptionsに対するループ
+        # Loop for 20 types of corruptions
         for key in ds_preprocessed.keys():
             eval_iter = math.ceil(len(ds_preprocessed[key]) / eval_batch_size)
-            # 推論の実行
+            # Execute inference
             print(f"predict {ds_name}:{key} data... #iter = {eval_iter} ({len(ds_preprocessed[key])} samples / {eval_batch_size} batches)")
             key_pred = trainer.predict(ds_preprocessed[key])
-            # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
+            # Save PredictionOutput object containing prediction results with pickle
             with open(os.path.join(pred_out_dir, f"{ds_name}_{key}_pred.pkl"), "wb") as f:
                 pickle.dump(key_pred, f)
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k_list', type=int, nargs="*", default=[0, 1, 2, 3, 4], help="the fold id(s) to run (default: 0 1 2 3 4)")

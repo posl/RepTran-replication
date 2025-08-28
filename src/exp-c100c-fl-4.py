@@ -35,7 +35,7 @@ def save_ori_model_proba(pretrained_dir, pred_res_dir, ori_labels, labels, batch
     all_proba = []
     for hs in [clean_hs, corrupted_hs]:
         for cached_state in tqdm(hs, total=len(hs), desc=f"Processing {key}"):
-            # ここでViTFromLastLayerのforwardが実行される
+            # ViTFromLastLayer forward is executed here
             logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos)
             proba = torch.nn.functional.softmax(logits, dim=-1)
             logits = logits.detach().cpu().numpy()
@@ -46,13 +46,13 @@ def save_ori_model_proba(pretrained_dir, pred_res_dir, ori_labels, labels, batch
     all_proba = np.concatenate(all_proba, axis=0)
     all_pred_labels = all_logits.argmax(axis=-1)
     print(f"all_logits.shape: {all_logits.shape}, all_proba.shape: {all_proba.shape}, all_pred_labels.shape: {all_pred_labels.shape}")
-    # 正解ラベルごとに保存
+    # Save by correct label
     true_labels = np.concatenate([
         ori_labels["repair"][indices_to_correct],  # クリーンデータの正解ラベル
         labels[key][tgt_mis_indices] # ノイズタイプの誤ったサンプルの正解ラベル
     ])
     assert len(all_logits) == len(all_proba) == len(all_pred_labels) == len(true_labels), f"{len(all_logits)}, {len(all_proba)}, {len(all_pred_labels)}, {len(true_labels)}"
-    # 正解ラベルごとに保存
+    # Save by correct label
     proba_dict = defaultdict(list)
     for true_label, proba in zip(true_labels, all_proba):
         proba_dict[true_label].append(proba)
@@ -70,9 +70,9 @@ def save_ori_model_proba(pretrained_dir, pred_res_dir, ori_labels, labels, batch
 def main(fl_method, n, w_num):
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -84,7 +84,7 @@ def main(fl_method, n, w_num):
     labels = {
         key: np.array(ds[key][label_col]) for key in ds.keys()
     }
-    # クリーンデータ (C100) のロード
+    # Load clean data (C100)
     ori_ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, "c100_fold0"))
     ori_labels = {
         "train": np.array(ori_ds["train"][label_col]),
@@ -92,7 +92,7 @@ def main(fl_method, n, w_num):
         "test": np.array(ori_ds["test"][label_col])
     }
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     vit_from_last_layer = ViTFromLastLayer(model)
@@ -100,7 +100,7 @@ def main(fl_method, n, w_num):
     # configuration
     batch_size = ViTExperiment.BATCH_SIZE
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     
     results = []
@@ -110,7 +110,7 @@ def main(fl_method, n, w_num):
         with open(os.path.join(pretrained_dir, "corruption_error_indices.json"), 'r') as f:
             mis_indices_dict = json.load(f)
             mis_indices_dict = {k: v for k, v in mis_indices_dict.items() if k in bottom3_keys}
-        # オリジナルのモデルの予測結果を保存するディレクトリ
+        # Directory to save original model prediction results
         ori_proba_dir = os.path.join(pretrained_dir, f"corruptions_top{rank}", "pred_results")
         os.makedirs(ori_proba_dir, exist_ok=True)
         # 特定位置の重みを変化させた時の予測結果のディレクトリ
@@ -155,7 +155,7 @@ if __name__ == "__main__":
     exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
     fl_method_list = ["ours", "bl", "random"]
     
-    # 全ての結果を格納するDataFrame
+    # DataFrame to store all results
     all_results = pd.DataFrame()
     
     for fl_method in fl_method_list:
@@ -174,6 +174,6 @@ if __name__ == "__main__":
             result_df = main(fl_method=fl_method, n=n_ratio, w_num=w_num)
             all_results = pd.concat([all_results, result_df], ignore_index=True)
             print(f"all_results.shape: {all_results.shape}")
-    # all_resultsを保存
+    # Save all_results
     save_path = f"./exp-c100c-fl-4_proba_diff.csv"
     all_results.to_csv(save_path, index=False)

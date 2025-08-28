@@ -2,6 +2,7 @@ import os, sys, subprocess
 import numpy as np
 from itertools import product
 from utils.constant import Experiment3, ExperimentRepair1, ExperimentRepair2
+
 NUM_REPS = 5
 
 if __name__ == "__main__":
@@ -16,33 +17,36 @@ if __name__ == "__main__":
     
     for ds in ds_list:
         for k, tgt_rank, misclf_type, fpfn, tgt_split in product(
-            k_list, tgt_rank_list,  misclf_type_list, fpfn_list, tgt_split_list
+            k_list, tgt_rank_list, misclf_type_list, fpfn_list, tgt_split_list
         ):
-            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+            # For src_tgt or all, fpfn must be None
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
                 continue
+            # For tgt, fpfn must be specified
             if misclf_type == "tgt" and fpfn is None:
                 continue
-            # repair search自体にランダム性があるので繰り返し
+            
+            # Repeat because the repair search process itself involves randomness
             for reps_id in range(NUM_REPS):
                 print(f"{'='*90}\nProcessing: ds={ds}, k={k}, tgt_rank={tgt_rank}, alpha={alpha}, misclf_type={misclf_type}, fpfn={fpfn}, fl_method={fl_method}, reps_id={reps_id}")
                 cmd = [
-                    "python", 
-                    "exp-repair-3-1-5.py", 
+                    "python",
+                    "exp-repair-3-1-5.py",
                     ds,
                     str(k),
                     str(tgt_rank),
                     str(reps_id),
-                    "--custom_alpha", str(alpha), 
-                    "--misclf_type", misclf_type, 
-                    "--custom_bounds", "Arachne", 
+                    "--custom_alpha", str(alpha),
+                    "--misclf_type", misclf_type,
+                    "--custom_bounds", "Arachne",
                     "--fl_method", fl_method,
                     "--tgt_split", tgt_split
                 ]
-                if fpfn:  # fpfnがNoneでない場合のみ追加
+                # Add fpfn option only if fpfn is not None
+                if fpfn:
                     cmd.extend(["--fpfn", fpfn])
                 print(f"Executing the following cmd: {' '.join(cmd)}\n{'='*90}")
                 result = subprocess.run(cmd)
                 if result.returncode != 0:
                     print("Error occurred, exiting.")
                     exit(1)
-                exit()

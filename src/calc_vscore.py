@@ -20,7 +20,7 @@ if __name__ == "__main__":
     used_column = args.used_column
     # argparseで受け取った引数のサマリーを表示
     print(f"ds_name: {ds_name}, start_layer_idx: {start_layer_idx}, used_column: {used_column}")
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -32,14 +32,14 @@ if __name__ == "__main__":
     else:
         NotImplementedError
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_name))[used_column]
     # ラベルのリスト取得
     labels = np.array(ds[label_col])
     ds = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
@@ -67,9 +67,9 @@ if __name__ == "__main__":
             # vscoreを計算
             vscore = get_vscore(tgt_im)
             vscore_per_layer.append(vscore)
-        # vscoreを保存
+        # vscoreをSave
         vscores = np.array(vscore_per_layer)
-        # 保存場所
+        # Save場所
         result_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
         vscore_save_path = os.path.join(result_dir, f"vscore_l{start_li}tol{end_li}_{tgt_label}.npy")
         np.save(vscore_save_path, vscores)

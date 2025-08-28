@@ -47,14 +47,14 @@ for k in range(num_fold):
     data_collator = DefaultDataCollator()
     ds_preprocessed = ds.with_transform(tf_func)
     
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
     # 1エポック目のモデルロード
     model = ViTForImageClassification.from_pretrained(os.path.join(pretrained_dir, "checkpoint-1250"))
     model.to(device)
     
-    # Trainerオブジェクトの作成
+    # Create Trainer object
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -79,7 +79,7 @@ for k in range(num_fold):
     # 気持ち程度にaccとf1だしとく
     met_dict = compute_metrics(pred_out)
     print(f"Accuracy: {met_dict['accuracy']['accuracy']}, F1: {met_dict['f1']['f1']}")
-    # 予測と正解ラベルを保存
+    # 予測と正解ラベルをSave
     np.save(os.path.join(save_dir, f"{tgt_split}_true_labels.npy"), true_labels)
     np.save(os.path.join(save_dir, f"{tgt_split}_pred_labels.npy"), pred_labels)
     print(f"Saved: {tgt_split}_true_labels.npy, shape: {true_labels.shape}")
@@ -87,7 +87,7 @@ for k in range(num_fold):
     # misclassification情報を取得
     mis_matrix, mis_ranking, mis_indices, met_dict = get_misclf_info(pred_labels, true_labels, num_classes)
     
-    # mis_matrixはnpyで，それ以外はpklで保存
+    # mis_matrixはnpyで，それ以外はpklでSave
     np.save(os.path.join(save_dir, f"{tgt_split}_mis_matrix.npy"), mis_matrix)
     with open(os.path.join(save_dir, f"{tgt_split}_mis_ranking.pkl"), "wb") as f:
         pickle.dump(mis_ranking, f)
@@ -99,7 +99,7 @@ for k in range(num_fold):
     print(f"mis_matrix: {mis_matrix.shape}")
     print(f"total_mis: {mis_matrix.sum()}")
     
-    # pred_outも保存する
+    # pred_outもSaveする
     pred_out_save_dir = save_dir = os.path.join(exp_dir, f"{ds_name}_fold{k}", "PredictionOutput")
     if not os.path.exists(pred_out_save_dir):
         os.makedirs(pred_out_save_dir)

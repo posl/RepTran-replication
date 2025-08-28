@@ -7,49 +7,49 @@ device = get_device()
 
 def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_loss=0.5, weight_fwd_imp=0.5):
     """
-    BI, FIを平滑化し、重み付き平均でスコアを計算して上位n件を取得。
+    Flatten BI, FI, calculate scores with weighted average, and get top n items.
     
     Args:
-        grad_loss_list (list): BI のリスト [W_bef の BI, W_aft の BI]
-        fwd_imp_list (list): FI のリスト [W_bef の FI, W_aft の FI]
-        n (int): 上位n件を取得する数 (Noneの場合はソートせずに全件)
-        weight_grad_loss (float): grad_loss の重み (0~1の範囲)
-        weight_fwd_imp (float): fwd_imp の重み (0~1の範囲)
+        grad_loss_list (list): List of BI [BI of W_bef, BI of W_aft]
+        fwd_imp_list (list): List of FI [FI of W_bef, FI of W_aft]
+        n (int): Number of top n items to get (if None, get all items without sorting)
+        weight_grad_loss (float): Weight of grad_loss (range 0~1)
+        weight_fwd_imp (float): Weight of fwd_imp (range 0~1)
     
     Returns:
-        dict: 上位n件のインデックス {"bef": [...], "aft": [...]} とそのスコア
+        dict: Top n indices {"bef": [...], "aft": [...]} and their scores
     """
-    # BI, FIを一列に変換
+    # Convert BI, FI to single column
     flattened_grad_loss = torch.cat([x.flatten() for x in grad_loss_list])
     flattened_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list])
 
-    # befとaftの形状を取得
+    # Get shapes of bef and aft
     shape_bef = grad_loss_list[0].shape
     shape_aft = grad_loss_list[1].shape
 
-    # befとaftの境目インデックスを記録
+    # Record boundary index between bef and aft
     split_idx = grad_loss_list[0].numel()
     
-    # 正規化
+    # Normalization
     grad_loss_min, grad_loss_max = flattened_grad_loss.min(), flattened_grad_loss.max()
     fwd_imp_min, fwd_imp_max = flattened_fwd_imp.min(), flattened_fwd_imp.max()
 
     normalized_grad_loss = (flattened_grad_loss - grad_loss_min) / (grad_loss_max - grad_loss_min + 1e-8)
     normalized_fwd_imp = (flattened_fwd_imp - fwd_imp_min) / (fwd_imp_max - fwd_imp_min + 1e-8)
 
-    # 重み付きスコアを計算
+    # Calculate weighted scores
     weighted_scores = (
         weight_grad_loss * normalized_grad_loss +
         weight_fwd_imp * normalized_fwd_imp
     ).detach().cpu().numpy()
     
-    # インデックスの決定
+    # Determine indices
     if n is None:
-        top_n_indices = np.arange(len(weighted_scores))  # ソートせず全件
+        top_n_indices = np.arange(len(weighted_scores))  # All items without sorting
     else:
-        top_n_indices = np.argsort(weighted_scores)[-n:][::-1]  # 降順でn件
+        top_n_indices = np.argsort(weighted_scores)[-n:][::-1]  # n items in descending order
 
-    # befとaftに分類し、元の形状に戻す
+    # Classify into bef and aft, restore to original shape
     top_n_bef = np.array([
         np.unravel_index(idx, shape_bef) for idx in top_n_indices if idx < split_idx
     ])
@@ -62,28 +62,28 @@ def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_
 
 def calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list):
     """
-    BI, FIを平滑化してパレートフロントを計算
+    Flatten BI, FI and calculate Pareto front
     Args:
-        grad_loss_list (list): BI のリスト [W_bef の BI, W_aft の BI]
-        fwd_imp_list (list): FI のリスト [W_bef の FI, W_aft の FI]
+        grad_loss_list (list): List of BI [BI of W_bef, BI of W_aft]
+        fwd_imp_list (list): List of FI [FI of W_bef, FI of W_aft]
     Returns:
-        dict: パレートフロントのインデックス {"bef": [...], "aft": [...]}
+        dict: Pareto front indices {"bef": [...], "aft": [...]}
     """
-    # BI, FIを一列に変換
+    # Convert BI, FI to single column
     flattened_grad_loss = torch.cat([x.flatten() for x in grad_loss_list])
     flattened_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list])
     
-    # befとaftの形状を取得
+    # Get shapes of bef and aft
     shape_bef = grad_loss_list[0].shape
     shape_aft = grad_loss_list[1].shape
 
-    # befとaftの境目インデックスを記録
+    # Record boundary index between bef and aft
     split_idx = grad_loss_list[0].numel()
 
-    # パレートフロントを計算
+    # Calculate Pareto front
     pareto_indices = approximate_pareto_front(flattened_grad_loss, flattened_fwd_imp)
 
-    # befとaftに分類し、元の形状に戻す
+    # Classify into bef and aft, restore to original shape
     pareto_bef = np.array([
         np.unravel_index(idx, shape_bef) for idx in pareto_indices if idx < split_idx
     ])
@@ -96,21 +96,21 @@ def calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list):
 
 def approximate_pareto_front(flattened_bi_values, flattened_fi_values):
     """
-    平滑化されたデータからパレートフロントを計算
+    Calculate Pareto front from flattened data
     Args:
-        flattened_bi_values (torch.Tensor): フラット化された BI
-        flattened_fi_values (torch.Tensor): フラット化された FI
+        flattened_bi_values (torch.Tensor): Flattened BI
+        flattened_fi_values (torch.Tensor): Flattened FI
     Returns:
-        list: パレートフロントに含まれるインデックスリスト
+        list: List of indices included in Pareto front
     """
-    # BI, FIをnumpyに変換
+    # Convert BI, FI to numpy
     bi_values = flattened_bi_values.detach().cpu().numpy()
     fi_values = flattened_fi_values.detach().cpu().numpy()
 
-    # BI, FIを2次元の点として結合
+    # Combine BI, FI as 2D points
     points = np.stack([bi_values, fi_values], axis=1)
 
-    # パレートフロントを計算
+    # Calculate Pareto front
     pareto_mask = np.ones(points.shape[0], dtype=bool)
     for i, point in enumerate(points):
         if pareto_mask[i]:
@@ -124,46 +124,46 @@ def approximate_pareto_front(flattened_bi_values, flattened_fi_values):
 
 def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_last_layer, optimizer, tgt_pos):
     """
-    指定されたサンプル集合（正解または誤り）に対して BI と FI を計算し、before/after に分ける。
+    Calculate BI and FI for specified sample set (correct or incorrect) and separate into before/after.
     Args:
-        indices (list): サンプルのインデックス集合
-        batched_hidden_states (list): キャッシュされたバッチごとの hidden states
-        batched_labels (list): バッチごとの正解ラベル
-        vit_from_last_layer (ViTFromLastLayer): ViTモデルの最終層ラッパー
-        optimizer (torch.optim.Optimizer): PyTorchのオプティマイザ
-        tgt_pos (int): ターゲットポジション（通常CLSトークン）
+        indices (list): Set of sample indices
+        batched_hidden_states (list): Cached hidden states for each batch
+        batched_labels (list): Correct labels for each batch
+        vit_from_last_layer (ViTFromLastLayer): Final layer wrapper of ViT model
+        optimizer (torch.optim.Optimizer): PyTorch optimizer
+        tgt_pos (int): Target position (usually CLS token)
     Returns:
         defaultdict: {"before": {"bw": grad_bw, "fw": grad_fw}, "after": {"bw": grad_bw, "fw": grad_fw}}
     """
     # results = defaultdict(lambda: {"bw": [], "fw": []})
-    results = defaultdict(lambda: {"bw": None, "fw": None, "count": 0})  # 集計用
+    results = defaultdict(lambda: {"bw": None, "fw": None, "count": 0})  # For aggregation
 
 
     for cached_state, tls in tqdm(
         zip(batched_hidden_states, batched_labels),
         total=len(batched_hidden_states),
     ):
-        optimizer.zero_grad()  # サンプルごとに勾配を初期化
+        optimizer.zero_grad()  # Initialize gradients for each sample
 
         # Forward pass
         logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos)
         loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
-        loss = loss_fn(logits, torch.tensor(tls).to(device))  # バッチ内のサンプルに対するロスの平均
+        loss = loss_fn(logits, torch.tensor(tls).to(device))  # Average loss for samples in batch
         loss.backward(retain_graph=True)
 
-        # ForwardImpact計算用データ
+        # Data for ForwardImpact calculation
         cached_state_aft_ln = vit_from_last_layer.base_model_last_layer.layernorm_after(cached_state)
         cached_state_aft_mid = vit_from_last_layer.base_model_last_layer.intermediate(cached_state_aft_ln)
         cached_state_aft_ln = cached_state_aft_ln[:, tgt_pos, :]
         cached_state_aft_mid = cached_state_aft_mid[:, tgt_pos, :]
 
-        # BackwardImpact (BI) と ForwardImpact (FI) の計算
+        # Calculate BackwardImpact (BI) and ForwardImpact (FI)
         for cs, tgt_component, ba_layer in zip(
             [cached_state_aft_ln, cached_state_aft_mid],
             [vit_from_last_layer.base_model_last_layer.intermediate.dense, vit_from_last_layer.base_model_last_layer.output.dense],
             ["before", "after"],
         ):
-            # BI: ロスの勾配
+            # BI: Gradient of loss
             grad_bw = tgt_component.weight.grad.cpu()
             # print(f"{ba_layer} - grad_bw.shape: {grad_bw.shape}")  # shape: (out_dim, in_dim)
             if results[ba_layer]["bw"] is None:
@@ -171,7 +171,7 @@ def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_las
             else:
                 results[ba_layer]["bw"] += grad_bw.detach().cpu()
 
-            # FI: logits の勾配 × 正規化されたニューロンの重み
+            # FI: Gradient of logits × normalized neuron weights
             grad_out_weight = torch.autograd.grad(
                 logits, tgt_component.weight, grad_outputs=torch.ones_like(logits), retain_graph=True
             )[0]
@@ -180,22 +180,22 @@ def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_las
             oi_expanded = cs.unsqueeze(1)
             # print(f"oi_expanded: {oi_expanded.shape}")  # shape: (32, 1, 768)
             # print(f"tgt_weight_expanded: {tgt_weight_expanded.shape}")  # shape: (1, 3072, 768)
-            # **までGPUで計算
+            # Calculate on GPU until **
             impact_out_weight = tgt_weight_expanded * oi_expanded # shape: (32, 3072, 768)
             normalization_terms = impact_out_weight.sum(dim=2)
             normalized_impact_out_weight = impact_out_weight / (normalization_terms[:, :, None] + 1e-8)
             mean_normalized_impact_out_weight = normalized_impact_out_weight.mean(dim=0)
-            grad_fw = (mean_normalized_impact_out_weight * grad_out_weight).cpu() # ** ここでCPUに戻す
+            grad_fw = (mean_normalized_impact_out_weight * grad_out_weight).cpu() # ** Return to CPU here
             # print(f"{ba_layer} - grad_fw.shape: {grad_fw.shape}")  # shape: (out_dim, in_dim)
             if results[ba_layer]["fw"] is None:
                 results[ba_layer]["fw"] = grad_fw.detach().clone().cpu()
             else:
                 results[ba_layer]["fw"] += grad_fw.detach().cpu()
 
-            # カウントを更新
+            # Update count
             results[ba_layer]["count"] += 1
     
-    # バッチ全体の平均を計算
+    # Calculate average for entire batch
     for ba_layer in ["before", "after"]:
         if results[ba_layer]["count"] > 0:
             results[ba_layer]["bw"] = results[ba_layer]["bw"] / results[ba_layer]["count"]

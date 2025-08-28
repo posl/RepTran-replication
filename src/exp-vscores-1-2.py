@@ -10,7 +10,7 @@ from utils.vit_util import transforms, transforms_c100, get_vscore, maybe_initia
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -23,7 +23,7 @@ if __name__ == "__main__":
     covavg = args.take_covavg
     print(f"ds_name: {ds_name}, fold_id: {k}, abs: {abs}, covavg: {covavg}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
@@ -39,7 +39,7 @@ if __name__ == "__main__":
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
 
     tgt_pos = ViTExperiment.CLS_IDX
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     split_names = list(ds.keys()) # [train, repair, test]
     target_split_names = ["repair"]
@@ -51,9 +51,9 @@ if __name__ == "__main__":
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model.to(device).eval()
     model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])

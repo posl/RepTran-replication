@@ -158,7 +158,7 @@ def main(fl_method, n, w_num, rank):
             print(f"Location file: {location_path}")
             print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
             
-            # サンプルごとのロスの保存dir
+            # サンプルごとのロスのSavedir
             loss_diff_dir = os.path.join(location_dir, "loss_diff_per_sample")
             os.makedirs(loss_diff_dir, exist_ok=True)
             
@@ -170,7 +170,7 @@ def main(fl_method, n, w_num, rank):
                     op_coeff = int(op.split("multiply")[-1])
                 else:
                     op_coeff = op
-                # opかけたモデルのロス - original modelのロスの差を保存するパス
+                # opかけたモデルのロス - original modelのロスの差をSaveするパス
                 cor_loss_diff_path = get_loss_diff_path(n, w_num, fl_method, loss_diff_dir, op, "cor")
                 mis_loss_diff_path = get_loss_diff_path(n, w_num, fl_method, loss_diff_dir, op, "mis")
                 # モデルのコピーで初期状態から再構築
@@ -233,7 +233,7 @@ def main(fl_method, n, w_num, rank):
                     "std_loss_incorrect_mod": std_loss_incorr_mod,
                 }
                 
-                # ロスの差分を計算して保存
+                # ロスの差分を計算してSave
                 assert len(correct_loss) == len(correct_loss_mod), "Length mismatch between original and modified loss arrays"
                 assert len(incorrect_loss) == len(incorrect_loss_mod), "Length mismatch between original and modified loss arrays"
                 cor_loss_diff = correct_loss_mod - correct_loss

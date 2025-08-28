@@ -31,7 +31,7 @@ if __name__ == "__main__":
     # df1,2,3を縦に結合
     df = pd.concat([df1, df2, df3])
     print(f"df.shape: {df.shape}")
-    # df_run_allのdiff_proba_mean以外のユニークな値のリストを表示
+    # Display list of unique values other than diff_proba_mean in df_run_all
     for col in df.columns:
         if col not in ["diff_proba"]:
             print(f"{col}: {df[col].unique()}") 

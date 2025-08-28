@@ -5,7 +5,7 @@ from itertools import product
 import numpy as np
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -22,9 +22,9 @@ if __name__ == "__main__":
     fpfn = args.fpfn
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, mode: {mode}, fpfn: {fpfn}")
     
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先を先に作っておく
+    # Create save directories for results and logs in advance
     if mode == "repair":
         # overall repair
         if misclf_type == "all":
@@ -45,7 +45,7 @@ if __name__ == "__main__":
         alpha_list = [0.2, 0.4, 0.6, 0.8]
         tgt_split = ["repair", "test"]
         bounds_list = [None, "Arachne", "ContrRep"]
-        # 結果を保存するarr
+        # 結果をSaveするarr
         if misclf_type == "tgt":
             metrics_list = [f"{used_met}_tgt_old", f"{used_met}_tgt_new", f"delta_{used_met}_tgt", "repair_rate_tgt", "repair_rate_overall", "break_rate_overall", "delta_acc"]
         elif misclf_type == "src_tgt":
@@ -76,7 +76,7 @@ if __name__ == "__main__":
             retrain_misclf_row.append(retrain_metrics_dict["new_injected_faults"])
         result_arr[-1] = retrain_result_row
         misclf_cnt_arr[-1] = retrain_misclf_row
-        # result_arrをcsvで保存
+        # result_arrをcsvでSave
         result_path = os.path.join(save_dir, "repair_result.csv")
         misclf_cnt_path = os.path.join(save_dir, "misclf_cnt.csv")
         np.savetxt(result_path, result_arr, delimiter=",", fmt="%.6f")

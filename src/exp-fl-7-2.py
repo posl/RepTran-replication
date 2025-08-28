@@ -160,7 +160,7 @@ def main(fl_method, n, w_num, rank, beta):
             print("pos_before.shape:", np.array(pos_before).shape)
             print("pos_after.shape:", np.array(pos_after).shape)
 
-            # サンプルごとのロスの保存dir
+            # サンプルごとのロスのSavedir
             loss_diff_dir = os.path.join(location_dir, "loss_diff_per_sample")
             os.makedirs(loss_diff_dir, exist_ok=True)
             true_prob_diff_dir = os.path.join(location_dir, "true_prob_diff_per_sample")
@@ -173,7 +173,7 @@ def main(fl_method, n, w_num, rank, beta):
                     op_coeff = int(op.split("multiply")[-1])
                 else:
                     op_coeff = op
-                # opかけたモデルのロス - original modelのロスの差を保存するパス
+                # opかけたモデルのロス - original modelのロスの差をSaveするパス
                 cor_loss_diff_path = get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, "cor")
                 mis_loss_diff_path = get_loss_diff_path(n, w_num, beta, fl_method, loss_diff_dir, op, "mis")
                 true_conf_corr_diff_path = get_true_prob_diff_path(n, w_num, beta, fl_method, true_prob_diff_dir, op, "cor")
@@ -222,7 +222,7 @@ def main(fl_method, n, w_num, rank, beta):
                     "std_loss_incorrect_mod": std_loss_incorr_mod,
                 }
                 
-                # ロスの差分を計算して保存
+                # ロスの差分を計算してSave
                 assert len(correct_loss) == len(correct_loss_mod), "Length mismatch between original and modified loss arrays"
                 assert len(incorrect_loss) == len(incorrect_loss_mod), "Length mismatch between original and modified loss arrays"
                 cor_loss_diff = correct_loss_mod - correct_loss
@@ -232,7 +232,7 @@ def main(fl_method, n, w_num, rank, beta):
                 np.save(mis_loss_diff_path, mis_loss_diff)
                 print(f"Saved loss diff for {op} operation: {cor_loss_diff_path}, {mis_loss_diff_path}")
                 
-                # 正解への予測確率の差分を計算して保存
+                # 正解への予測確率の差分を計算してSave
                 assert len(true_conf_corr) == len(true_conf_corr_mod), "Length mismatch between original and modified confidence arrays"
                 assert len(true_conf_incorr) == len(true_conf_incorr_mod), "Length mismatch between original and modified confidence arrays"
                 true_conf_corr_diff = true_conf_corr_mod - true_conf_corr

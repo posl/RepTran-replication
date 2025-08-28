@@ -148,7 +148,7 @@ if __name__ == "__main__":
                     ax_dic[st].set_title(f"{title} – {st}", fontsize=14)
                     ax_dic[st].set_xlabel("") ; ax_dic[st].set_ylabel("tgt_rank")
 
-                    # -------- 集計を１行にまとめて保存 --------
+                    # -------- 集計を１行にまとめてSave --------
                     record = {
                         "beta"   : beta,
                         "pair"   : f"{method_a}–{method_b}",
@@ -199,7 +199,7 @@ if __name__ == "__main__":
         # ─────────── ここまで ───────────
 
         # =========================================================
-        # 5.  CSV 保存（必要なら）
+        # 5.  CSV Save（必要なら）
         # =========================================================
         wide.to_csv(f"exp-fl-4-6_n{n}.csv")
         print(f"Saved to exp-fl-4-6_n{n}.csv")

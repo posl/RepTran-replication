@@ -17,60 +17,60 @@ import torch.optim as optim
 
 NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS
 
-# デバイス (cuda, or cpu) の取得
+# Get device (cuda, or cpu)
 device = get_device()
 
 def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_loss=0.5, weight_fwd_imp=0.5):
     """
-    BI, FIを平滑化し、重み付き平均でスコアを計算して上位n件を取得。
+    Flatten BI, FI, calculate scores with weighted average, and get top n items.
     
     Args:
-        grad_loss_list (list): BI のリスト [W_bef の BI, W_aft の BI]
-        fwd_imp_list (list): FI のリスト [W_bef の FI, W_aft の FI]
-        n (int): 上位n件を取得する数, Noneの場合は全件
-        weight_grad_loss (float): grad_loss の重み (0~1の範囲)
-        weight_fwd_imp (float): fwd_imp の重み (0~1の範囲)
+        grad_loss_list (list): List of BI [BI of W_bef, BI of W_aft]
+        fwd_imp_list (list): List of FI [FI of W_bef, FI of W_aft]
+        n (int): Number to get top n items, all items if None
+        weight_grad_loss (float): Weight of grad_loss (range 0~1)
+        weight_fwd_imp (float): Weight of fwd_imp (range 0~1)
     
     Returns:
-        dict: 上位n件のインデックス {"bef": [...], "aft": [...]} とそのスコア
+        dict: Top n indices {"bef": [...], "aft": [...]} and their scores
     """
-    # BI, FIを一列に変換
+    # Convert BI, FI to single column
     flattened_grad_loss = torch.cat([x.flatten() for x in grad_loss_list])
     flattened_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list])
 
-    # befとaftの形状を取得
+    # Get shapes of bef and aft
     shape_bef = grad_loss_list[0].shape
     shape_aft = grad_loss_list[1].shape
 
-    # befとaftの境目インデックスを記録
+    # Record boundary index between bef and aft
     split_idx = grad_loss_list[0].numel()
     
-    # 正規化
+    # Normalization
     grad_loss_min, grad_loss_max = flattened_grad_loss.min(), flattened_grad_loss.max()
     fwd_imp_min, fwd_imp_max = flattened_fwd_imp.min(), flattened_fwd_imp.max()
 
     normalized_grad_loss = (flattened_grad_loss - grad_loss_min) / (grad_loss_max - grad_loss_min + 1e-8)
     normalized_fwd_imp = (flattened_fwd_imp - fwd_imp_min) / (fwd_imp_max - fwd_imp_min + 1e-8)
 
-    # 重み付きスコアを計算
+    # Calculate weighted scores
     weighted_scores = (
         weight_grad_loss * normalized_grad_loss +
         weight_fwd_imp * normalized_fwd_imp
     ).detach().cpu().numpy()
-    # nが指定されていない場合は全件
+    # If n is not specified, use all items
     if n is None:
         n = len(weighted_scores)
     
-    # スコアが高い順にソートしてランキングを計算
-    sorted_indices = np.argsort(weighted_scores)[-n:][::-1]  # 降順, i番目はweighted_scoresがi番目に大きいデータのインデックス
-    ranks = np.zeros_like(sorted_indices) # 1次元
-    ranks[sorted_indices] = np.arange(1, len(weighted_scores) + 1)  # 降順, i番目はweighted_scoresがi番目のデータの順位
+    # Sort by highest scores and calculate ranking
+    sorted_indices = np.argsort(weighted_scores)[-n:][::-1]  # Descending order, i-th element is index of data with i-th largest weighted_scores
+    ranks = np.zeros_like(sorted_indices) # 1-dimensional
+    ranks[sorted_indices] = np.arange(1, len(weighted_scores) + 1)  # Descending order, i-th element is rank of data with i-th weighted_scores
 
-    # befとaftに分類
+    # Classify into bef and aft
     bef_indices, bef_ranks = [], []
     aft_indices, aft_ranks = [], []
     
-    for idx, rank in enumerate(ranks): # NOTE: ここでのrankはcombined_diff[idx]のデータの順位
+    for idx, rank in enumerate(ranks): # NOTE: rank here is the rank of data at combined_diff[idx]
         if idx < split_idx:
             bef_indices.append(np.unravel_index(idx, shape_bef))
             bef_ranks.append(rank)
@@ -78,7 +78,7 @@ def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_
             adjusted_idx = idx - split_idx
             aft_indices.append(np.unravel_index(adjusted_idx, shape_aft))
             aft_ranks.append(rank)
-    # nparrayに変更
+    # Convert to nparray
     bef_indices = np.array(bef_indices)
     aft_indices = np.array(aft_indices)
     bef_ranks = np.array(bef_ranks)
@@ -86,16 +86,16 @@ def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_
     print(f"len(bef_indices): {len(bef_indices)}, len(aft_indices): {len(aft_indices)}")
     print(f"len(bef_ranks): {len(bef_ranks)}, len(aft_ranks): {len(aft_ranks)}")
     
-    # スコアのランキングの昇順（1位が一番大きいのでスコアの降順）にソート
-    sorted_bef = np.argsort(bef_ranks)  # ランク昇順
+    # Sort by ascending order of score ranking (1st place is largest, so descending order of scores)
+    sorted_bef = np.argsort(bef_ranks)  # Ascending rank order
     bef_indices = bef_indices[sorted_bef]
     bef_ranks = bef_ranks[sorted_bef]
 
-    sorted_aft = np.argsort(aft_ranks)  # ランク昇順
+    sorted_aft = np.argsort(aft_ranks)  # Ascending rank order
     aft_indices = aft_indices[sorted_aft]
     aft_ranks = aft_ranks[sorted_aft]
     
-    # 全体のランクが30位以内の全てを表示
+    # Display all items within top 30 overall ranks
     print("Top 30:")
     rank_mask_bef = bef_ranks <= 30
     rank_mask_aft = aft_ranks <= 30
@@ -107,7 +107,7 @@ def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_
     print(f"aft_ranks: {aft_ranks[rank_mask_aft]}")
     exit()
     
-    # 辞書形式で返す
+    # Return in dictionary format
     return {
         "bef": bef_indices,
         "aft": aft_indices,
@@ -118,28 +118,28 @@ def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=None, weight_grad_
 
 def calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list):
     """
-    BI, FIを平滑化してパレートフロントを計算
+    Flatten BI, FI and calculate Pareto front
     Args:
-        grad_loss_list (list): BI のリスト [W_bef の BI, W_aft の BI]
-        fwd_imp_list (list): FI のリスト [W_bef の FI, W_aft の FI]
+        grad_loss_list (list): List of BI [BI of W_bef, BI of W_aft]
+        fwd_imp_list (list): List of FI [FI of W_bef, FI of W_aft]
     Returns:
-        dict: パレートフロントのインデックス {"bef": [...], "aft": [...]}
+        dict: Pareto front indices {"bef": [...], "aft": [...]}
     """
-    # BI, FIを一列に変換
+    # Convert BI, FI to single column
     flattened_grad_loss = torch.cat([x.flatten() for x in grad_loss_list])
     flattened_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list])
     
-    # befとaftの形状を取得
+    # Get shapes of bef and aft
     shape_bef = grad_loss_list[0].shape
     shape_aft = grad_loss_list[1].shape
 
-    # befとaftの境目インデックスを記録
+    # Record boundary index between bef and aft
     split_idx = grad_loss_list[0].numel()
 
-    # パレートフロントを計算
+    # Calculate Pareto front
     pareto_indices = approximate_pareto_front(flattened_grad_loss, flattened_fwd_imp)
 
-    # befとaftに分類し、元の形状に戻す
+    # Classify into bef and aft and restore to original shape
     pareto_bef = np.array([
         np.unravel_index(idx, shape_bef) for idx in pareto_indices if idx < split_idx
     ])
@@ -152,21 +152,21 @@ def calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list):
 
 def approximate_pareto_front(flattened_bi_values, flattened_fi_values):
     """
-    平滑化されたデータからパレートフロントを計算
+    Calculate Pareto front from flattened data
     Args:
-        flattened_bi_values (torch.Tensor): フラット化された BI
-        flattened_fi_values (torch.Tensor): フラット化された FI
+        flattened_bi_values (torch.Tensor): Flattened BI
+        flattened_fi_values (torch.Tensor): Flattened FI
     Returns:
-        list: パレートフロントに含まれるインデックスリスト
+        list: List of indices included in Pareto front
     """
-    # BI, FIをnumpyに変換
+    # Convert BI, FI to numpy
     bi_values = flattened_bi_values.detach().cpu().numpy()
     fi_values = flattened_fi_values.detach().cpu().numpy()
 
-    # BI, FIを2次元の点として結合
+    # Combine BI, FI as 2D points
     points = np.stack([bi_values, fi_values], axis=1)
 
-    # パレートフロントを計算
+    # Calculate Pareto front
     pareto_mask = np.ones(points.shape[0], dtype=bool)
     for i, point in enumerate(points):
         if pareto_mask[i]:
@@ -181,46 +181,46 @@ def approximate_pareto_front(flattened_bi_values, flattened_fi_values):
 
 def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_last_layer, optimizer, tgt_pos):
     """
-    指定されたサンプル集合（正解または誤り）に対して BI と FI を計算し、before/after に分ける。
+    Calculate BI and FI for specified sample set (correct or incorrect) and separate into before/after.
     Args:
-        indices (list): サンプルのインデックス集合
-        batched_hidden_states (list): キャッシュされたバッチごとの hidden states
-        batched_labels (list): バッチごとの正解ラベル
-        vit_from_last_layer (ViTFromLastLayer): ViTモデルの最終層ラッパー
-        optimizer (torch.optim.Optimizer): PyTorchのオプティマイザ
-        tgt_pos (int): ターゲットポジション（通常CLSトークン）
+        indices (list): Set of sample indices
+        batched_hidden_states (list): Cached hidden states for each batch
+        batched_labels (list): True labels for each batch
+        vit_from_last_layer (ViTFromLastLayer): Final layer wrapper for ViT model
+        optimizer (torch.optim.Optimizer): PyTorch optimizer
+        tgt_pos (int): Target position (usually CLS token)
     Returns:
         defaultdict: {"before": {"bw": grad_bw, "fw": grad_fw}, "after": {"bw": grad_bw, "fw": grad_fw}}
     """
     # results = defaultdict(lambda: {"bw": [], "fw": []})
-    results = defaultdict(lambda: {"bw": None, "fw": None, "count": 0})  # 集計用
+    results = defaultdict(lambda: {"bw": None, "fw": None, "count": 0})  # For aggregation
 
 
     for cached_state, tls in tqdm(
         zip(batched_hidden_states, batched_labels),
         total=len(batched_hidden_states),
     ):
-        optimizer.zero_grad()  # サンプルごとに勾配を初期化
+        optimizer.zero_grad()  # Initialize gradients for each sample
 
         # Forward pass
         logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos)
         loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
-        loss = loss_fn(logits, torch.tensor(tls).to(device))  # バッチ内のサンプルに対するロスの平均
+        loss = loss_fn(logits, torch.tensor(tls).to(device))  # Average loss for samples in batch
         loss.backward(retain_graph=True)
 
-        # ForwardImpact計算用データ
+        # Data for ForwardImpact calculation
         cached_state_aft_ln = vit_from_last_layer.base_model_last_layer.layernorm_after(cached_state)
         cached_state_aft_mid = vit_from_last_layer.base_model_last_layer.intermediate(cached_state_aft_ln)
         cached_state_aft_ln = cached_state_aft_ln[:, tgt_pos, :]
         cached_state_aft_mid = cached_state_aft_mid[:, tgt_pos, :]
 
-        # BackwardImpact (BI) と ForwardImpact (FI) の計算
+        # Calculate BackwardImpact (BI) and ForwardImpact (FI)
         for cs, tgt_component, ba_layer in zip(
             [cached_state_aft_ln, cached_state_aft_mid],
             [vit_from_last_layer.base_model_last_layer.intermediate.dense, vit_from_last_layer.base_model_last_layer.output.dense],
             ["before", "after"],
         ):
-            # BI: ロスの勾配
+            # BI: Gradient of loss
             grad_bw = tgt_component.weight.grad.cpu()
             # print(f"{ba_layer} - grad_bw.shape: {grad_bw.shape}")  # shape: (out_dim, in_dim)
             if results[ba_layer]["bw"] is None:
@@ -228,29 +228,29 @@ def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_las
             else:
                 results[ba_layer]["bw"] += grad_bw.detach().cpu()
 
-            # FI: logits の勾配 × 正規化されたニューロンの重み
+            # FI: Gradient of logits × normalized neuron weights
             grad_out_weight = torch.autograd.grad(
                 logits, tgt_component.weight, grad_outputs=torch.ones_like(logits), retain_graph=True
             )[0]
             tgt_weight_expanded = tgt_component.weight.unsqueeze(0)
             oi_expanded = cs.unsqueeze(1)
             
-            # **までGPUで計算
+            # Calculate on GPU up to **
             impact_out_weight = tgt_weight_expanded * oi_expanded
             normalization_terms = impact_out_weight.sum(dim=2)
             normalized_impact_out_weight = impact_out_weight / (normalization_terms[:, :, None] + 1e-8)
             mean_normalized_impact_out_weight = normalized_impact_out_weight.mean(dim=0)
-            grad_fw = (mean_normalized_impact_out_weight * grad_out_weight).cpu() # ** ここでCPUに戻す
+            grad_fw = (mean_normalized_impact_out_weight * grad_out_weight).cpu() # ** Return to CPU here
             # print(f"{ba_layer} - grad_fw.shape: {grad_fw.shape}")  # shape: (out_dim, in_dim)
             if results[ba_layer]["fw"] is None:
                 results[ba_layer]["fw"] = grad_fw.detach().clone().cpu()
             else:
                 results[ba_layer]["fw"] += grad_fw.detach().cpu()
 
-            # カウントを更新
+            # Update count
             results[ba_layer]["count"] += 1
     
-    # バッチ全体の平均を計算
+    # Calculate average for entire batch
     for ba_layer in ["before", "after"]:
         if results[ba_layer]["count"] > 0:
             results[ba_layer]["bw"] = results[ba_layer]["bw"] / results[ba_layer]["count"]
@@ -261,16 +261,16 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     sample_from_correct = True
     ts = time.perf_counter()
     
-    # datasetごとに違う変数のセット
+    # Set of variables that differ for each dataset
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     tgt_pos = ViTExperiment.CLS_IDX
     
-    # datasetをロード (true_labelsが欲しいので)
+    # Load dataset (because we want true_labels)
     ds_dirname = f"{ds_name}_fold{k}"
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
@@ -278,23 +278,23 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     }
     true_labels = labels[tgt_split]
     
-    # exp-fl-5の結果保存用ディレクトリ
+    # Directory for saving exp-fl-5 results
     exp_dir = os.path.join("./exp-fl-5", f"{ds_name}_fold{k}")
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # location informationの保存先
+    # Save destination for location information
     model = ViTForImageClassification.from_pretrained(os.path.join(pretrained_dir, "checkpoint-1250")).to(device)
     model.eval()
     vit_from_last_layer = ViTFromLastLayer(model)
     vit_from_last_layer.eval()
     optimizer = optim.SGD(model.parameters(), lr=0.01)
     
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     misclf_info_dir = os.path.join(exp_dir, "misclf_info")
     _, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
     
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # Get correct/incorrect indices for each sample in repair set of original model
     pred_res_dir = os.path.join(exp_dir, "PredictionOutput")
     if misclf_type == "tgt":
         ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
@@ -302,33 +302,33 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
     print(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
     
-    # 正解データからrepairに使う一定数だけランダムに取り出す
+    # Randomly extract a certain number from correct data for repair
     if sample_from_correct:
-        # サンプルする場合
+        # When sampling
         sampled_indices_to_correct = sample_from_correct_samples(len(indices_to_incorrect), indices_to_correct)
     else:
-        # サンプルしない場合
+        # When not sampling
         sampled_indices_to_correct = indices_to_correct
-    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
-    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() は 非破壊的method
-    # tgt_indicesは全てユニークな値であることを保証
+    # Combine extracted correct data and all incorrect data into one dataset
+    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() is non-destructive method
+    # Ensure all tgt_indices are unique values
     assert len(tgt_indices) == len(set(tgt_indices)), f"len(tgt_indices): {len(tgt_indices)}, len(set(tgt_indices)): {len(set(tgt_indices))}"
     print(f"len(tgt_indices): {len(tgt_indices)})")
-    # tgt_indicesに対応するデータトラベルを取り出す
+    # Extract data labels corresponding to tgt_indices
     tgt_labels = labels[tgt_split][tgt_indices]
-    # FLに使う各サンプルの予測ラベルと正解ラベルを表示
+    # Display prediction labels and true labels for each sample used in FL
     print(f"ori_pred_labels[tgt_indices]: {ori_pred_labels[tgt_indices]} (len: {len(ori_pred_labels[tgt_indices])})")
     print(f"ori_tgt_labels[tgt_indices]: {tgt_labels} (len: {len(tgt_labels)})")
     
-    # キャッシュの保存用のディレクトリ
+    # Directory for saving cache
     cache_dir = os.path.join(exp_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
-    # cache_pathに存在することを確認
+    # Confirm existence in cache_path
     assert os.path.exists(cache_path), f"cache_path: {cache_path} does not exist."
-    # vit_utilsの関数を使ってバッチを取得
+    # Get batches using vit_utils functions
     batch_size = ViTExperiment.BATCH_SIZE
     
-    # 正解サンプル (I_pos) と誤りサンプル (I_neg) を分割
+    # Split into correct samples (I_pos) and incorrect samples (I_neg)
     correct_batched_hidden_states = get_batched_hs(cache_path, batch_size, sampled_indices_to_correct)
     correct_batched_labels = get_batched_labels(labels[tgt_split], batch_size, sampled_indices_to_correct)
     incorrect_batched_hidden_states = get_batched_hs(cache_path, batch_size, indices_to_incorrect)
@@ -337,13 +337,13 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     assert len(correct_batched_hidden_states) == len(correct_batched_labels), f"len(correct_batched_hidden_states): {len(correct_batched_hidden_states)}, len(correct_batched_labels): {len(correct_batched_labels)}"
     
     # =========================================
-    # BIとFIの計算
+    # Calculate BI and FI
     # =========================================
     
-    # 全体の grad_loss と fwd_imp を統合
-    grad_loss_list = [] # [Wbefに対するgrad_loss, Waftに対するgrad_loss]
-    fwd_imp_list = []  # [Wbefに対するfwd_imp, Waftに対するfwd_imp]
-    # 正解サンプルに対するBI, FI
+    # Integrate overall grad_loss and fwd_imp
+    grad_loss_list = [] # [grad_loss for Wbef, grad_loss for Waft]
+    fwd_imp_list = []  # [fwd_imp for Wbef, fwd_imp for Waft]
+    # BI, FI for correct samples
     print(f"Calculating BI and FI... (correct samples)")
     pos_results = calculate_bi_fi(
         sampled_indices_to_correct,
@@ -353,7 +353,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         optimizer,
         tgt_pos,
     )
-    # 誤りサンプルに対するBI, FI
+    # BI, FI for incorrect samples
     print(f"Calculating BI and FI... (incorrect samples)")
     neg_results = calculate_bi_fi(
         indices_to_incorrect,
@@ -363,7 +363,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         optimizer,
         tgt_pos,
     )
-    # "before" と "after" のそれぞれで計算
+    # Calculate for each of "before" and "after"
     for ba in ["before", "after"]:
         # Gradient Loss (Arachne Algorithm1 L6)
         grad_loss = neg_results[ba]["bw"] / (1 + pos_results[ba]["bw"])
@@ -375,11 +375,11 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         print(f"{ba} - fwd_imp.shape: {fwd_imp.shape}")  # shape: (out_dim, in_dim)
         fwd_imp_list.append(fwd_imp)
 
-        # "before" の out_dim を取得
+        # Get out_dim for "before"
         if ba == "before":
             out_dim_before = grad_loss.shape[0]  # out_dim_before = out_dim
 
-    # パレートフロントの計算
+    # Calculate Pareto front
     if strategy == "pareto":
         print(f"Calculating Pareto front for target weights...")
         identified_indices = calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list)
@@ -387,22 +387,22 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         print("Calculating top n for target weights...")
         wnum = 8 * n * n if n is not None else None
         identified_indices = calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n=wnum)
-        # nが指定されない場合も保存したい
+        # Also want to save when n is not specified
     print(f"len(identified_indices['bef']): {len(identified_indices['bef'])}, len(identified_indices['aft']): {len(identified_indices['aft'])}")
     
     location_filename = "exp-fl-5_location_nAll_weight_bl.npy" if n is None else f"exp-fl-5_location_n{n}_weight_bl.npy"
     rank_filename = "exp-fl-5_location_nAll_weight_bl_rank.npy" if n is None else f"exp-fl-5_location_n{n}_weight_bl_rank.npy"
-    # "before" と "after" に分けて格納
+    # Store separately as "before" and "after"
     pos_before = identified_indices["bef"]
     pos_after = identified_indices["aft"]
     rank_before = identified_indices["bef_ranks"]
     rank_after = identified_indices["aft_ranks"]
     
-    # 結果の出力
+    # Output results
     print(f"pos_before: {pos_before}")
     print(f"pos_after: {pos_after}")
     
-    # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報を保存する
+    # Finally, save position information of weights for each intermediate neuron to location_save_path
     if fpfn is not None and misclf_type == "tgt":
         location_save_dir = os.path.join(exp_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     elif misclf_type == "all":
@@ -418,7 +418,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     print(f"saved location information to {location_save_path}")
     np.save(rank_save_path, (rank_before, rank_after))
     print(f"saved rank information to {rank_save_path}")
-    # 終了時刻
+    # End time
     te = time.perf_counter()
     elapsed_time = te - ts
     return elapsed_time
@@ -433,12 +433,12 @@ if __name__ == "__main__":
     n_list = [None]
     for k, tgt_rank, misclf_type, fpfn, n in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, n_list):
         print(f"Start: ds={ds}, k={k}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}")
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # When misclf_type == "src_tgt" or "all", fpfn should only be None
             continue
-        if misclf_type == "all" and tgt_rank != 1: # misclf_type == "all"の時にtgt_rankは関係ないのでこのループもスキップすべき
+        if misclf_type == "all" and tgt_rank != 1: # When misclf_type == "all", tgt_rank is irrelevant, so this loop should also be skipped
             continue
         elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-5-5_time.csv", index=False)

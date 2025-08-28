@@ -54,7 +54,7 @@ def draw_weight_change(w_dict, save_dir, setting_id, all_weight=False):
         logger.info(f"[layer: {layer}, model: {model}] mean={np.mean(wvals):.4f}, std={np.std(wvals):.4f}, max={np.max(wvals):.4f}, min={np.min(wvals):.4f}")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -83,16 +83,16 @@ if __name__ == "__main__":
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
         NotImplementedError, "randomly weights selection is not implemented yet."
-    # 設定のjsonファイルが指定された場合
+    # If a settings JSON file is specified
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
         setting_dic = json2dict(setting_path)
-        # setting_idは setting_{setting_id}.json というファイル名になる
+        # setting_id becomes the filename in the format setting_{setting_id}.json
         setting_id = os.path.basename(setting_path).split(".")[0].split("_")[-1]
-    # 設定のjsonファイルが指定されない場合はnとalphaだけカスタムorデフォルトの設定を使う
+    # If no settings JSON file is specified, use custom or default settings for n and alpha only
     else:
         setting_dic = DEFAULT_SETTINGS
-        # custom_n, custom_alpha, custom_boundsが1つでも指定されている場合はいったん空文字にする
+        # If any of custom_n, custom_alpha, custom_bounds are specified, temporarily set to empty string
         setting_id = "default" if (custom_n is None) and (custom_alpha is None) and (custom_bounds is None) else ""
         is_first = True
         if custom_n is not None:
@@ -107,10 +107,10 @@ if __name__ == "__main__":
             setting_dic["bounds"] = custom_bounds
             setting_id += f"bounds{custom_bounds}" if is_first else f"_bounds{custom_bounds}"
             is_first = False
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     retrained_dir = os.path.join(pretrained_dir, "retraining_with_repair_set")
-    # 結果とかログの保存先を先に作っておく
+    # Create save directories for results and logs in advance
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
     elif misclf_type == "all":
@@ -126,15 +126,15 @@ if __name__ == "__main__":
     else:
         NotImplementedError
     os.makedirs(save_dir, exist_ok=True)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_{setting_id}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, setting_path: {setting_path}")
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -145,19 +145,19 @@ if __name__ == "__main__":
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     end_li = model.vit.config.num_hidden_layers
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     patch = np.load(patch_save_path)
     fitness_tracker = pickle.load(open(tracker_save_path, "rb"))
 
-    # 最終層だけのモデルを準備
+    # Prepare model with only the final layer
     vit_from_last_layer = ViTFromLastLayer(model)
     vit_from_last_layer.eval()
 
@@ -231,7 +231,7 @@ if __name__ == "__main__":
         "repaired": new_w_dict,
         "retrained": retrained_w_dict
     }
-    # 修正履歴の重みの値のviolin plotを保存
+    # 修正履歴の重みの値のviolin plotをSave
     draw_weight_change(w_dict, save_dir, setting_id, all_weight=False)
     # 限局した重みだけじゃなくて全重みに対しても描画
     ori_w_dict = {

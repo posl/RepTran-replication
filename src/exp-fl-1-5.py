@@ -29,7 +29,7 @@ if __name__ == "__main__":
     save_path = f"./exp-fl-1_{ds}_proba_diff.csv"
     df = pd.read_csv(save_path)
     print(f"df.shape: {df.shape}")
-    # df_run_allのdiff_proba_mean以外のユニークな値のリストを表示
+    # Display list of unique values other than diff_proba_mean in df_run_all
     for col in df.columns:
         if col not in ["diff_proba"]:
             print(f"{col}: {df[col].unique()}")
@@ -47,7 +47,7 @@ if __name__ == "__main__":
     grouped_df["mean_diff_proba"] = grouped_df["mean_diff_proba"] * 100
     print(f"grouped_df.shape: {grouped_df.shape}")
     
-    # 検定結果を保存するリスト
+    # List to save test results
     results = []
     # fl_methodのリスト
     fl_method_list = grouped_df["fl_method"].unique()
@@ -104,9 +104,9 @@ if __name__ == "__main__":
             # 検定結果を表示
             print(f"{fl_target}, {op}: {method_a} vs {method_b} -> t_stat: {stat}, p_value: {p_value}")
 
-    # 検定結果を DataFrame に変換して保存
+    # Convert test results to DataFrame and save
     results_df = pd.DataFrame(results)
-    # p_valueの調整
+    # Adjust p_value
     results_df["p_value_corrected"] = multipletests(results_df["p_value"], method="fdr_bh")[1]
     # 棄却されたかどうかのフラグ
     results_df["reject_null"] = multipletests(results_df["p_value"], method="fdr_bh")[0]

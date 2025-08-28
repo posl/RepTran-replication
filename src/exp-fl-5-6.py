@@ -16,7 +16,7 @@ import torch.optim as optim
 
 NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS
 
-# デバイス (cuda, or cpu) の取得
+# Get device (cuda, or cpu)
 device = get_device()
 
 def calculate_vdfif_mean_act_grad_loss(batched_hidden_states, batched_labels, vit_from_last_layer, optimizer, tgt_pos):
@@ -25,28 +25,28 @@ def calculate_vdfif_mean_act_grad_loss(batched_hidden_states, batched_labels, vi
         zip(batched_hidden_states, batched_labels),
         total=len(batched_hidden_states),
     ):
-        optimizer.zero_grad()  # サンプルごとに勾配を初期化
+        optimizer.zero_grad()  # Initialize gradients for each sample
 
         # Forward pass
         logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos)
         loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
-        loss = loss_fn(logits, torch.tensor(tls).to(device))  # バッチ内のサンプルに対するロスの平均
+        loss = loss_fn(logits, torch.tensor(tls).to(device))  # Average loss for samples in batch
         loss.backward(retain_graph=True)
 
 def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, strategy="weighted"):
     sample_from_correct = True
     ts = time.perf_counter()
     
-    # datasetごとに違う変数のセット
+    # Set of variables that differ for each dataset
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     tgt_pos = ViTExperiment.CLS_IDX
     
-    # datasetをロード (true_labelsが欲しいので)
+    # Load dataset (because we want true_labels)
     ds_dirname = f"{ds_name}_fold{k}"
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
@@ -54,10 +54,10 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     }
     true_labels = labels[tgt_split]
     
-    # exp-fl-5の結果保存用ディレクトリ
+    # Directory for saving exp-fl-5 results
     exp_dir = os.path.join("./exp-fl-5", f"{ds_name}_fold{k}")
     
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     misclf_info_dir = os.path.join(exp_dir, "misclf_info")
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
@@ -66,7 +66,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     elif misclf_type == "tgt":
         tlabel = tgt_label
     
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # Get correct/incorrect indices for each sample in repair set of original model
     pred_res_dir = os.path.join(exp_dir, "PredictionOutput")
     if misclf_type == "tgt":
         ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
@@ -74,18 +74,18 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
     print(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
-    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
-    tgt_indices = indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() は 非破壊的method
-    # tgt_indicesは全てユニークな値であることを保証
+    # Combine extracted correct data and all incorrect data into one dataset
+    tgt_indices = indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() is a non-destructive method
+    # Ensure all tgt_indices are unique values
     assert len(tgt_indices) == len(set(tgt_indices)), f"len(tgt_indices): {len(tgt_indices)}, len(set(tgt_indices)): {len(set(tgt_indices))}"
     print(f"len(tgt_indices): {len(tgt_indices)})")
-    # tgt_indicesに対応するデータトラベルを取り出す
+    # Extract data labels corresponding to tgt_indices
     tgt_labels = labels[tgt_split][tgt_indices]
     # FLに使う各サンプルの予測ラベルと正解ラベルを表示
     print(f"ori_pred_labels[tgt_indices]: {ori_pred_labels[tgt_indices]} (len: {len(ori_pred_labels[tgt_indices])})")
     print(f"ori_tgt_labels[tgt_indices]: {tgt_labels} (len: {len(tgt_labels)})")
     
-    # キャッシュの保存用のディレクトリ
+    # キャッシュのSave用のディレクトリ
     # hs_bef_norm_dir
     hs_bef_norm_dir = os.path.join(exp_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     hs_bef_norm_path = os.path.join(hs_bef_norm_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
@@ -98,7 +98,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     # vit_utilsの関数を使ってバッチを取得
     batch_size = ViTExperiment.BATCH_SIZE
     
-    # Vscore保存用ディレクトリ
+    # VscoreSave用ディレクトリ
     if misclf_type == "all":
         vscore_dir = os.path.join(exp_dir, "vscores")
     else:
@@ -107,9 +107,9 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     # mid_pathをロードしてvscoreを取得
     intermediate_states = np.load(mid_path)
     
-    # 成功時と失敗時のvscoreを分けて保存
+    # 成功時と失敗時のvscoreを分けてSave
     for cor_mis, indices in zip(["cor", "mis"], [indices_to_correct, indices_to_incorrect]):
-        # Vscoreの保存ファイル名
+        # VscoreのSaveファイル名
         ds_type = f"ori_{tgt_split}" if fpfn is None else f"ori_{tgt_split}_{fpfn}"
         if misclf_type == "src_tgt":
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{tgt_layer+1}_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
@@ -123,7 +123,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         # Vscoreの計算
         tgt_vscore = get_vscore(tgt_mid_states)
         np.save(vscore_save_path, tgt_vscore)
-        # misclf_type == "all" かつ "cor_mis" == "cor" の時は追加で各topnのディレクトリにも保存したい
+        # misclf_type == "all" かつ "cor_mis" == "cor" の時は追加で各topnのディレクトリにもSaveしたい
         if misclf_type == "all" and cor_mis == "cor":
             for tr in range(1, 6):
                 additional_vscore_save_dir = os.path.join(exp_dir, f"misclf_top{tr}", "vscores")
@@ -138,7 +138,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     
     w_num = None if n is None else 8*n*n
     
-    # ニューロン位置情報を保存
+    # ニューロン位置情報をSave
     if fpfn is not None and misclf_type == "tgt":
         location_save_dir = os.path.join(exp_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     elif misclf_type == "all":
@@ -172,7 +172,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     vit_from_last_layer.eval()
     optimizer = optim.SGD(model.parameters(), lr=0.01)
     
-    # 結果の保存用
+    # 結果のSave用
     results = defaultdict(lambda: torch.tensor([])) # key: bef or aft, value: mean of grad_loss of the weights (shape: (out_dim, in_dim))
     
     # 誤分類サンプル集合に対してWbef, Waftの重みのロスに対する勾配を取得
@@ -180,12 +180,12 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         zip(incorrect_batched_hidden_states, incorrect_batched_labels),
         total=len(incorrect_batched_hidden_states),
     ):
-        optimizer.zero_grad()  # サンプルごとに勾配を初期化
+        optimizer.zero_grad()  # Initialize gradients for each sample
 
         # Forward pass
         logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos)
         loss_fn = torch.nn.CrossEntropyLoss(reduction="mean")
-        loss = loss_fn(logits, torch.tensor(tls).to(device))  # バッチ内のサンプルに対するロスの平均
+        loss = loss_fn(logits, torch.tensor(tls).to(device))  # Average loss for samples in batch
         loss.backward(retain_graph=True)
         
         for tgt_component, ba_layer in zip(
@@ -275,7 +275,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     aft_indices = aft_indices[sorted_aft]
     aft_ranks = aft_ranks[sorted_aft]
 
-    # 位置情報を保存
+    # 位置情報をSave
     location_file_name = f"exp-fl-5_location_nAll_wAll_weight.npy" if n is None else f"exp-fl-5_location_n{n}_w{w_num}_weight.npy"
     location_save_path = os.path.join(location_save_dir, location_file_name)
     np.save(location_save_path, (bef_indices, aft_indices))
@@ -306,6 +306,6 @@ if __name__ == "__main__":
             continue
         elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n)
         results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-5-6_time.csv", index=False)

@@ -15,7 +15,7 @@ logger = getLogger("base_logger")
 
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -28,12 +28,12 @@ if __name__ == "__main__":
     tgt_split = args.tgt_split
     do_not_cache = args.no_cache # default: False
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -44,9 +44,9 @@ if __name__ == "__main__":
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     # ラベルの取得
     labels = {
@@ -54,7 +54,7 @@ if __name__ == "__main__":
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
     # 1エポック目のモデルロード
     model = ViTForImageClassification.from_pretrained(os.path.join(pretrained_dir, "checkpoint-1250"))
@@ -69,7 +69,7 @@ if __name__ == "__main__":
     print(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
 
-    # キャッシュの保存用のディレクトリ
+    # キャッシュのSave用のディレクトリ
     exp_dir = f"/src/src/exp-fl-5/{ds_name}_fold{k}"
     # hs_bef_norm_dir
     hs_bef_norm_dir = os.path.join(exp_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
@@ -110,11 +110,11 @@ if __name__ == "__main__":
         te_without_cache = time.perf_counter() # 終了時刻
         t_without_cache = te_without_cache - ts_without_cache
 
-        # all_hidden_states_before_layernormはキャッシュとして保存
+        # all_hidden_states_before_layernormはキャッシュとしてSave
         np.save(hs_bef_norm_path, all_hidden_states_before_layernorm)
         logger.info(f"all_hidden_states_before_layernorm {all_hidden_states_before_layernorm.shape} has been saved at hs_bef_norm_path: {hs_bef_norm_path}")
 
-        # all_intermediate_statesも保存
+        # all_intermediate_statesもSave
         np.save(mid_path, all_intermediate_states)
         logger.info(f"all_intermediate_states {all_intermediate_states.shape} has been saved at mid_path: {mid_path}")
         

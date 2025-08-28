@@ -14,7 +14,7 @@ from utils.constant import ViTExperiment, Experiment, ExperimentRepair1, Experim
 from utils.log import set_exp_logging
 from logging import getLogger
 
-# デバイス (cuda, or cpu) の取得
+# Get device (cuda or cpu)
 device = get_device()
 
 logger = getLogger("base_logger")
@@ -215,7 +215,7 @@ def calculate_bi_fi(indices, batched_hidden_states, batched_labels, vit_from_las
 def main(n, strategy="weighted"):
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -227,7 +227,7 @@ def main(n, strategy="weighted"):
         key: np.array(ds[key][label_col]) for key in ds.keys()
     }
     ds_preprocessed = ds.with_transform(transforms_c100)
-    # クリーンデータ (C100) のロード
+    # Load clean data (C100)
     ori_ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, "c100_fold0"))
     ori_labels = {
         "train": np.array(ori_ds["train"][label_col]),
@@ -235,7 +235,7 @@ def main(n, strategy="weighted"):
         "test": np.array(ori_ds["test"][label_col])
     }
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     vit_from_last_layer = ViTFromLastLayer(model)
@@ -246,7 +246,7 @@ def main(n, strategy="weighted"):
     tgt_pos = ViTExperiment.CLS_IDX
     batch_size = ViTExperiment.BATCH_SIZE
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     
     # ノイズタイプごとの誤ったサンプルのインデックスを取得
@@ -339,11 +339,11 @@ def main(n, strategy="weighted"):
         print(f"pos_before: {pos_before}")
         print(f"pos_after: {pos_after}")
         
-        # 結果保存用のディレクトリ
+        # 結果Save用のディレクトリ
         save_dir = os.path.join(pretrained_dir, f"corruptions_top{rank+1}", f"weights_location")
         os.makedirs(save_dir, exist_ok=True)
 
-        # 位置情報を保存
+        # 位置情報をSave
         location_save_path = os.path.join(save_dir, f"exp-c100c-fl-2_location_n{n}_weight_bl.npy")
         np.save(location_save_path, (pos_before, pos_after))
         print(f"saved location information to {location_save_path}")
@@ -366,6 +366,6 @@ if __name__ == "__main__":
             ret["n"] = n
         results.extend(ret_list)
         print(results)
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-c100c-fl-2_time.csv", index=False)

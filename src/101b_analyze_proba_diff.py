@@ -26,7 +26,7 @@ def main(
 ):
     # print(f"Dataset: {ds_name}, k: {k}, tgt_rank: {tgt_rank}, n: {n}, misclf_type: {misclf_type}, fpfn: {fpfn}")
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # FL情報の保存場所
+    # FL情報のSave場所
     save_dir = os.path.join(
         pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location"
     )
@@ -165,7 +165,7 @@ if __name__ == "__main__":
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
 
-        # 全ての結果を格納するDataFrame
+        # DataFrame to store all results
         all_results = pd.DataFrame()
 
         for k, tgt_rank, n, misclf_type, fpfn in tqdm(
@@ -183,7 +183,7 @@ if __name__ == "__main__":
                 ds, k, tgt_rank, n, misclf_type, fpfn, run_all=run_all, agg=agg
             )
             all_results = pd.concat([all_results, result_df], ignore_index=True)
-        # all_resultsを保存
+        # Save all_results
         save_path = f"./{ds}_proba_diff_{agg}_run_all.csv" if agg is not None else f"./{ds}_proba_diff_run_all.csv"
         all_results.to_csv(save_path, index=False)
     elif run_asc_desc:
@@ -198,7 +198,7 @@ if __name__ == "__main__":
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
 
-        # 全ての結果を格納するDataFrame
+        # DataFrame to store all results
         all_results = pd.DataFrame()
 
         for k, tgt_rank, n, misclf_type, fpfn in tqdm(
@@ -224,7 +224,7 @@ if __name__ == "__main__":
                 agg=agg,
             )
             all_results = pd.concat([all_results, result_df], ignore_index=True)
-        # all_resultsを保存
+        # Save all_results
         save_path = f"./{ds}_proba_diff_{agg}_run_all.csv" if agg is not None else f"./{ds}_proba_diff_run_all.csv"
         all_results.to_csv(save_path, index=False)
     else:

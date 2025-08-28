@@ -15,11 +15,11 @@ logger = getLogger("base_logger")
 
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
-    # cache処理をするかどうかのフラグ
+    # Flag for whether to perform caching
     parser.add_argument('--no_cache', action='store_true', help="whether to cache hidden states before layernorm or not")
     parser.add_argument("--tgt_split", type=str, default="repair", help="the target split for the cache")
     args = parser.parse_args()
@@ -28,19 +28,19 @@ if __name__ == "__main__":
     tgt_split = args.tgt_split
     do_not_cache = args.no_cache # default: False
 
-    # datasetの読み込み
+    # Load dataset
     dataset_dir = ViTExperiment.DATASET_DIR
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
     ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
     eval_div = "test"
     
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}")
     
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -53,18 +53,18 @@ if __name__ == "__main__":
     else:
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     
-    # ラベルの取得
+    # Get labels
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model.to(device).eval()
     model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
@@ -77,15 +77,15 @@ if __name__ == "__main__":
     print(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
 
-    # キャッシュの保存用のディレクトリ
+    # Directory for saving cache
     cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     os.makedirs(cache_dir, exist_ok=True)
     cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     
-    # cache_pathのファイルが存在するかチェック
+    # Check if cache file exists
     if not do_not_cache:
         logger.info(f"starting the caching process.")
-        # tgt_splitのサンプルを入力してlayernormの前の隠れ状態を取得
+        # Feed samples of tgt_split and obtain hidden states before layernorm
         all_logits = []
         all_hidden_states_before_layernorm = []
         ts_without_cache = time.perf_counter()
@@ -105,7 +105,7 @@ if __name__ == "__main__":
         te_without_cache = time.perf_counter()
         t_without_cache = te_without_cache - ts_without_cache
 
-        # all_hidden_states_before_layernormはキャッシュとして保存
+        # Save all_hidden_states_before_layernorm as cache
         np.save(cache_path, all_hidden_states_before_layernorm)
         logger.info(f"all_hidden_states_before_layernorm {all_hidden_states_before_layernorm.shape} has been saved at cache_path: {cache_path}")
 
@@ -113,11 +113,11 @@ if __name__ == "__main__":
     assert os.path.exists(cache_path), f"cache_path: {cache_path} does not exist."
     # Check the cached hidden states and ViTFromLastLayer
     cached_hidden_states = np.load(cache_path)
-    # ViTFromLastLayerのテスト
+    # Test ViTFromLastLayer
     vit_from_last_layer = ViTFromLastLayer(model)
     hidden_states_before_layernorm = torch.from_numpy(cached_hidden_states).to(device)
-    # hidden_states_before_layernormを32個ずつにバッチ化
-    num_batches = (hidden_states_before_layernorm.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
+    # Split hidden_states_before_layernorm into batches of 32
+    num_batches = (hidden_states_before_layernorm.shape[0] + batch_size - 1) // batch_size  # calculate number of batches (round up to include incomplete final batch)
     batched_hidden_states_before_layernorm = np.array_split(hidden_states_before_layernorm, num_batches)
 
     all_logits = []
@@ -131,7 +131,7 @@ if __name__ == "__main__":
     is_correct = np.equal(all_pred_labels, tgt_labels)
     print(f"{sum(is_correct)} / {len(is_correct)}")
     logger.info(f"{sum(is_correct)} / {len(is_correct)}")
-    if not do_not_cache: # cacheした場合は時間の比較を出す
+    if not do_not_cache: # if cached, compare execution time
         te_with_cache = time.perf_counter()
         t_with_cache = te_with_cache - ts_with_cahce
         speedup_rate = t_without_cache / t_with_cache * 100

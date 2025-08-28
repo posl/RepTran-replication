@@ -120,14 +120,14 @@ if __name__ == "__main__":
         sys.exit(1)
     hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
 
-    # 全repair setの hidden states
+    # Hidden states of entire repair set
     batch_size = ViTExperiment.BATCH_SIZE
     ori_tgt_labels = all_labels
     assert len(ori_tgt_labels) == len(hs_before_layernorm), "Mismatch between labels and hidden states"
     batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device, hs=hs_before_layernorm)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
     
-    # (A) 修正前: repair set 全体
+    # (A) Before modification: entire repair set
     pred_labels_old, true_labels_old = get_new_model_predictions(
         vit_from_last_layer,
         batch_hs_before_layernorm,
@@ -138,12 +138,12 @@ if __name__ == "__main__":
     print("====== Before Patch (repair set ALL) ======")
     log_info_preds(pred_labels_old, true_labels_old, is_correct_old)
     
-    # repair対象データインデックス (2-1で保存)
+    # repair対象データインデックス (2-1でSave)
     misclf_info_dir = root / "misclf_info"
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(
         misclf_info_dir=misclf_info_dir, tgt_split=args.tgt_split, tgt_rank=args.tgt_rank, misclf_type=args.misclf_type, fpfn=args.fpfn
     )
-    # repair set の誤分類ペアを識別
+    # Identify misclassification pairs in repair set
     if args.tgt_split == "repair":
         if not os.path.exists(tgt_idx_file):
             print(f"[ERROR] {tgt_idx_file} not found.")
@@ -277,7 +277,7 @@ if __name__ == "__main__":
         "break_cnt_tgt":         break_cnt_sub,
     })
 
-        # 更新したmetricsを保存
+        # 更新したmetricsをSave
     with open(metrics_json_path, "w") as f:
         json.dump(metrics_dict, f, indent=4)
     print(f"[INFO] metrics saved => {metrics_json_path}")

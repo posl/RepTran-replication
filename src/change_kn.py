@@ -40,12 +40,12 @@ if __name__ == "__main__":
     batch_size = 32
     tgt_pos = ViTExperiment.CLS_IDX # tgt_posはCLS_IDXで固定 (intermediate_statesの2次元目の0番目の要素に対応する中間層ニューロン)
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_name))
     
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10" or ds_name == "c10c":
         tf_func = transforms
         label_col = "label"
@@ -61,11 +61,11 @@ if __name__ == "__main__":
 
         # 指定したラベルだけ集めたデータセット
         tgt_dataset = ds[used_column].filter(lambda x: x[label_col] == tgt_label)
-        # 読み込まれた時にリアルタイムで前処理を適用するようにする
+        # Apply preprocessing in real-time when loaded
         ds_preprocessed = tgt_dataset.with_transform(tf_func)
-        # ラベルを示す文字列のlist
+        # List of strings representing labels
         labels = ds_preprocessed.features[label_col].names
-        # pretrained modelのロード
+        # Load pretrained model
         pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
         model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
         model.eval()
@@ -101,7 +101,7 @@ if __name__ == "__main__":
                 proba = torch.nn.functional.softmax(outputs.logits, dim=-1)
                 all_proba.append(proba.detach().cpu().numpy())
             all_proba = np.concatenate(all_proba, axis=0)
-            # 結果をnpyで保存
+            # 結果をnpyでSave
             save_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "pred_results")
             save_path = os.path.join(save_dir, f"{used_column}_proba_{tgt_method}_l{start_layer_idx}tol12_{op}_{tgt_label}.npy")
             np.save(save_path, all_proba)

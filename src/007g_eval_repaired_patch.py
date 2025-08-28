@@ -79,7 +79,7 @@ def log_info_preds(pred_labels, true_labels, is_correct):
     logger.info(f"correct rate: {sum(is_correct) / len(is_correct):.4f}")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -104,13 +104,13 @@ if __name__ == "__main__":
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
         NotImplementedError, "randomly weights selection is not implemented yet."
-    # 設定のjsonファイルが指定された場合
+    # If a settings JSON file is specified
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
         setting_dic = json2dict(setting_path)
-        # setting_idは setting_{setting_id}.json というファイル名になる
+        # setting_id becomes the filename in the format setting_{setting_id}.json
         setting_id = os.path.basename(setting_path).split(".")[0].split("_")[-1]
-    # 設定のjsonファイルが指定されない場合はnとalphaだけカスタムorデフォルトの設定を使う
+    # If no settings JSON file is specified, use custom or default settings for n and alpha only
     else:
         setting_dic = DEFAULT_SETTINGS
         setting_id = "default"
@@ -120,9 +120,9 @@ if __name__ == "__main__":
         if custom_alpha is not None:
             setting_dic["alpha"] = custom_alpha
             setting_id = f"alpha{custom_alpha}" if custom_n is None else f"n{custom_n}_alpha{custom_alpha}"
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先を先に作っておく
+    # Create save directories for results and logs in advance
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
     if misclf_type == "all":
         save_dir = os.path.join(pretrained_dir, f"all_repair_weight_by_de")
@@ -135,15 +135,15 @@ if __name__ == "__main__":
     else:
         NotImplementedError
     os.makedirs(save_dir, exist_ok=True)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_{setting_id}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, setting_path: {setting_path}")
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -154,19 +154,19 @@ if __name__ == "__main__":
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     end_li = model.vit.config.num_hidden_layers
@@ -188,7 +188,7 @@ if __name__ == "__main__":
     patch = np.load(patch_save_path)
     fitness_tracker = pickle.load(open(tracker_save_path, "rb"))
 
-    # 最終層だけのモデルを準備
+    # Prepare model with only the final layer
     vit_from_last_layer = ViTFromLastLayer(model)
     vit_from_last_layer.eval()
 
@@ -199,19 +199,19 @@ if __name__ == "__main__":
     wi_old = wi_old.cpu().numpy().copy() # (4d, d)
     wo_old = wo_old.cpu().numpy().copy() # (d, 4d)
 
-    # repair setに対するhidden_states_before_layernormを取得
+    # Get hidden_states_before_layernorm for repair set
     tgt_indices = np.load(os.path.join(save_dir, f"tgt_indices_{setting_id}.npy"))
     hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     hs_save_path = os.path.join(hs_save_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     assert os.path.exists(hs_save_path), f"{hs_save_path} does not exist."
     batch_hs_before_layernorm_tgt = get_batched_hs(hs_save_path, batch_size, tgt_indices, device=device)
     batch_labels_tgt = get_batched_labels(ori_tgt_labels, batch_size, tgt_indices)
-    # repair set全体 (tgt_indicesを指定しない) のbatchも作成
+    # Also create batch for entire repair set (without specifying tgt_indices)
     batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
 
     logger.info("Predictions before the repair")
-    # 修正前モデルでの予測 (repair set全体)
+    # 修正前モデルでの予測 (entire repair set)
     pred_labels_old, true_labels_old = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=0)
     is_correct_old = pred_labels_old == true_labels_old
     logger.info("Model: old, Target: all")
@@ -227,7 +227,7 @@ if __name__ == "__main__":
     set_new_weights(patch=patch, model=vit_from_last_layer, pos_before=pos_before, pos_after=pos_after, device=device)
 
     logger.info("Predictions after the repair")
-    # 修正後モデルでの予測 (repair set全体)
+    # 修正後モデルでの予測 (entire repair set)
     pred_labels_new, true_labels_new = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=0)
     is_correct_new = pred_labels_new == true_labels_new
     logger.info("Model: new, Target: all")
@@ -265,8 +265,8 @@ if __name__ == "__main__":
     repair_cnt_tgt = int(repair_cnt_tgt)
     break_cnt_tgt = int(break_cnt_tgt)
 
-    # 上記のメトリクスをjsonで保存
-    # 007eの段階でtot_timeだけはjsonに保存されている前提
+    # 上記のメトリクスをjsonでSave
+    # 007eの段階でtot_timeだけはjsonにSaveされている前提
     if fl_method == "vdiff":
         metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")
     elif fl_method == "random":
@@ -295,7 +295,7 @@ if __name__ == "__main__":
         logger.info(f"misclf_pair: {misclf_pair}, tgt_label: {tgt_label}")
         # misclf_typeがsrc_tgtの場合は，slabel, tlabelを取得してその間違えかたをしたindexを取得
         slabel, tlabel = misclf_pair
-        tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxを保存するためのもの
+        tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxをSaveするためのもの
         for idx, (pl, tl) in enumerate(zip(pred_labels_old, true_labels_old)):
             if pl == slabel and tl == tlabel:
                 tgt_mis_indices.append(idx)
@@ -315,7 +315,7 @@ if __name__ == "__main__":
         metrics_dic["new_injected_faults"] = new_injected_faults
         
     logger.info(f"metrics_dic:\n{metrics_dic}")
-    # metricsを保存
+    # metricsをSave
     with open(metrics_dir, "w") as f:
         json.dump(metrics_dic, f, indent=4)
     logger.info(f"metrics are saved in {metrics_dir}")
@@ -331,6 +331,6 @@ if __name__ == "__main__":
     wo_old_tgt = wo_old[pos_after[:, 0], pos_after[:, 1]]
     wi_new_tgt = wi_new[pos_before[:, 0], pos_before[:, 1]]
     wo_new_tgt = wo_new[pos_after[:, 0], pos_after[:, 1]]
-    # 修正履歴の重みの値のviolin plotを保存
+    # 修正履歴の重みの値のviolin plotをSave
     draw_weight_change(wi_old_tgt, wo_old_tgt, wi_new_tgt, wo_new_tgt, save_dir, setting_id)
     

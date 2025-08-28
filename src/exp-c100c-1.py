@@ -53,7 +53,7 @@ if __name__ == "__main__":
         pred = trainer.predict(ds_preprocessed[key])
         pred_out_save_path = os.path.join(model_dir, "pred_results", "PredictionOutput", f"{key}_pred.pkl")
         os.makedirs(os.path.dirname(pred_out_save_path), exist_ok=True)
-        # 予測結果を格納するPredictioOutputオブジェクトをpickleで保存
+        # Save PredictionOutput object containing prediction results with pickle
         with open(pred_out_save_path, "wb") as f:
             pickle.dump(pred, f)
         print(f"Saved prediction output to: {pred_out_save_path}")
@@ -73,7 +73,7 @@ if __name__ == "__main__":
         wrong_indices = np.where(preds != labels)[0].tolist()
         error_index_dict[key] = wrong_indices
 
-    # JSONで保存
+    # JSONでSave
     output_acc_path = os.path.join(model_dir, "corruption_accuracy.json")
     output_met_path = os.path.join(model_dir, "corruption_metrics.json")
     output_idx_path = os.path.join(model_dir, "corruption_error_indices.json")

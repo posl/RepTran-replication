@@ -9,7 +9,7 @@ import torch
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 
-# 独自のユーティリティ類
+# Custom utility classes
 from utils.helper import get_device, json2dict
 from utils.vit_util import (
     transforms,
@@ -29,7 +29,7 @@ from logging import getLogger
 logger = getLogger("base_logger")
 
 ############################
-# 定数・関数の定義
+# Definition of constants and functions
 ############################
 
 DEFAULT_SETTINGS = {
@@ -49,7 +49,7 @@ def log_info_preds(pred_labels, true_labels, is_correct):
 
 
 ############################
-# メイン処理
+# Main processing
 ############################
 
 if __name__ == "__main__":
@@ -76,7 +76,7 @@ if __name__ == "__main__":
     wnum = args.wnum
     beta = args.beta
     if beta is not None:
-        beta = int(beta) if beta.is_integer() else float(beta)  # intに変換できるならintにする
+        beta = int(beta) if beta.is_integer() else float(beta)  # Convert to int if possible
     fl_method = args.fl_method
     misclf_type = args.misclf_type
     fpfn = args.fpfn
@@ -90,7 +90,7 @@ if __name__ == "__main__":
                 f"custom_bounds={custom_bounds}, tgt_split={tgt_split}")
 
     #==================================================
-    # 1) setting_id を決定 (1-1 と同様)
+    # 1) Determine setting_id (same as 1-1)
     #==================================================
     if args.setting_path is not None:
         if not os.path.exists(args.setting_path):
@@ -113,7 +113,7 @@ if __name__ == "__main__":
             setting_id = "_".join(parts)
 
     #==================================================
-    # 2) ロケーションとパッチファイルのパス構築
+    # 2) Build location and patch file paths
     #==================================================
     dataset_dir = ViTExperiment.DATASET_DIR
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
@@ -127,18 +127,18 @@ if __name__ == "__main__":
         location_save_dir = os.path.join(pretrained_dir, "all_weights_location")
     else:
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
-    # 重みの位置情報の保存ファイル
+    # Save file for weight position information
     if fl_method == "ours":
         if beta is None:
             location_filename = f"exp-repair-3-2_location_n{wnum}_weight_ours.npy"
         else:
             location_filename = f"exp-repair-3-2_location_n{wnum}_beta{beta}_weight_ours.npy"
     elif fl_method == "random":
-        location_filename = f"exp-repair-3-2_location_n{wnum}_weight_random_reps{reps_id}.npy" # NOTE: randomの時はreps_idをつける(ランダム性の考慮)
+        location_filename = f"exp-repair-3-2_location_n{wnum}_weight_random_reps{reps_id}.npy" # NOTE: Add reps_id for random (considering randomness)
     location_path = os.path.join(location_save_dir, location_filename)
     assert os.path.exists(location_path), f"{location_path} does not exist. Please run the localization phase first."
 
-    # パッチファイル
+    # Patch file
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
     elif misclf_type == "all":
@@ -150,7 +150,7 @@ if __name__ == "__main__":
     patch_save_path = os.path.join(save_dir, patch_filename)
 
     #==================================================
-    # 3) 読み込み(形状表示)
+    # 3) Load (display shape)
     #==================================================
     if not os.path.exists(location_path):
         logger.error(f"[ERROR] location_path does not exist: {location_path}")
@@ -169,7 +169,7 @@ if __name__ == "__main__":
     logger.info(f" patch: shape={patch.shape}, dtype={patch.dtype}")
 
     #==================================================
-    # 4) モデルをロード & 修正前の予測 (repair set 全体)
+    # 4) Load model & prediction before modification (entire repair set)
     #==================================================
     exp_name = f"exp-repair-3-2-4_{setting_id}_{fl_method}"
     logger_obj = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
@@ -204,13 +204,13 @@ if __name__ == "__main__":
         sys.exit(1)
     hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
 
-    # 全repair setの hidden states
+    # Hidden states of entire repair set
     batch_size = ViTExperiment.BATCH_SIZE
     ori_tgt_labels = labels[tgt_split]
     batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device, hs=hs_before_layernorm)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
     
-    # (A) 修正前: repair set 全体
+    # (A) Before modification: entire repair set
     pred_labels_old, true_labels_old = get_new_model_predictions(
         vit_from_last_layer,
         batch_hs_before_layernorm,
@@ -222,10 +222,10 @@ if __name__ == "__main__":
     log_info_preds(pred_labels_old, true_labels_old, is_correct_old)
     
     #==================================================
-    # 5) repair対象データインデックス (1-1で保存)
+    # 5) Repair target data indices (saved in 1-1)
     #==================================================
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
-    # repair set の誤分類ペアを識別
+    # Identify misclassification pairs in repair set
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(
         misclf_info_dir,
         tgt_split="repair",
@@ -362,7 +362,7 @@ if __name__ == "__main__":
     if misclf_type == "src_tgt":
         logger_obj.info(f"misclf_pair={misclf_pair}, tgt_label={tgt_label}")
         slabel, tlabel = misclf_pair
-        tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxを保存するためのもの
+        tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxをSaveするためのもの
         for idx, (pl, tl) in enumerate(zip(pred_labels_old, true_labels_old)):
             if pl == slabel and tl == tlabel:
                 tgt_mis_indices.append(idx)
@@ -383,7 +383,7 @@ if __name__ == "__main__":
 
     logger_obj.info(f"[INFO] metrics_dict:  {metrics_dict}")
     
-    # 更新したmetricsを保存
+    # 更新したmetricsをSave
     with open(metrics_json_path, "w") as f:
         json.dump(metrics_dict, f, indent=4)
     logger_obj.info(f"[INFO] metrics saved => {metrics_json_path}")

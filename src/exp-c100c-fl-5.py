@@ -14,7 +14,7 @@ if __name__ == "__main__":
     exp_fl_save_path = "./exp-c100c-fl-4_proba_diff.csv"
     df = pd.read_csv(exp_fl_save_path)
     print(f"df.shape: {df.shape}")
-    # df_run_allのdiff_proba_mean以外のユニークな値のリストを表示
+    # Display list of unique values other than diff_proba_mean in df_run_all
     for col in df.columns:
         if col not in ["diff_proba"]:
             print(f"{col}: {df[col].unique()}")

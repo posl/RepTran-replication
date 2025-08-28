@@ -29,9 +29,9 @@ def scaled_input(emb, num_points):
 
 
 def main(ds_name, k):
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     tgt_pos = ViTExperiment.CLS_IDX
@@ -44,11 +44,11 @@ def main(ds_name, k):
     label_col = "fine_label"
     true_labels = ds[tgt_split][label_col]
     
-    # exp-fl-5の結果保存用ディレクトリ
+    # exp-fl-5の結果Save用ディレクトリ
     exp_dir = os.path.join("./exp-fl-5", f"{ds_name}_fold{k}")
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # location informationの保存先
+    # location informationのSave先
     save_dir = os.path.join(exp_dir, f"all_weights_location")
     model = ViTForImageClassification.from_pretrained(os.path.join(pretrained_dir, "checkpoint-1250")).to(device)
     model.eval()
@@ -100,12 +100,12 @@ def main(ds_name, k):
     n = NUM_IDENTIFIED_NEURONS
     top_neurons = np.argsort(mean_grad_per_neuron)[::-1][:n]
     places_to_fix = [[tgt_layer, pos] for pos in top_neurons]
-    # places_to_fixをnpyで保存
+    # places_to_fixをnpyでSave
     location_save_path = os.path.join(save_dir, f"exp-fl-5_location_n{n}_neuron_ig.npy")
     np.save(location_save_path, places_to_fix)
     print(f"saved location information to {location_save_path}")
 
-    # n関係なく全ニューロンをスコアで降順ソートした位置を保存
+    # n関係なく全ニューロンをスコアで降順ソートした位置をSave
     top_neurons = np.argsort(mean_grad_per_neuron)[::-1]
     places_to_fix = [[tgt_layer, pos] for pos in top_neurons]
     location_save_path = os.path.join(save_dir, f"exp-fl-5_location_nAll_neuron_ig.npy")
@@ -123,6 +123,6 @@ if __name__ == "__main__":
         print(f"ds: {ds}, k: {k}...")
         elapsed_time = main(ds, k)
         results.append({"ds": ds, "k": k, "elapsed_time": elapsed_time})
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-5-4_time.csv", index=False)

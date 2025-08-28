@@ -18,9 +18,9 @@ def main(ds_name, k, tgt_rank, theta, fl_method, misclf_type, fpfn, run_all=Fals
         f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, theta: {theta}, fl_method: {fl_method}, misclf_type: {misclf_type}, fpfn: {fpfn}"
     )
 
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先を先に作っておく
+    # Create save directories for results and logs in advance
     save_dir = os.path.join(
         pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_neurons_location"
     )
@@ -38,18 +38,18 @@ def main(ds_name, k, tgt_rank, theta, fl_method, misclf_type, fpfn, run_all=Fals
     os.makedirs(save_dir, exist_ok=True)
     proba_save_dir = os.path.join(save_dir, f"proba_theta{theta}_{fl_method}")
     os.makedirs(proba_save_dir, exist_ok=True)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = (
         f"{this_file_name}_theta{theta}" if not run_all else f"{this_file_name}_run_all"
     )
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(
         f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, theta: {theta}, fl_method: {fl_method}, misclf_type: {misclf_type}"
     )
 
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     tgt_split = "repair"  # NOTE: we only use repair split for repairing
     tgt_layer = 11  # NOTE: we only use the last layer for repairing
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
@@ -79,7 +79,7 @@ def main(ds_name, k, tgt_rank, theta, fl_method, misclf_type, fpfn, run_all=Fals
     elif misclf_type == "all":
         vscore_dir = os.path.join(pretrained_dir, "vscores")
     logger.info(f"vscore_dir: {vscore_dir}")
-    # localizationを実行
+    # Execute localization
     st = time.perf_counter()
     vmap_dic = defaultdict(np.array)
     for cor_mis in ["cor", "mis"]:
@@ -110,17 +110,17 @@ def main(ds_name, k, tgt_rank, theta, fl_method, misclf_type, fpfn, run_all=Fals
     places_to_fix, tgt_vdiff = localizer(vmap_dic, tgt_layer, theta=theta)
     et = time.perf_counter()
     logger.info(f"localization time: {et-st} sec.")
-    # log表示
+    # Display logs
     logger.info(f"places_to_fix={places_to_fix}")
     logger.info(f"num(location)={len(places_to_fix)}")
 
-    # 位置情報を保存
+    # 位置情報をSave
     np.save(location_save_path, places_to_fix)
     logger.info(f"saved location information to {location_save_path}")
 
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument("k", nargs="?", type=list, help="the fold id (0 to K-1)")

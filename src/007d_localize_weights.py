@@ -15,9 +15,9 @@ logger = getLogger("base_logger")
 def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}, fpfn: {fpfn}")
     
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先を先に作っておく
+    # Create save directories for results and logs in advance
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
         save_dir = os.path.join(pretrained_dir, f"all_weights_location")
@@ -25,14 +25,14 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     location_save_path = os.path.join(save_dir, f"location_n{n}_{fl_method}.npy")
     os.makedirs(save_dir, exist_ok=True)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_n{n}" if not run_all else f"{this_file_name}_run_all"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}")
 
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
@@ -70,22 +70,22 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
     logger.info(f"vscore_before_dir: {vscore_before_dir}")
     logger.info(f"vscore_dir: {vscore_dir}")
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
-    # localizationを実行
+    # Execute localization
     st = time.perf_counter()
     pos_before, pos_after = localizer(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn, rank_type=rank_type)
     et = time.perf_counter()
     logger.info(f"localization time: {et-st} sec.")
-    # log表示
+    # Display logs
     logger.info(f"pos_before={pos_before}")
     logger.info(f"pos_after={pos_after}")
     logger.info(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
 
-    # 位置情報を保存
+    # 位置情報をSave
     np.save(location_save_path, (pos_before, pos_after))
     logger.info(f"saved location information to {location_save_path}")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', nargs="?", type=list, help="the fold id (0 to K-1)")

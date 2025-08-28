@@ -28,7 +28,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, beta=0.5):
     ds_dirname = f"{ds_name}_fold{k}"
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
@@ -36,8 +36,8 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, beta=0.5):
     }
     tgt_pos = ViTExperiment.CLS_IDX
     
-    # 結果とかログの保存先を先に作っておく
-    # pretrained modelのディレクトリ
+    # Create save directories for results and logs in advance
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
@@ -46,13 +46,13 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, beta=0.5):
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     os.makedirs(save_dir, exist_ok=True)
 
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # Get correct/incorrect indices for each sample in the repair set of the original model
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     if misclf_type == "tgt":
         ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
@@ -83,12 +83,12 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, beta=0.5):
     logger.info(f"vscore_before_dir: {vscore_before_dir}")
     logger.info(f"vscore_dir: {vscore_dir}")
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
-    # vscoreとmean_activationを用いたlocalizationを実行
+    # vscoreとmean_activationを用いたExecute localization
     places_to_neuron, tgt_neuron_score, neuron_scores = localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n=None, intermediate_states=cached_mid_states, tgt_mis_indices=tgt_mis_indices, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn, return_all_neuron_score=True, vscore_abs=True, covavg=False)
-    # log表示
+    # Display logs
     # logger.info(f"places_to_neuron={places_to_neuron}")
     # logger.info(f"num(pos_to_fix)={len(places_to_neuron)}")
-    # 位置情報を保存
+    # 位置情報をSave
     # print(f"len(places_to_neuron): {len(places_to_neuron)}")
     # print(f"tgt_neuron_score.shape: {tgt_neuron_score.shape}")
     # print(f"tgt_neuron_score: {tgt_neuron_score}")
@@ -99,7 +99,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, beta=0.5):
     # ここまでで Vdiff x Use_i によるニューロンごとのスコア計算ができたので，次は勾配も使った重み特定をする．
     # ============================================================
     
-    # キャッシュの保存用のディレクトリ
+    # キャッシュのSave用のディレクトリ
     cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     # cache_pathに存在することを確認
@@ -229,7 +229,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, beta=0.5):
     print(f"pos_before.shape: {pos_before.shape}, pos_after.shape: {pos_after.shape}")
     print(f"len(weighted scores): {len(wscore_gated[top_n_indices])}")
     
-    # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報を保存する
+    # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報をSaveする
     if fpfn is not None and misclf_type == "tgt":
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     elif misclf_type == "all":
@@ -265,6 +265,6 @@ if __name__ == "__main__":
             continue
         elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n, beta=beta)
         results.append({"ds": ds, "k": k, "n": n, "beta": beta, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv(f"./exp-fl-8-1_time_n{n_str}.csv", index=False)

@@ -44,17 +44,17 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
     # ニューロンへの介入の方法のリスト
     op_list = ["enhance", "suppress"]
     
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先
+    # 結果とかログのSave先
     save_dir = get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn)
-    # 予測確率のリストの保存先
+    # 予測確率のリストのSave先
     proba_save_dir = os.path.join(save_dir, f"exp-fl-2_proba_n{n}_{fl_method}")
         
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"exp-fl-2_{this_file_name}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, tgt_layer: {tgt_layer}")
     
@@ -98,7 +98,7 @@ if __name__ == "__main__":
     fl_method_list = ["ig", "bl"]
     exp_list = [Experiment1, ExperimentRepair1, ExperimentRepair2]
     
-    # 全ての結果を格納するDataFrame
+    # DataFrame to store all results
     all_results = pd.DataFrame()
     
     for exp in exp_list:
@@ -114,6 +114,6 @@ if __name__ == "__main__":
             result_df = main(ds, k, tgt_rank, misclf_type, fpfn, fl_method, n)
             all_results = pd.concat([all_results, result_df], ignore_index=True)
             print(f"all_results.shape: {all_results.shape}")
-    # all_resultsを保存
+    # Save all_results
     save_path = f"./exp-fl-2_{ds}_proba_diff.csv"
     all_results.to_csv(save_path, index=False)

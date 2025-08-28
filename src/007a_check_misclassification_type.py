@@ -9,7 +9,7 @@ from utils.constant import ViTExperiment
 def main(ds_name, k, tgt_split):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_split: {tgt_split}")
 
-    # datasetの読み込み
+    # Load dataset info
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
         
@@ -28,7 +28,7 @@ def main(ds_name, k, tgt_split):
     true_labels = pred_out.label_ids
     mis_matrix, mis_ranking, mis_indices, met_dict = get_misclf_info(pred_labels, true_labels, num_classes)
 
-    # mis_matrixはnpyで，それ以外はpklで保存
+    # Save mis_matrix as npy, and others as pkl
     save_dir = os.path.join(pretrained_dir, "misclf_info")
     os.makedirs(save_dir, exist_ok=True)
     np.save(os.path.join(save_dir, f"{tgt_split}_mis_matrix.npy"), mis_matrix)
@@ -43,7 +43,7 @@ def main(ds_name, k, tgt_split):
     print(f"total_mis: {mis_matrix.sum()}")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, nargs="?", help="the fold id (0 to K-1)")
@@ -52,8 +52,8 @@ if __name__ == "__main__":
     ds = args.ds
     k = args.k
     tgt_split = args.tgt_split
-    if args.k is not None: # kが指定されている
+    if args.k is not None: # if k is specified
         main(ds, k, tgt_split)
-    else: # kが未指定
+    else: # if k is not specified
         for k, tgt_split in product(range(5), ["repair", "test"]):
             main(ds, k, tgt_split)

@@ -41,7 +41,7 @@ if __name__ == "__main__":
     tgt_pos = ViTExperiment.CLS_IDX # tgt_posはCLS_IDXで固定 (intermediate_statesの2次元目の0番目の要素に対応する中間層ニューロン)
     print(f"ds_name: {ds_name}, tgt_ct: {tgt_ct}, severity: {severity}, used_column: {used_column}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10c":
         tf_func = transforms
         label_col = "label"
@@ -55,7 +55,7 @@ if __name__ == "__main__":
     else:
         NotImplementedError
     
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     ct_list = get_corruption_types()
     dataset_dir = ViTExperiment.DATASET_DIR
@@ -87,7 +87,7 @@ if __name__ == "__main__":
     # headerを列として持つdataframeを作成
     acc_df = pd.DataFrame(columns=header.split(","))
     f1_df = pd.DataFrame(columns=header.split(","))
-    # 結果を保存するdirectory
+    # 結果をSaveするdirectory
     save_dir = os.path.join(getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR, "pred_results_all_label")
     os.makedirs(save_dir, exist_ok=True)
 
@@ -105,7 +105,7 @@ if __name__ == "__main__":
             # datasetをtrain, testに分ける
             ds_split = ds.train_test_split(test_size=0.4, shuffle=True, seed=777)[used_column] # XXX: !SEEDは絶対固定!
             labels = np.array(ds_split[label_col])
-            # 読み込まれた時にリアルタイムで前処理を適用するようにする
+            # Apply preprocessing in real-time when loaded
             tgt_ds = ds_split.with_transform(tf_func)
 
         for cor_mis in ["cor", "mis"]:
@@ -144,7 +144,7 @@ if __name__ == "__main__":
                     proba = torch.nn.functional.softmax(outputs.logits, dim=-1)
                     all_proba.append(proba.detach().cpu().numpy())
                 all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
-                # all_probaをnpyで保存
+                # all_probaをnpyでSave
                 save_path = os.path.join(save_dir, f"{used_column}_proba_vscore_l{start_li}tol{end_li}_{tgt_ct}_{cor_mis}_to_{ct}_{op}.npy")
                 np.save(save_path, all_proba)
                 print(f"proba: {all_proba.shape} is saved at {save_path}")
@@ -163,7 +163,7 @@ if __name__ == "__main__":
                 acc_df.loc[condition, ct] = acc
                 f1_df.loc[condition, ct] = f1
                 
-    # acc_df, f1_df をそれぞれcsvで保存
+    # acc_df, f1_df をそれぞれcsvでSave
     acc_save_path = os.path.join(save_dir, f"change_vn_acc_{tgt_ct}.csv")
     f1_save_path = os.path.join(save_dir, f"change_vn_f1_{tgt_ct}.csv")
     acc_df.to_csv(acc_save_path, index=False)

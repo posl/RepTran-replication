@@ -10,7 +10,7 @@ from utils.vit_util import transforms, transforms_c100, get_vscore, maybe_initia
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
     eval_div = "test"
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -43,10 +43,10 @@ if __name__ == "__main__":
     else:
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     split_names = list(ds.keys()) # [train, repair, test]
     target_split_names = ["repair"]
     # target_split_namesは全てsplit_namesに含まれていることを前提とする
@@ -57,9 +57,9 @@ if __name__ == "__main__":
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model.to(device).eval()
     model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
@@ -95,7 +95,7 @@ if __name__ == "__main__":
         incorrect_mid_states = all_mid_states[~is_correct]
         print(f"len(correct_mid_states), len(incorrect_mid_states) = {len(correct_mid_states), len(incorrect_mid_states)}")
 
-        # 正解/不正解データに対するv-scoreの計算を行い，保存する
+        # 正解/不正解データに対するv-scoreの計算を行い，Saveする
         for cor_mis, mid_states in zip(["cor", "mis"], [correct_mid_states, incorrect_mid_states]):
             print(f"cor_mis: {cor_mis}, len({cor_mis}_states): {len(mid_states)}")
             # 対象のレイヤに対してvscoreを計算
@@ -108,7 +108,7 @@ if __name__ == "__main__":
                 vscore = get_vscore(tgt_mid_state, abs=abs, covavg=covavg) # (num_neurons, )
                 vscore_per_layer.append(vscore)
             vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
-            # vscoresを保存
+            # vscoresをSave
             ds_type = f"ori_{split}"
             prefix = ("vscore_abs" if abs else "vscore") + ("_covavg" if covavg else "")
             vscore_save_path = os.path.join(
@@ -118,13 +118,13 @@ if __name__ == "__main__":
             np.save(vscore_save_path, vscores)
             print(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
         
-        # 各サンプルに対するレイヤごとの隠れ状態を保存していく
-        # 将来的なことを考えてnumpy->tensorに変換してから保存
+        # 各サンプルに対するレイヤごとの隠れ状態をSaveしていく
+        # 将来的なことを考えてnumpy->tensorに変換してからSave
         num_layers = model.vit.config.num_hidden_layers
         for l_idx in range(num_layers):
             # 特定のレイヤのstatesだけ抜き出し
             tgt_mid_states = torch.tensor(all_mid_states[:, l_idx, :]).cpu()
-            # 保存
+            # Save
             intermediate_save_path = os.path.join(cache_dir, f"intermediate_states_l{l_idx}.pt")
             torch.save(tgt_mid_states, intermediate_save_path)
             print(f"tgt_mid_states: {tgt_mid_states.shape} is saved at {intermediate_save_path}")

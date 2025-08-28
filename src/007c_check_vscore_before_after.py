@@ -19,23 +19,23 @@ logger = getLogger("base_logger")
 def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}, fpfn: {fpfn}")
     
-    # pretrained modelのディレクトリ
+    # Pretrained model directory
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先を先に作っておく
+    # Create save destination for results and logs in advance
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
         save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     os.makedirs(save_dir, exist_ok=True)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_n{n}" if not run_all else f"{this_file_name}_run_all"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, fl_method: {fl_method}, misclf_type: {misclf_type}")
 
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     logger.info(f"tgt_split: {tgt_split}")
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
@@ -53,26 +53,26 @@ def main(ds_name, k, tgt_rank, n, fl_method, misclf_type, fpfn, run_all=False):
     logger.info(f"vscore_before_dir: {vscore_before_dir}")
     logger.info(f"vscore_dir: {vscore_dir}")
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
-    # localizationを実行
+    # Execute localization
     vdiff_dic = get_vscore_diff_and_sim(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_split=tgt_split, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
     return vdiff_dic
     
 def aggregate_and_plot(result_dicts, seed_for_vdiff, name_vdiff_pick):
-    # 集約用のデータ構造
+    # Data structure for aggregation
     aggregated_data = defaultdict(lambda:
                                   defaultdict(lambda: 
                                               {"vdiff": {"before": [], "after": [], "intermediate": []}, 
                                                 "cos_sim": {"before": [], "after": [], "intermediate": []}}
                                             )
                                 )
-    # データを集約
+    # Aggregate data
     for (k, tgt_rank, n, misclf_type, fpfn), vdiff_dic in result_dicts.items():
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
             continue
         for phase in ["before", "after", "intermediate"]:
             aggregated_data[misclf_type][fpfn]["vdiff"][phase].append(vdiff_dic[phase]["vdiff"])
             aggregated_data[misclf_type][fpfn]["cos_sim"][phase].append(vdiff_dic[phase]["cos_sim"])
-    # 可視化
+    # Visualization
     for misclf_type, fpfn_data in aggregated_data.items():
         for fpfn, metrics in fpfn_data.items():
             if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None:
@@ -85,18 +85,18 @@ def aggregate_and_plot(result_dicts, seed_for_vdiff, name_vdiff_pick):
                     save_path = os.path.join(cos_sim_save_dir, f"cos_sim_{mistype_str}.png")
                     plt.figure(figsize=(10, 6))
                     for phase, vals in phase_data.items():
-                        # 各レイヤごとの標準偏差を計算
-                        stacked_cos_sim = np.stack(vals)  # 全データをスタック
-                        mean_cos_sim = np.mean(stacked_cos_sim, axis=0)  # 平均値
-                        std_cos_sim = np.std(stacked_cos_sim, axis=0)  # 標準偏差
+                        # Calculate standard deviation for each layer
+                        stacked_cos_sim = np.stack(vals)  # Stack all data
+                        mean_cos_sim = np.mean(stacked_cos_sim, axis=0)  # Mean value
+                        std_cos_sim = np.std(stacked_cos_sim, axis=0)  # Standard deviation
 
-                        # phaseごとに3色を使い分ける
+                        # Use 3 different colors for each phase
                         color = "blue" if phase == "before" else "red" if phase == "after" else "green"
 
-                        # プロット
-                        layers = np.arange(len(mean_cos_sim))  # レイヤID（x軸）
+                        # Plot
+                        layers = np.arange(len(mean_cos_sim))  # Layer ID (x-axis)
                         plt.plot(layers, mean_cos_sim, label=phase, color=color)
-                        sigma_coef = 1 # ±(sigma_coef σ)の範囲を塗りつぶす
+                        sigma_coef = 1 # Fill the range of ±(sigma_coef σ)
                         plt.fill_between(
                             layers,
                             mean_cos_sim - sigma_coef * std_cos_sim,
@@ -109,15 +109,15 @@ def aggregate_and_plot(result_dicts, seed_for_vdiff, name_vdiff_pick):
                         plt.xlabel("Layer ID")
                         plt.xticks(np.arange(0, len(layers), 1), np.arange(1, len(layers)+1, 1))
                         plt.ylabel("Cosine Similarity")
-                        # y軸の範囲を0から1にする
+                        # Set y-axis range from 0 to 1
                         plt.ylim(0, 1)
                         plt.legend()
                         plt.grid(True)
                     plt.savefig(save_path, dpi=300, bbox_inches="tight")
                     print(f"Saved {save_path}")
                 if metric == "vdiff":
-                    # NOTE: (*) こっちの方は個別事例によってニューロンの働きは異なるはずなので，個別ごとのプロットしか無理．
-                    #       そのため (num_settings, num_neurons, num_layers) の最初の軸をランダムに選んで，一つの事例に対するプロットを行う
+                    # NOTE: (*) For this side, the behavior of neurons should differ for individual cases, so only individual plotting is possible.
+                    #       Therefore, randomly select the first axis of (num_settings, num_neurons, num_layers) and plot for one case
                     mistype_str = "_".join([misclf_type, fpfn]) if fpfn is not None else misclf_type
                     vdiff_save_dir = f"vdiff_plot_{name_vdiff_pick}"
                     os.makedirs(vdiff_save_dir, exist_ok=True)
@@ -129,12 +129,12 @@ def aggregate_and_plot(result_dicts, seed_for_vdiff, name_vdiff_pick):
                             plt.figure(figsize=(8, 6))
                             save_path = os.path.join(vdiff_save_dir, f"vdiff_{mistype_str}_{phase}_l{lid}.png")
                             interest_arr = stacked_vdiff[:, lid]
-                            # 絶対値がtop10%のものを赤くし，それ以外は青にする
+                            # Color the top 10% by absolute value in red, and the rest in blue
                             top10 = np.percentile(np.abs(interest_arr), 90)
                             condition = np.abs(interest_arr).reshape(-1) > top10
                             plt.scatter(np.array(range(len(interest_arr)))[~condition], interest_arr[~condition], alpha=0.1, s=12, color="blue")
                             plt.scatter(np.array(range(len(interest_arr)))[condition], interest_arr[condition], alpha=0.8, s=12, color="red", label="top10 % |Vdiff| neurons")
-                            # y=0の線を引く
+                            # Draw y=0 line
                             plt.axhline(y=0, color="gray", linestyle="--")
                             plt.xlabel("Neuron id")
                             plt.ylabel("Diff of V-score")
@@ -143,7 +143,7 @@ def aggregate_and_plot(result_dicts, seed_for_vdiff, name_vdiff_pick):
                             print(f"Saved {save_path}")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Receive dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', nargs="?", type=list, help="the fold id (0 to K-1)")
@@ -166,7 +166,7 @@ if __name__ == "__main__":
     result_dicts = {}
 
     if run_all:
-        # run_allがtrueなのにkとtgt_rankが指定されている場合はエラー
+        # Error if run_all is true but k and tgt_rank are specified
         assert k_list is None and tgt_rank_list is None and n_list is None, "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
         k_list = range(5)
         tgt_rank_list = range(1, 4)

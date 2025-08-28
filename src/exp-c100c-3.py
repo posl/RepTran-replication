@@ -16,9 +16,9 @@ logger = getLogger("base_logger")
 
 if __name__ == "__main__":
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -32,14 +32,14 @@ if __name__ == "__main__":
     }
     ds_preprocessed = ds.with_transform(transforms_c100)
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # configuration
     batch_size = ViTExperiment.BATCH_SIZE
     end_li = model.vit.config.num_hidden_layers
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     
     # ノイズタイプごとの誤ったサンプルのインデックスを取得
@@ -52,9 +52,9 @@ if __name__ == "__main__":
             print(f"Skipping {key}...")
             continue
         print(f"Processing {key}...")
-        # vscore保存用のディレクトリ
+        # vscoreSave用のディレクトリ
         vscore_dir = os.path.join(pretrained_dir, "vscores")
-        # cache保存用のディレクトリ
+        # cacheSave用のディレクトリ
         cache_dir = os.path.join(pretrained_dir, f"cache_states_{key}")
         os.makedirs(cache_dir, exist_ok=True)
         tgt_ds = ds_preprocessed[key].select(mis_indices_dict[key]) # 間違ったやつだけ取得
@@ -94,18 +94,18 @@ if __name__ == "__main__":
             vscore = get_vscore(tgt_mid_state)
             vscore_per_layer.append(vscore)
         vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
-        # vscoresを保存
+        # vscoresをSave
         vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_all_label_{key}_mis.npy")
         np.save(vscore_save_path, vscores)
         print(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect 
         
-        # 各サンプルに対するレイヤごとの隠れ状態を保存していく
-        # 将来的なことを考えてnumpy->tensorに変換してから保存
+        # 各サンプルに対するレイヤごとの隠れ状態をSaveしていく
+        # 将来的なことを考えてnumpy->tensorに変換してからSave
         num_layers = model.vit.config.num_hidden_layers
         for l_idx in range(num_layers):
             # 特定のレイヤのstatesだけ抜き出し
             tgt_mid_states = torch.tensor(all_mid_states[:, l_idx, :]).cpu()
-            # 保存
+            # Save
             intermediate_save_path = os.path.join(cache_dir, f"intermediate_states_l{l_idx}_mis.pt")
             torch.save(tgt_mid_states, intermediate_save_path)
             print(f"tgt_mid_states: {tgt_mid_states.shape} is saved at {intermediate_save_path}")

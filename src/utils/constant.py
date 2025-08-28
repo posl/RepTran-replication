@@ -18,13 +18,13 @@ class ViTExperiment(Experiment):
         NUM_EPOCHS = 2
         
 class Experiment1(Experiment):
-    NUM_IDENTIFIED_NEURONS = 96 # exp-fl-1.md参照
-    NUM_IDENTIFIED_WEIGHTS = 96 # exp-fl-1.md参照
+    NUM_IDENTIFIED_NEURONS = 96 # See exp-fl-1.md
+    NUM_IDENTIFIED_WEIGHTS = 96 # See exp-fl-1.md
     
 class Experiment3(Experiment):
-    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # exp-fl-3.md参照
+    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # See exp-fl-3.md
     NUM_IDENTIFIED_WEIGHTS = 96
-    NUM_TOTAL_WEIGHTS = 8 * 96 * 96 # exp-fl-3.md参照
+    NUM_TOTAL_WEIGHTS = 8 * 96 * 96 # See exp-fl-3.md
     
 class Experiment4(Experiment):
     NUM_IDENTIFIED_NEURONS_RATIO = 0.03
@@ -32,16 +32,16 @@ class Experiment4(Experiment):
     NUM_TOTAL_WEIGHTS = 8 * 12 * 12
 
 class ExperimentRepair1(Experiment):
-    NUM_IDENTIFIED_NEURONS = 6 # exp-repair-1.md参照 768x8 = 4608
-    NUM_IDENTIFIED_WEIGHTS = 24 # exp-repair-1.md参照 8x24x24 = 4608
-    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # exp-fl-3.md参照
+    NUM_IDENTIFIED_NEURONS = 6 # See exp-repair-1.md 768x8 = 4608
+    NUM_IDENTIFIED_WEIGHTS = 24 # See exp-repair-1.md 8x24x24 = 4608
+    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # See exp-fl-3.md
 
 class ExperimentRepair2(Experiment):
-    NUM_IDENTIFIED_NEURONS = 24 # exp-repair-1.md参照 768x24 = 18432
-    NUM_IDENTIFIED_WEIGHTS = 48 # exp-repair-1.md参照 8x48x48 = 18432
-    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # exp-fl-3.md参照
+    NUM_IDENTIFIED_NEURONS = 24 # See exp-repair-1.md 768x24 = 18432
+    NUM_IDENTIFIED_WEIGHTS = 48 # See exp-repair-1.md 8x48x48 = 18432
+    NUM_IDENTIFIED_NEURONS_RATIO = 0.03 # See exp-fl-3.md
     
 class ExperimentRepair3(Experiment):
-    NUM_IDENTIFIED_NEURONS = 24 # exp-repair-1.md参照 768x24 = 18432
-    NUM_IDENTIFIED_WEIGHTS = 48 # exp-repair-1.md参照 8x48x48 = 18432
-    NUM_IDENTIFIED_NEURONS_RATIO = 0.12 # exp-fl-3.md参照
+    NUM_IDENTIFIED_NEURONS = 24 # See exp-repair-1.md 768x24 = 18432
+    NUM_IDENTIFIED_WEIGHTS = 48 # See exp-repair-1.md 8x48x48 = 18432
+    NUM_IDENTIFIED_NEURONS_RATIO = 0.12 # See exp-fl-3.md

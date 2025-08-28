@@ -46,7 +46,7 @@ for k in range(num_fold):
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
 
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     
     # 1エポック目のモデルと2エポック目のモデルをそれぞれロード
@@ -120,13 +120,13 @@ for k in range(num_fold):
     print(f"bef_ranks: {bef_ranks[rank_mask_bef]}")
     print(f"aft_ranks: {aft_ranks[rank_mask_aft]}")
     
-    # ランキングを保存
+    # ランキングをSave
     np.save(os.path.join(exp_dir, f"fl_gt_before_{ds_name}_fold{k}_rank.npy"), bef_ranks)
     np.save(os.path.join(exp_dir, f"fl_gt_after_{ds_name}_fold{k}_rank.npy"), aft_ranks)
     print(f"Saved: fl_gt_before_{ds_name}_fold{k}_rank.npy")
     print(f"Saved: fl_gt_after_{ds_name}_fold{k}_rank.npy")
     
-    # インデックスリストをnpyファイルとして保存
+    # インデックスリストをnpyファイルとしてSave
     np.save(os.path.join(exp_dir, f"fl_gt_before_{ds_name}_fold{k}.npy"), bef_indices)
     np.save(os.path.join(exp_dir, f"fl_gt_after_{ds_name}_fold{k}.npy"), aft_indices)
     print(f"Saved: fl_gt_before_{ds_name}_fold{k}.npy")

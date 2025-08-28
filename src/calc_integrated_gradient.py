@@ -36,7 +36,7 @@ if __name__ == "__main__":
     # argparseで受け取った引数のサマリーを表示
     print(f"ds_name: {ds_name}")
     print(f"tgt_label: {tgt_label}, start_layer_idx: {start_layer_idx}, used_column: {used_column}")
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -46,17 +46,17 @@ if __name__ == "__main__":
     else:
         NotImplementedError
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_name))
     # 指定したラベルだけ集めたデータセット
     tgt_dataset = ds[used_column].filter(lambda x: x[label_col] == tgt_label)
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = tgt_dataset.with_transform(tf_func)
-    # ラベルを示す文字列のlist
+    # List of strings representing labels
     labels = ds_preprocessed.features[label_col].names
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
@@ -113,7 +113,7 @@ if __name__ == "__main__":
     result_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
     if not os.path.exists(result_dir):
         os.makedirs(result_dir)
-    # npyで三次元配列を保存
+    # npyで三次元配列をSave
     ig_list_save_path = os.path.join(result_dir, f"ig_list_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}_{tgt_label}.npy")
     np.save(ig_list_save_path, res_dict['ig_list'])
     base_save_path = os.path.join(result_dir, f"base_l{start_layer_idx}tol{model.vit.config.num_hidden_layers}_{tgt_label}.npy")

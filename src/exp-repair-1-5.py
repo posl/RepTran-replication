@@ -152,7 +152,7 @@ if __name__ == "__main__":
                                         big_records.append(row_data)
 
     # ---------------------------
-    # (A) でかいCSVを保存 (alpha と tgt_rank 列を含む)
+    # (A) でかいCSVをSave (alpha と tgt_rank 列を含む)
     # ---------------------------
     df_all = pd.DataFrame(big_records, columns=[
         "subject",

@@ -11,18 +11,18 @@ from utils.constant import ViTExperiment
 
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     args = parser.parse_args()
     ds_name = args.ds
     print(f"ds_name: {ds_name}")
     
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     dataset_dir = ViTExperiment.DATASET_DIR
-    # バッチごとの処理のためのdata_collator
+    # data_collator for batch processing
     data_collator = DefaultDataCollator()
     ds = load_from_disk(os.path.join(dataset_dir, ds_name))
     # label取得のためoriginal datasetも取得する
@@ -30,7 +30,7 @@ if __name__ == "__main__":
     ds_ori = load_from_disk(os.path.join(dataset_dir, ds_ori_name))
     ds_ori_preprocessed = ds_ori.with_transform(transforms)
     
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10" or ds_name == "c10c":
         tf_func = transforms
         label_col = "label"
@@ -39,18 +39,18 @@ if __name__ == "__main__":
         label_col = "fine_label"
     else:
         NotImplementedError
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # ラベルを示す文字列のlist
+    # List of strings representing labels
     labels = ds_ori_preprocessed["train"].features[label_col].names
     
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR if ds_name == "c10" or ds_name == "c100" else getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
-    # 学習時の設定をロード
+    # Load training configuration
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
-    # Trainerオブジェクトの作成
+    # Create Trainer object
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -63,56 +63,56 @@ if __name__ == "__main__":
     training_args_dict = training_args.to_dict()
     train_batch_size = training_args_dict["per_device_train_batch_size"]
     eval_batch_size = training_args_dict["per_device_eval_batch_size"]
-    # 予測結果格納ディレクトリ
+    # Directory for storing prediction results
     pred_out_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    # pred_out_dirがなければ作成
+    # Create pred_out_dir if it doesn't exist
     if not os.path.exists(pred_out_dir):
         os.makedirs(pred_out_dir)
 
     # C10 or C100データセットに対する推論
     # ====================================================================
     if ds_name == "c10" or ds_name == "c100":
-        # データセットのサイズとバッチサイズからイテレーション回数を計算
+        # Calculate number of iterations from dataset size and batch size
         train_iter = math.ceil(len(ds_preprocessed["train"]) / train_batch_size)
         eval_iter = math.ceil(len(ds_preprocessed["test"]) / eval_batch_size)
-        # 訓練・テストデータに対する推論の実行
+        # 訓練・テストデータに対するExecute inference
         print(f"predict training data... #iter = {train_iter} ({len(ds_preprocessed['train'])} samples / {train_batch_size} batches)")
         train_pred = trainer.predict(ds_preprocessed["train"])
         print(f"predict evaluation data... #iter = {eval_iter} ({len(ds_preprocessed['test'])} samples / {eval_batch_size} batches)")
         test_pred = trainer.predict(ds_preprocessed["test"])
-        # 予測結果を格納するPredictioOutputオブジェクトをpickleで保存
+        # Save PredictionOutput object containing prediction results with pickle
         with open(os.path.join(pred_out_dir, "train_pred.pkl"), "wb") as f:
             pickle.dump(train_pred, f)
         with open(os.path.join(pred_out_dir, "test_pred.pkl"), "wb") as f:
             pickle.dump(test_pred, f)
-        # proba (各サンプルに対する予測確率) を正解ラベルごとにまとめたものも保存する
-        train_labels = np.array(ds["train"][label_col]) # サンプルごとの正解ラベル
+        # Also save proba (prediction probability for each sample) grouped by correct label
+        train_labels = np.array(ds["train"][label_col]) # Correct label for each sample
         test_labels = np.array(ds["test"][label_col])
-        # PredictionOutputオブジェクト -> 予測確率に変換
+        # Convert PredictionOutput object -> prediction probability
         train_pred_proba = pred_to_proba(train_pred)
         test_pred_proba = pred_to_proba(test_pred)
-        # ラベルごとに違うファイルとして保存 (train)
+        # Save as different files by label (train)
         for c in range(len(labels)):
             tgt_proba = train_pred_proba[train_labels == c]
-            # train_pred_probaを保存
+            # Save train_pred_proba
             np.save(os.path.join(pretrained_dir, "pred_results", f"train_proba_{c}.npy"), tgt_proba)
             print(f"train_proba_{c}.npy ({tgt_proba.shape}) saved")
-        # ラベルごとに違うファイルとして保存 (test)
+        # Save as different files by label (test)
         for c in range(len(labels)):
             tgt_proba = test_pred_proba[test_labels == c]
-            # test_pred_probaを保存
+            # Save test_pred_proba
             np.save(os.path.join(pretrained_dir, "pred_results", f"test_proba_{c}.npy"), tgt_proba)
             print(f"test_proba_{c}.npy ({tgt_proba.shape}) saved")
 
-    # C10Cデータセットに対する推論
+    # Inference on C10C dataset
     # ====================================================================
     if ds_name == "c10c" or ds_name == "c100c":
-        # 20種類のcorruptionsに対するループ
+        # Loop for 20 types of corruptions
         for key in ds_preprocessed.keys():
             eval_iter = math.ceil(len(ds_preprocessed[key]) / eval_batch_size)
-            # 推論の実行
+            # Execute inference
             print(f"predict {ds_name}:{key} data... #iter = {eval_iter} ({len(ds_preprocessed[key])} samples / {eval_batch_size} batches)")
             key_pred = trainer.predict(ds_preprocessed[key])
-            # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
+            # Save PredictionOutput object containing prediction results with pickle
             with open(os.path.join(pred_out_dir, f"{ds_name}_{key}_pred.pkl"), "wb") as f:
                 pickle.dump(key_pred, f)

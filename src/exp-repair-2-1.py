@@ -90,8 +90,8 @@ if __name__ == "__main__":
     # ------------------------------------------------
     device         = get_device()
     pretrained_dir = getattr(ViTExperiment, args.ds).OUTPUT_DIR.format(k=args.k)
-    # 結果とかログの保存先を先に作っておく
-    # save_dirは, 5種類の誤分類タイプのどれかを一意に表す
+    # Create save directories for results and logs in advance
+    # save_dir uniquely represents one of the 5 types of misclassification
     if fpfn is not None and misclf_type == "tgt": # tgt_fp or tgt_fn
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
     elif misclf_type == "all": # all
@@ -100,7 +100,7 @@ if __name__ == "__main__":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_repair_weight_by_de")
     os.makedirs(save_dir, exist_ok=True)
     lora_save_dir = os.path.join(save_dir, f"exp-repair-2-best_patch_r{r}_alpha_{alpha}_reps{reps_id}")
-    metrics_json_path = os.path.join(save_dir, f"exp-repair-2-best_patch_r{r}_alpha_{alpha}_reps{reps_id}.json") # 各設定での実行時間を記録
+    metrics_json_path = os.path.join(save_dir, f"exp-repair-2-best_patch_r{r}_alpha_{alpha}_reps{reps_id}.json") # Record execution time for each setting
     # ==================================================================
 
     tf_func, label_col = (
@@ -114,12 +114,12 @@ if __name__ == "__main__":
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model.to(device).eval()
     model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     misclf_type_name = misclf_type if fpfn is None else f"{misclf_type}_{fpfn}"
     exp_name = f"{this_file_name}_misclf_top{tgt_rank}_{misclf_type_name}_r{r}_alpha_{alpha}_reps{reps_id}"
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=exp_name)
-    # argsの情報をログ表示
+    # argsの情報をDisplay logs
     logger.info(f"ds_name: {args.ds}, k: {args.k}, tgt_rank: {args.tgt_rank}, reps_id: {args.reps_id}, r: {args.r}, lora_epoch: {args.lora_epoch}, misclf_type: {args.misclf_type}, fpfn: {args.fpfn}, reps_id: {args.reps_id}, alpha: {args.alpha}")
 
     # ------------------------------------------------
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     num_trainable_params = count_trainable_params(lora_model, show=False) # 訓練できるパラメータ数を表示するときは show=True
     logger.info(f"Number of Trainable parameters: {num_trainable_params:,}")
 
-    # 学習の設定
+    # Training configuration
     batch_size = ViTExperiment.BATCH_SIZE
     training_args = TrainingArguments(
         output_dir=lora_save_dir,
@@ -206,8 +206,8 @@ if __name__ == "__main__":
         weight_decay=0.01,
         per_device_train_batch_size=128,
         per_device_eval_batch_size=batch_size,
-        remove_unused_columns=False, # img列がないとエラーになるので必要
-        evaluation_strategy="no", # エポックの終わりごとにeval_datasetで評価
+        remove_unused_columns=False, # Required because error occurs without img column
+        evaluation_strategy="no", # Evaluate on eval_dataset at the end of each epoch
         logging_strategy="epoch",
         save_strategy="epoch",
         push_to_hub=False,
@@ -217,7 +217,7 @@ if __name__ == "__main__":
         load_best_model_at_end=False,
     )
     
-    # 学習の実行
+    # Execute training
     data_collator = DefaultDataCollator()
     trainer = WeightedTrainer(
         model=lora_model,
@@ -235,14 +235,14 @@ if __name__ == "__main__":
     tot_time = et - st
     logger.info(f"Training completed in {et - st} sec.")
     print(f"Training completed in {et - st} sec.")
-    # 実行時間だけをメトリクスとしてjsonに保存
-    # (このjsonはあとでrepair rateなども追記される (007f))
+    # Save only execution time as metrics to json
+    # (This json will later have repair rate etc. added (007f))
     metrics = {"tot_time": tot_time}
     with open(metrics_json_path, "w") as f:
         json.dump(metrics, f)
     
     # ==========================
-    # 6. Repairデータセットで推論・保存
+    # 6. Repairデータセットで推論・Save
     # ==========================
     logger.info(f"Repair dataset size: {len(tgt_ds)} samples")
     logger.info("Predicting on Repair dataset (tgt_ds)...")
@@ -254,7 +254,7 @@ if __name__ == "__main__":
     for k, v in tgt_ds_pred.metrics.items():
         logger.info(f"  {k}: {v}")
 
-    # pklで保存
+    # pklでSave
     with open(os.path.join(lora_save_dir, "repair_pred.pkl"), "wb") as f:
         pickle.dump(tgt_ds_pred, f)
         
@@ -294,7 +294,7 @@ if __name__ == "__main__":
     logger.info(f"repair ratio (元誤りサンプル修正率): {repair_ratio:.4f} ({repair_cnt}/{n_incorrect})")
 
     # ==========================
-    # 8. Testデータセットで推論・保存
+    # 8. Testデータセットで推論・Save
     # ==========================
     test_ds = ds_preprocessed["test"]
     logger.info(f"Test dataset size: {len(test_ds)} samples")
@@ -307,11 +307,11 @@ if __name__ == "__main__":
     for k, v in test_ds_pred.metrics.items():
         logger.info(f"  {k}: {v}")
 
-    # pklで保存
+    # pklでSave
     with open(os.path.join(lora_save_dir, "test_pred.pkl"), "wb") as f:
         pickle.dump(test_ds_pred, f)
         
-    # tgt_indicesも保存
+    # tgt_indicesもSave
     np.save(os.path.join(lora_save_dir, "tgt_indices.npy"), tgt_indices)
 
     logger.info("All predictions and metrics saved successfully.")

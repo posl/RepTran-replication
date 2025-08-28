@@ -8,7 +8,7 @@ if __name__ == "__main__":
     tgt_rank_list = [1, 2, 3]
     misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
-    w_num_list = [236] # exp-repair-5.md 参照
+    w_num_list = [236] # See exp-repair-5.md
     fl_method_list = ["ours", "bl", "random"]
     tgt_split_list = ["test"]
     alpha_in_arachne_list = [1, 4, 8]
@@ -17,11 +17,11 @@ if __name__ == "__main__":
     for ds, k, tgt_rank, misclf_type, fpfn, w_num, fl_method, tgt_split, alpha in product(
         ds_list, k_list, tgt_rank_list,  misclf_type_list, fpfn_list, w_num_list, fl_method_list, tgt_split_list, alpha_list
     ):
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # When misclf_type == "src_tgt" or "all", fpfn should only be None
             continue
         if misclf_type == "tgt" and fpfn is None:
             continue
-        # repair search自体にランダム性があるので繰り返し
+        # Repeat because repair search itself has randomness
         for reps_id in range(NUM_REPS):
             print(f"{'='*90}\nProcessing: ds={ds}, k={k}, tgt_rank={tgt_rank}, alpha={alpha}, misclf_type={misclf_type}, fpfn={fpfn}, fl_method={fl_method}, reps_id={reps_id}")
             cmd = [
@@ -38,7 +38,7 @@ if __name__ == "__main__":
                 "--fl_method", fl_method,
                 "--tgt_split", tgt_split
             ]
-            if fpfn:  # fpfnがNoneでない場合のみ追加
+            if fpfn:  # Add only when fpfn is not None
                 cmd.extend(["--fpfn", fpfn])
             print(f"Executing the following cmd: {' '.join(cmd)}\n{'='*90}")
             result = subprocess.run(cmd)

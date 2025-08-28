@@ -28,7 +28,7 @@ if __name__ == "__main__":
     # argparseで受け取った引数のサマリーを表示
     print(f"ori_ds_name: {ori_ds_name}, tgt_ct: {tgt_ct}, start_layer_idx: {start_layer_idx}, used_column: {used_column}, severity: {severity}, include_ori: {include_ori}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ori_ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -40,7 +40,7 @@ if __name__ == "__main__":
     else:
         NotImplementedError
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     # get corruption types
     ct_list = get_corruption_types()
@@ -56,7 +56,7 @@ if __name__ == "__main__":
     ct_ds = ds_split.with_transform(tf_func)
     # dsとct_dsのデータセットのサイズを出力
     print(f"ori_ds: {len(ori_ds)}, ct_ds: {len(ct_ds)}")
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR
     result_dir = os.path.join(getattr(ViTExperiment, ori_ds_name).OUTPUT_DIR, "neuron_scores")
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
@@ -110,21 +110,21 @@ if __name__ == "__main__":
                 vscore = get_vscore(tgt_mid_state)
                 vscore_per_layer.append(vscore)
             vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
-            # vscoresを保存
+            # vscoresをSave
             ds_type = f"ori_{used_column}" if ds_name == "ori_ds" else f"{tgt_ct}_{used_column}"
             vscore_save_path = os.path.join(result_dir, f"vscore_l{start_li}tol{end_li}_all_label_{ds_type}_{cor_mis}.npy")
             np.save(vscore_save_path, vscores)
             print(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
             
-            # vscoreの高いニューロン位置を保存
+            # vscoreの高いニューロン位置をSave
             # =================================
             threshold = np.percentile(vscores.flatten(), 97) # NOTE: 3%の閾値 (hard-coding)
             # 閾値以上の値を持つ要素のインデックスを取得
             indices = np.argwhere(vscores >= threshold)
             # 上位3%のインデックス (レイヤ番号, ニューロン番号) のリスト
-            vn = [(int(l_id+start_li), int(n_id)) for l_id, n_id in indices]# 結果を保存
+            vn = [(int(l_id+start_li), int(n_id)) for l_id, n_id in indices]# 結果をSave
             print(vn)
-            # 結果を保存
+            # 結果をSave
             save_dict = {}
             save_dict["num_kn"] = len(vn)
             save_dict["num_kn_per_layer"] = {l: len([n_id for l_id, n_id in vn if l_id == l]) for l in range(start_li, end_li)}

@@ -45,7 +45,7 @@ def get_location_path(n, w_num, fl_method, location_dir, generate_random=True):
     else:
         raise ValueError(f"Unknown fl_method: {fl_method}")
     location_path = os.path.join(location_dir, location_file)
-    # ランダムかつ未保存の場合はここで計算して保存までやる
+    # ランダムかつ未Saveの場合はここで計算してSaveまでやる
     if fl_method == "random" and generate_random:
         print(f"Generating random locations for {location_file}...")
         pos_before, pos_after = generate_random_location(n, w_num)
@@ -55,9 +55,9 @@ def get_location_path(n, w_num, fl_method, location_dir, generate_random=True):
 def main(fl_method, n, w_num):
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -69,7 +69,7 @@ def main(fl_method, n, w_num):
     labels = {
         key: np.array(ds[key][label_col]) for key in ds.keys()
     }
-    # クリーンデータ (C100) のロード
+    # Load clean data (C100)
     ori_ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, "c100_fold0"))
     ori_labels = {
         "train": np.array(ori_ds["train"][label_col]),
@@ -77,14 +77,14 @@ def main(fl_method, n, w_num):
         "test": np.array(ori_ds["test"][label_col])
     }
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # configuration
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     batch_size = ViTExperiment.BATCH_SIZE
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     
     # ノイズタイプごとの誤ったサンプルのインデックスを取得
@@ -99,7 +99,7 @@ def main(fl_method, n, w_num):
     clean_hs = get_batched_hs(clean_hs_save_path, batch_size, indices_to_correct)
         
     for rank, key in enumerate(bottom3_keys, start=1):
-        # ラベルごとのprobaの保存先
+        # ラベルごとのprobaのSave先
         proba_save_dir = os.path.join(pretrained_dir, f"corruptions_top{rank}", f"exp-fl-3_proba_n{n}_w{w_num}_{fl_method}")
         os.makedirs(proba_save_dir, exist_ok=True)
         print(f"Processing {key} (rank: {rank})...")
@@ -128,7 +128,7 @@ def main(fl_method, n, w_num):
             all_proba = []
             for hs in [clean_hs, corrupted_hs]:
                 for cached_state in tqdm(hs, total=len(hs), desc=f"Processing {key} ({op})"):
-                    # ここでViTFromLastLayerのforwardが実行される
+                    # ViTFromLastLayer forward is executed here
                     logits = vit_from_last_layer(hidden_states_before_layernorm=cached_state, tgt_pos=tgt_pos)
                     proba = torch.nn.functional.softmax(logits, dim=-1)
                     logits = logits.detach().cpu().numpy()
@@ -148,7 +148,7 @@ def main(fl_method, n, w_num):
             print(f"true_labels.shape: {true_labels.shape}")
             # all_logits, all_proba, all_pred_labels, true_labelsのlen()が全て同じことをassert
             assert len(all_logits) == len(all_proba) == len(all_pred_labels) == len(true_labels), f"{len(all_logits)}, {len(all_proba)}, {len(all_pred_labels)}, {len(true_labels)}"
-            # 正解ラベルごとに保存
+            # Save by correct label
             proba_dict = defaultdict(list)
             for true_label, proba in zip(true_labels, all_proba):
                 proba_dict[true_label].append(proba)
@@ -165,7 +165,7 @@ if __name__ == "__main__":
     exp_list = [Experiment3, ExperimentRepair1, ExperimentRepair2]
     fl_method_list = ["ours", "bl", "random"]
     
-    # 全ての結果を格納するDataFrame
+    # DataFrame to store all results
     all_results = pd.DataFrame()
     
     for fl_method in fl_method_list:

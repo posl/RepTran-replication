@@ -45,7 +45,7 @@ def get_sublist(original_list, severity):
         raise ValueError("severity must be an integer in the range 0 to 4 or -1")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('--severity', type=int, help="severity of corruption (integer from 0 to 4). when set to -1, treat all as one dataset.", default=-1)

@@ -14,7 +14,7 @@ from utils.vit_util import processor, transforms, transforms_c100, compute_metri
 from utils.constant import ViTExperiment
 
 def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpfn, num_sampled_from_correct=200, include_other_TP_for_fitness=True):
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -24,7 +24,7 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpf
     else:
         NotImplementedError
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     dataset_dir = ViTExperiment.DATASET_DIR
     data_collator = DefaultDataCollator()
@@ -32,7 +32,7 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpf
 
     # 対象のcorruption, severityのdatasetをロード
     ds = load_from_disk(os.path.join(dataset_dir, ds_dirname))
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
     ds_train, ds_repair, ds_test = ds_preprocessed["train"], ds_preprocessed["repair"], ds_preprocessed["test"]
 
@@ -42,21 +42,21 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpf
         "test": np.array(ds["test"][label_col])
     }
 
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
-    # NOTE: indices_to_incorrectからはsampleしなくてよい？今のところ全部使うのでランダム性が入るのはcorrectのsamplingだけ
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # NOTE: No need to sample from indices_to_incorrect? Currently using all, so randomness only comes from correct sampling
+    # Get correct/incorrect indices for each sample in the repair set of the original model
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     if misclf_type == "tgt":
         ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
     else:
         ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
 
-    # 正解データからrepairに使う一定数だけランダムに取り出す
+    # Randomly sample a certain number from correct data for repair
     sampled_indices_to_correct = sample_from_correct_samples(num_sampled_from_correct, indices_to_correct)
     if include_other_TP_for_fitness and misclf_type == "tgt":
         for pl, tl in zip(ori_pred_labels[indices_to_correct_others], labels[tgt_split][indices_to_correct_others]):
@@ -66,13 +66,13 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpf
         other_TP_indices = sample_true_positive_indices_per_class(num_sampled_from_correct, indices_to_correct_others, ori_pred_labels)
         sampled_indices_to_correct = np.concatenate([sampled_indices_to_correct, other_TP_indices])
     print(f"len(indices_to_correct): {len(sampled_indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
-    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
-    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() は 非破壊的method
+    # Combine extracted correct data and all incorrect data into one dataset
+    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() is a non-destructive method
     print(f"len(tgt_indices): {len(tgt_indices)}")
     ds_tgt = ds_repair.select(indices=tgt_indices)
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
-    # オリジナルモデルの学習時の設定をロード
+    # オリジナルモデルのLoad training configuration
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
     # オリジナルの学習から設定を少し変える
     if fpfn is None:
@@ -87,7 +87,7 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpf
     else:
         training_args.num_train_epochs = 2
     training_args.logging_strategy = "no"
-    # Trainerオブジェクトの作成
+    # Create Trainer object
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -98,14 +98,14 @@ def retraining_with_repair_set(ds_name, k, tgt_rank, misclf_type, tgt_split, fpf
         tokenizer=processor,
     )
     # エポック数を表示
-    # 学習の実行
+    # Execute training
     train_results = trainer.train()
-    # 保存
-    trainer.save_model() # from_pretrained()から読み込めるようになる
-    trainer.save_state() # save_model()よりも多くの情報を保存する
+    # Save
+    trainer.save_model() # Can be loaded with from_pretrained()
+    trainer.save_state() # save_model()よりも多くの情報をSaveする
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str, help="dataset name")
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")

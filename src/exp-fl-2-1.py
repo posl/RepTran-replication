@@ -27,9 +27,9 @@ def scaled_input(emb, num_points):
 
 
 def main(ds_name, k, n):
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     tgt_pos = ViTExperiment.CLS_IDX
@@ -42,9 +42,9 @@ def main(ds_name, k, n):
     label_col = "fine_label"
     true_labels = ds[tgt_split][label_col]
     
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # location informationの保存先
+    # location informationのSave先
     save_dir = os.path.join(pretrained_dir, f"all_weights_location")
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
@@ -93,7 +93,7 @@ def main(ds_name, k, n):
     mean_grad_per_neuron = np.mean(grad_list, axis=0) # (ffn_size)
     top_neurons = np.argsort(mean_grad_per_neuron)[::-1][:n]
     places_to_fix = [[tgt_layer, pos] for pos in top_neurons]
-    # places_to_fixをnpyで保存
+    # places_to_fixをnpyでSave
     location_save_path = os.path.join(save_dir, f"exp-fl-2_location_n{n}_neuron_ig.npy")
     np.save(location_save_path, places_to_fix)
     print(f"saved location information to {location_save_path}")
@@ -112,6 +112,6 @@ if __name__ == "__main__":
         print(f"ds: {ds}, k: {k}, n: {n}")
         elapsed_time = main(ds, k, n)
         results.append({"ds": ds, "k": k, "n": n, "elapsed_time": elapsed_time})
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-2-1_time.csv", index=False)

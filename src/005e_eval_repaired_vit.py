@@ -21,7 +21,7 @@ logger = getLogger("base_logger")
 n=10 # TODO: 絶対ダメ
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -31,11 +31,11 @@ if __name__ == "__main__":
     k = args.k
     patch_filename = args.patch_filename
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     dataset_dir = ViTExperiment.DATASET_DIR
-    # バッチごとの処理のためのdata_collator
+    # data_collator for batch processing
     data_collator = DefaultDataCollator()
     # オリジナルのds name
     ds_ori_name = ds_name.rstrip("c") if ds_name.endswith("c") else ds_name
@@ -45,7 +45,7 @@ if __name__ == "__main__":
     ds = load_from_disk(os.path.join(dataset_dir, ds_dirname))
     ds_preprocessed = ds.with_transform(transforms)
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10" or ds_name == "c10c":
         tf_func = transforms
         label_col = "label"
@@ -54,15 +54,15 @@ if __name__ == "__main__":
         label_col = "fine_label"
     else:
         NotImplementedError
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # ラベルを示す文字列のlist
+    # List of strings representing labels
     labels = ds_preprocessed["train"].features[label_col].names
     
-    # pretrained modelのロード
+    # Load pretrained model
     ori_pretrained_dir = getattr(ViTExperiment, ds_ori_name).OUTPUT_DIR.format(k=k)
     pretrained_dir = os.path.join(ori_pretrained_dir, "repair_weight_by_de")
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}")
@@ -70,9 +70,9 @@ if __name__ == "__main__":
     model = ViTForImageClassification.from_pretrained(ori_pretrained_dir).to(device)
     model.eval()
     end_li = model.vit.config.num_hidden_layers
-    # 学習時の設定をロード
+    # Load training configuration
     training_args = torch.load(os.path.join(ori_pretrained_dir, "training_args.bin"))
-    # Trainerオブジェクトの作成
+    # Create Trainer object
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -85,9 +85,9 @@ if __name__ == "__main__":
     training_args_dict = training_args.to_dict()
     train_batch_size = training_args_dict["per_device_train_batch_size"]
     eval_batch_size = training_args_dict["per_device_eval_batch_size"]
-    # 予測結果格納ディレクトリ
+    # Directory for storing prediction results
     pred_out_dir = os.path.join(pretrained_dir, "pred_results", os.path.splitext(patch_filename)[0])
-    # pred_out_dirがなければ作成
+    # Create pred_out_dir if it doesn't exist
     if not os.path.exists(pred_out_dir):
         os.makedirs(pred_out_dir)
     tgt_layer = 11
@@ -124,7 +124,7 @@ if __name__ == "__main__":
     # C10 or C100データセットに対する推論
     # ====================================================================
     if ds_name == "c10" or ds_name == "c100":
-        # データセットのサイズとバッチサイズからイテレーション回数を計算
+        # Calculate number of iterations from dataset size and batch size
         train_iter = math.ceil(len(ds_preprocessed["train"]) / train_batch_size)
         repair_iter = math.ceil(len(ds_preprocessed["repair"]) / eval_batch_size)
         test_iter = math.ceil(len(ds_preprocessed["test"]) / eval_batch_size)
@@ -146,10 +146,10 @@ if __name__ == "__main__":
             all_pred_labels = np.concatenate(all_pred_labels)
             true_labels = np.array(ds[split][label_col])
             logger.info(f"all_proba.shape: {all_proba.shape}, all_pred_labels.shape: {all_pred_labels.shape}, true_labels.shape: {true_labels.shape}")
-            # all_proba, all_pred_labels, true_labelsをnpzで保存
+            # all_proba, all_pred_labels, true_labelsをnpzでSave
             np.savez(os.path.join(pred_out_dir, f"{split}_pred_results.npz"), all_proba=all_proba, all_pred_labels=all_pred_labels, true_labels=true_labels)
             logger.info(f"{split}_pred_results.npz saved")
-            # 正解ラベルごとのpred_probaを保存
+            # 正解ラベルごとのpred_probaをSave
             os.makedirs(os.path.join(pred_out_dir, "class_proba"), exist_ok=True)
             for c in set(true_labels.tolist()):
                 tgt_proba = all_proba[true_labels == c]

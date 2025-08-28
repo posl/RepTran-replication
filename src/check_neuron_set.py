@@ -25,7 +25,7 @@ if __name__ == "__main__":
     # argparseで受け取った引数のサマリーを表示
     print(f"ori_ds_name: {ori_ds_name}, start_layer_idx: {start_layer_idx}, used_column: {used_column}, severity: {severity}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ori_ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     else:
         NotImplementedError
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     # get corruption types
     ct_list = get_corruption_types()
@@ -84,10 +84,10 @@ if __name__ == "__main__":
             tmp_petal_labels = {
                 k: float(v) for k, v in tmp_petal_labels.items()
             }
-            # petal_labelsにtmp_petal_labelsを加算 (全ラベルの平均を保存するため)
+            # petal_labelsにtmp_petal_labelsを加算 (全ラベルの平均をSaveするため)
             petal_labels = {key: petal_labels[key] + tmp_petal_labels[key] for key in petal_labels}
         sum_petal = sum(petal_labels.values())
-        all_petal_labels.append(petal_labels) # ノイズごとの, 全ラベルのpetal_labelsの合計を保存
+        all_petal_labels.append(petal_labels) # ノイズごとの, 全ラベルのpetal_labelsの合計をSave
         # petal_labelsの各値のラベルごとの平均と，全体に対する割合をラベルとしてベン図に表示
         petal_labels_for_venn = {
            k: f"{v/num_labels}\n({100 * v/sum_petal:.1f}%)" for k, v in petal_labels.items()

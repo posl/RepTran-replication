@@ -25,7 +25,7 @@ DEFAULT_SETTINGS = {
 }
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -36,26 +36,26 @@ if __name__ == "__main__":
     k = args.k
     fl_method = args.fl_method
     setting_path = args.setting_path
-    # 設定のjsonファイルが指定された場合
+    # If a settings JSON file is specified
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
         setting_dic = json2dict(setting_path)
-        # setting_idは setting_{setting_id}.json というファイル名になる
+        # setting_id becomes the filename in the format setting_{setting_id}.json
         setting_id = os.path.basename(setting_path).split(".")[0].split("_")[-1]
     # 設定のjsonファイルが指定されない場合はデフォルトの設定を使う
     else:
         setting_dic = DEFAULT_SETTINGS
         setting_id = "default"
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, setting_path: {setting_path}")
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -66,9 +66,9 @@ if __name__ == "__main__":
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     # ラベルの取得
     labels = {
@@ -76,9 +76,9 @@ if __name__ == "__main__":
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     end_li = model.vit.config.num_hidden_layers
@@ -117,7 +117,7 @@ if __name__ == "__main__":
     # patch generation phase
     # ===============================================
 
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # Get correct/incorrect indices for each sample in the repair set of the original model
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     with open(os.path.join(pred_res_dir, f"{tgt_split}_pred.pkl"), "rb") as f:
         pred_res = pickle.load(f)
@@ -128,14 +128,14 @@ if __name__ == "__main__":
     indices_to_incorrect = np.where(~is_correct)[0]
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
-    # 正解データからrepairに使う一定数だけランダムに取り出す
+    # Randomly sample a certain number from correct data for repair
     num_sampled_from_correct = setting_dic["num_sampled_from_correct"]
     indices_to_correct = np.random.choice(indices_to_correct, num_sampled_from_correct, replace=False)
-    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
+    # Combine extracted correct data and all incorrect data into one dataset
     tgt_ds = ori_tgt_ds.select(indices_to_correct.tolist() + indices_to_incorrect.tolist())
     tgt_labels = ori_tgt_labels[indices_to_correct.tolist() + indices_to_incorrect.tolist()]
     
-    # repair setに対するhidden_states_before_layernormを取得
+    # Get hidden_states_before_layernorm for repair set
     hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     hs_save_path = os.path.join(hs_save_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     assert os.path.exists(hs_save_path), f"{hs_save_path} does not exist."
@@ -148,20 +148,20 @@ if __name__ == "__main__":
     num_batches = (hs_before_layernorm.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
     batch_hs_before_layernorm = np.array_split(hs_before_layernorm, num_batches)
     
-    # correct, incorrect indicesを更新
+    # Update correct, incorrect indices
     indices_to_correct = np.arange(num_sampled_from_correct)
     indices_to_incorrect = np.arange(num_sampled_from_correct, num_sampled_from_correct + len(indices_to_incorrect))
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
     logger.info(f"len(tgt_ds): {len(tgt_ds)}, len(tgt_labels): {len(tgt_labels)}")
 
-    # 最終層だけのモデルを準備
+    # Prepare model with only the final layer
     vit_from_last_layer = ViTFromLastLayer(model)
 
-    # DE_searcherの初期化
+    # Initialize DE_searcher
     max_search_num = setting_dic["max_search_num"]
     alpha = setting_dic["alpha"]
     patch_aggr = alpha * len(indices_to_correct) / len(indices_to_incorrect)
-    logger.info(f"alpha of the fitness func.: {patch_aggr}")
+    logger.info(f"alpha of the fitness function: {patch_aggr}")
     pop_size = setting_dic["pop_size"]
     num_labels = len(set(labels["train"]))
     searcher = DE_searcher(
@@ -200,7 +200,7 @@ if __name__ == "__main__":
     # ===============================================
     # evaluation for the repair set
     # ===============================================
-    # 保存したpatchを読み込む
+    # Saveしたpatchを読み込む
     patch = np.load(save_path)
     # repair setの全サンプルに対する中間状態とラベルを再ロード
     hs_before_layernorm = torch.from_numpy(np.load(hs_save_path)).to(device)
@@ -222,7 +222,7 @@ if __name__ == "__main__":
     # 1. Δaccuracy: acc after repair - acc before repair
     # 2. repair rate: 修正前モデルが誤ったデータのうち，修正後に正しく修正されたデータの割合
     # 3. break rete: 修正前モデルが正しかったデータのうち，修正後に誤って修正されたデータの割合
-    # 上記のメトリクス算出後，setting_idに紐づいたファイルに保存
+    # 上記のメトリクス算出後，setting_idに紐づいたファイルにSave
 
     # まずは修正履歴の正解/不正解の配列を作る
     is_correct_old = ori_pred_labels == ori_tgt_labels
@@ -236,7 +236,7 @@ if __name__ == "__main__":
     repair_rate = np.mean(~is_correct_old & is_correct_new)
     break_rate = np.mean(is_correct_old & ~is_correct_new)
 
-    # メトリクスを保存
+    # メトリクスをSave
     metrics = {
         "delta_acc": delta_acc,
         "repair_rate": repair_rate,

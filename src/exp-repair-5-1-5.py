@@ -4,25 +4,26 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 
-# ライブラリ側の定数クラス
+# Constants class provided by the library
 from utils.constant import ViTExperiment
 
 NUM_REPS = 5
-alpha_in_arachne_list = [1, 4, 8, 10]                       # ← ご指定
+# Requested alphas (in the original Arachne parameterization)
+alpha_in_arachne_list = [1, 4, 8, 10]
+# Convert to ratio form α/(1+α) used in our JSON filenames
 alpha_ratio_list      = [a / (1 + a) for a in alpha_in_arachne_list]
 
 def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
     """
-    指定データセット（c100 / tiny-imagenet）と split（repair / test）に対し
-    JSON 群を走査してレコード DataFrame を返す
+    Scan JSON results and return a records DataFrame for a given dataset
+    (c100 / tiny-imagenet) and split (repair / test).
     """
     big = []
-    k_list          = [0]
-    # tgt_rank_list   = [1]
-    tgt_rank_list   = [1, 2, 3]
-    misclf_list = ["src_tgt", "tgt_fp", "tgt_fn"]
-    fl_method_li    = ["ours", "bl", "random"]
-    w_num_list = [236] # exp-repair-5.md 参照
+    k_list        = [0]
+    tgt_rank_list = [1, 2, 3]
+    misclf_list   = ["src_tgt", "tgt_fp", "tgt_fn"]
+    fl_method_li  = ["ours", "bl", "random"]
+    w_num_list    = [236]  # see exp-repair-5.md
 
     for k in k_list:
         pretrained_dir = getattr(ViTExperiment, ds.replace("-", "_")).OUTPUT_DIR.format(k=k)
@@ -31,21 +32,22 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
                 save_dir = os.path.join(
                     pretrained_dir,
                     f"misclf_top{tgt_rank}",
-                    f"{misclf_full}_repair_weight_by_de"   # ← これだけで OK
+                    f"{misclf_full}_repair_weight_by_de"   # this base path is sufficient
                 )
                 for flm in fl_method_li:
                     for alpha_raw, alpha_ratio in zip(alpha_in_arachne_list, alpha_ratio_list):
+                        # exp id: 5-* when alpha_raw ∈ {1,4,8}, 4-* when alpha_raw == 10 (to match existing filenames)
                         exp_id = 4 if alpha_raw == 10 else 5
                         for w_num in w_num_list:
-                            # --- setting_id（※ JSON ファイル名と一致） ----------------------------
+                            # --- setting_id (must match the JSON filename) -----------------------
                             parts = []
-                            # n か wnum が無いと JSON が見つからないことがあるので元スクリプトと同じ生成規則
+                            # Keep "n{wnum}" and "alpha{ratio}" to match the original file naming rule
                             parts.append(f"n{int(w_num) if w_num >= 1 else w_num}")
                             parts.append(f"alpha{alpha_ratio}")
                             parts.append("boundsArachne")
                             setting_id = "_".join(parts)
 
-                            # --- reps ループ -----------------------------------------------------
+                            # --- reps loop ------------------------------------------------------
                             for reps in range(NUM_REPS):
                                 jp = os.path.join(
                                     save_dir,
@@ -55,7 +57,8 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
                                     raise FileNotFoundError(jp)
                                 with open(jp) as f:
                                     js = json.load(f)
-                                # testの場合もtot_time入れたい
+
+                                # For test split, also fetch total repair time from the matching repair JSON
                                 if tgt_split == "test":
                                     jp_repair = os.path.join(
                                         save_dir,
@@ -68,16 +71,16 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
                                     {
                                         "dataset":   ds,
                                         "tgt. misclf. type": misclf_full,  # src_tgt / tgt_fp / tgt_fn
-                                        "tgt_rank": tgt_rank,  # 1 / 2 / 3
+                                        "tgt_rank": tgt_rank,               # 1 / 2 / 3
                                         "method":    flm,
-                                        "#modified weights": w_num,  # 236
-                                        "alpha_raw": alpha_raw,   # 1 / 4 / 8 / 10
-                                        "alpha":     alpha_ratio, # 0.5 / 0.8 / … / 0.909…
+                                        "#modified weights": w_num,         # 236
+                                        "alpha_raw": alpha_raw,             # 1 / 4 / 8 / 10
+                                        "alpha":     alpha_ratio,           # 0.5 / 0.8 / … / 0.909…
                                         "reps_id": reps,
                                         "RR_tgt":    js.get("repair_rate_tgt"),
                                         "BR_all":    js.get("break_rate_overall"),
                                         "ΔACC.":     js.get("delta_acc"),
-                                        "TOT_TIME": js_repair.get("tot_time"),
+                                        "TOT_TIME": js_repair.get("tot_time") if tgt_split == "test" else js.get("tot_time"),
                                     }
                                 )
     return pd.DataFrame(big)
@@ -85,24 +88,25 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
 
 def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
     """
-    αごとのRR, BR, ΔACCをlineplotで表示し、共通凡例を1つだけ描画する
+    Draw line plots over α for RR, BR (and optionally ΔACC/TOT_TIME), with a single shared legend.
     """
     alpha_in_arachne_list = [1, 4, 8, 10]
     sns.set(style="whitegrid", font_scale=0.95)
 
-    # method名の変換
+    # Normalize method names for plotting
     replace = {"ours": "Ours", "bl": "Arachne", "random": "Random"}
     df["method"] = df["method"].map(replace)
 
-    # αをカテゴリ化して順序を固定
+    # Categorical x-axis with fixed α order
     alpha_cats = [str(a) for a in alpha_in_arachne_list]
     df["α_cat"] = pd.Categorical(df["alpha_raw"].astype(str), categories=alpha_cats, ordered=True)
 
     hue_order = ["Ours", "Arachne", "Random"]
     palette   = {"Ours": "C0", "Arachne": "C2", "Random": "C1"}
     metrics   = ["RR_tgt", "BR_all"]
-    # metrics   = ["RR_tgt", "BR_all", "TOT_TIME"]
-    # metrics   = ["RR_tgt", "BR_all", "ΔACC."]
+    # Alternative metric sets:
+    # metrics = ["RR_tgt", "BR_all", "TOT_TIME"]
+    # metrics = ["RR_tgt", "BR_all", "ΔACC."]
     row_types = ["src_tgt", "tgt_fp", "tgt_fn"]
     marker_for_meth = {"Arachne": "v",  "Ours": "^",  "Random": "o"}
     
@@ -129,16 +133,16 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
                     sort=False,
                     ax=ax,
                     mec="black",
-                    legend=False  # 共通凡例に任せる
+                    legend=False  # defer to the global legend
                 )
             ax.set_title(f"{mt.upper().replace('_', '-')}", fontsize=12, fontstyle="italic")
-            # --- x軸 ---
+            # --- x-axis ---
             ax.set_xlabel("")
             if i == len(metrics) - 1:
                 ax.set_xlabel("$\\alpha$")
 
-            # --- y軸 ---
-            if j == 0:  # 左端だけ表示
+            # --- y-axis ---
+            if j == 0:  # only left-most column shows the y-label
                 if metric == "RR_tgt":
                     ax.set_ylabel("Repair Rate")
                 elif metric == "BR_all":
@@ -149,15 +153,11 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
                 ax.set_ylabel("")
             ax.grid(True, linestyle="--", linewidth=0.5)
 
-    # 共通凡例の描画
-    # handles = [
-    #     Line2D([], [], marker="o", linestyle="", color=palette[m], label=m)
-    #     for m in hue_order
-    # ]
+    # Shared legend (method-wise)
     legend_labels = {"Arachne": "ArachneW", "Ours": "REPTRAN", "Random": "Random"}
     handles = [
         Line2D([], [], marker=marker_for_meth[m], linestyle="", color=palette[m], 
-            label=legend_labels[m], markersize=8, markerfacecolor=palette[m], markeredgecolor="black")
+               label=legend_labels[m], markersize=8, markerfacecolor=palette[m], markeredgecolor="black")
         for m in hue_order
     ]
     fig.legend(
@@ -169,9 +169,9 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
         fontsize=12
     )
 
-    fig.subplots_adjust(bottom=0.01, hspace=0.2, wspace=0.25)   # ← 凡例をさらに下へ押し出す
-    plt.tight_layout(rect=[0, 0.14, 1, 1])  # 下に凡例を表示できるスペースを確保
-    # fig.subplots_adjust(bottom=0.10)  # 下に余白を作る
+    # Push the legend further down and make room for it
+    fig.subplots_adjust(bottom=0.01, hspace=0.2, wspace=0.25)
+    plt.tight_layout(rect=[0, 0.14, 1, 1])
     out_png = f"exp-repair-5-1_{ds}_{tgt_split}_alpha_lineplots.pdf"
     plt.savefig(out_png, dpi=150, bbox_inches="tight")
     return out_png
@@ -180,16 +180,15 @@ def plot_alpha(df: pd.DataFrame, ds: str, tgt_split: str):
 def run_kruskal_over_alpha(df: pd.DataFrame, ds: str, tgt_split: str) -> pd.DataFrame:
     from scipy.stats import kruskal
     """
-    αごとのRRおよびBRの差に対して、データセットごとに全メソッドを統合して
-    Kruskal–Wallis検定を実行する
+    Run Kruskal–Wallis tests over α for RR and BR, per dataset, pooling all methods.
 
     Parameters:
-        df (pd.DataFrame): 実験結果（collect_recordsで得たもの）
-        ds (str): "c100" または "tiny-imagenet"
-        tgt_split (str): "repair" または "test"
+        df (pd.DataFrame): results from collect_records
+        ds (str): "c100" or "tiny-imagenet"
+        tgt_split (str): "repair" or "test"
 
     Returns:
-        pd.DataFrame: 各データセットと指標に対する検定結果（H値とp値）
+        pd.DataFrame: H-statistic, p-value, and η² per dataset × split × metric
     """
     results = []
     metrics = {"RR_tgt": "RR", "BR_all": "BR"}
@@ -198,7 +197,7 @@ def run_kruskal_over_alpha(df: pd.DataFrame, ds: str, tgt_split: str) -> pd.Data
         df_sub = df[df["dataset"] == ds]
         grouped = df_sub.groupby("alpha_raw")[metric_col].apply(list)
 
-        if len(grouped) >= 2:  # 2グループ以上で検定可能
+        if len(grouped) >= 2:  # need ≥2 groups
             try:
                 h_val, p_val = kruskal(*grouped)
                 n = df_sub.shape[0]
@@ -221,34 +220,32 @@ def run_kruskal_over_alpha(df: pd.DataFrame, ds: str, tgt_split: str) -> pd.Data
     return pd.DataFrame(results)
 
 
-# ╭───────────────── エントリーポイント ─────────────────╮
+# ╭───────────────── Entry point ─────────────────╮
 if __name__ == "__main__":
     ds_list = ["c100", "tiny-imagenet"]
     tgt_split_list = ["test"]
-    # tgt_split_list = ["repair", "test"]
+    # If needed: tgt_split_list = ["repair", "test"]
     
     for ds_arg in ds_list:
         for tgt_split_arg in tgt_split_list:
             print(f"{'='*90}\nProcessing: dataset={ds_arg}, split={tgt_split_arg}")
-            # --- データ収集 & 保存 --------------------------------------------------
+            # --- Collect & save raw table -----------------------------------------
             df_all = collect_records(ds_arg, tgt_split_arg)
             out_csv = f"exp-repair-5-1_{ds_arg}_{tgt_split_arg}_results_all.csv"
             df_all.to_csv(out_csv, index=False)
             print("[INFO] saved", out_csv)
 
-            # --- プロット ----------------------------------------------------------
+            # --- Plots ------------------------------------------------------------
             plot_alpha(df_all, ds_arg, tgt_split_arg)
             
-            # --- kruskal -----------------------------------------------------------
+            # --- Kruskal–Wallis over α -------------------------------------------
             kruskal_results = run_kruskal_over_alpha(df_all, ds_arg, tgt_split_arg)
-            
-            # ── kruskal 結果の保存 ──
             kruskal_out_csv = f"exp-repair-5-1_{ds_arg}_{tgt_split_arg}_kruskal_alpha.csv"
             kruskal_results.to_csv(kruskal_out_csv, index=False)
             print("[INFO] kruskal results saved to", kruskal_out_csv)
             print(kruskal_results)
             
-            # ========= α と RR / BR 相関 (dataset × misclf_type × method) =========
+            # ========= α vs RR / BR correlation (dataset × misclf_type × method) ==
             from scipy.stats import pearsonr
 
             def corr_by_method(df: pd.DataFrame, metric: str) -> pd.DataFrame:
@@ -262,30 +259,30 @@ if __name__ == "__main__":
                 return res
 
             if tgt_split_arg == "test":
-                # ① α–RR 相関
+                # ① correlation between α and RR
                 corr_rr = corr_by_method(df_all, "RR_tgt")
-                # ② α–BR 相関
+                # ② correlation between α and BR
                 corr_br = corr_by_method(df_all, "BR_all")
 
-                # ── ピボットして横持ち化 ──
+                # Pivot to wide format
                 tab_rr = (
                     corr_rr.pivot(index=["dataset", "tgt. misclf. type"],
-                                columns="method", values="corr_RR_tgt")
-                        .rename(columns={"vmg":"Ours", "bl":"Arachne", "random":"Random"})
+                                  columns="method", values="corr_RR_tgt")
+                          .rename(columns={"vmg":"Ours", "bl":"Arachne", "random":"Random"})
                 )
 
                 tab_br = (
                     corr_br.pivot(index=["dataset", "tgt. misclf. type"],
-                                columns="method", values="corr_BR_all")
-                        .rename(columns={"vmg":"Ours", "bl":"Arachne", "random":"Random"})
+                                  columns="method", values="corr_BR_all")
+                          .rename(columns={"vmg":"Ours", "bl":"Arachne", "random":"Random"})
                 )
 
-                # ── RR と BR を左右に結合し、列順を整える ──
+                # Concatenate RR and BR side-by-side and order columns
                 table = pd.concat([tab_rr, tab_br], axis=1, keys=["RR", "BR"])
                 table = table.reindex(columns=pd.MultiIndex.from_product(
                             [["RR","BR"], ["Ours","Arachne","Random"]]))
 
-                # ── CSV 保存 & コンソール表示 ──
+                # Save & print
                 out_corr = f"exp-repair-5-1_{ds_arg}_{tgt_split_arg}_corr_alpha_full.csv"
                 table.to_csv(out_corr)
                 print("\n=== α vs RR / BR correlation table ===")

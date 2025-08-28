@@ -20,9 +20,9 @@ logger = getLogger("base_logger")
 
 def main(n, beta):
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -36,7 +36,7 @@ def main(n, beta):
         key: np.array(ds[key][label_col]) for key in ds.keys()
     }
     ds_preprocessed = ds.with_transform(transforms_c100)
-    # クリーンデータ (C100) のロード
+    # Load clean data (C100)
     ori_ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, "c100_fold0"))
     ori_labels = {
         "train": np.array(ori_ds["train"][label_col]),
@@ -44,7 +44,7 @@ def main(n, beta):
         "test": np.array(ori_ds["test"][label_col])
     }
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     vit_from_last_layer = ViTFromLastLayer(model)
@@ -58,7 +58,7 @@ def main(n, beta):
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, ori_labels, tgt_split="repair", misclf_type=None, tgt_label=None)
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     
     # ノイズタイプごとの誤ったサンプルのインデックスを取得
@@ -66,7 +66,7 @@ def main(n, beta):
         mis_indices_dict = json.load(f)
         mis_indices_dict = {k: v for k, v in mis_indices_dict.items() if k in bottom3_keys}
     
-    # vscoresの保存ディレクトリ
+    # vscoresのSaveディレクトリ
     vscore_before_dir = os.path.join(pretrained_dir, "vscores_before") # 使わないので実際はなくていい
     vscore_dir = os.path.join(pretrained_dir, "vscores")
     vscore_after_dir = os.path.join(pretrained_dir, "vscores_after") # 使わないので実際はなくていい
@@ -91,7 +91,7 @@ def main(n, beta):
         cached_mid_states = cached_mid_states.detach().numpy().copy() # (keyにおける誤ったサンプル数, 3072)
         print(f"cached_mid_states.shape: {cached_mid_states.shape}")
         
-        # 結果保存用のディレクトリ
+        # 結果Save用のディレクトリ
         save_dir = os.path.join(pretrained_dir, f"corruptions_top{rank+1}", f"weights_location")
         os.makedirs(save_dir, exist_ok=True)
         places_to_neuron, tgt_neuron_score, neuron_scores = localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n=None, intermediate_states=cached_mid_states, tgt_mis_indices=None, return_all_neuron_score=True)
@@ -246,6 +246,6 @@ if __name__ == "__main__":
         ret_list = main(n, beta)
         results.extend(ret_list)
         print(results)
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-c100c-fl-6_time.csv", index=False)

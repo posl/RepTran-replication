@@ -1,5 +1,5 @@
 """
-特定の誤分類タイプに対するVdiffの大きいニューロンを取得
+Obtain neurons with large Vdiff values for a specific misclassification type.
 """
 
 import os, sys, time
@@ -22,13 +22,13 @@ logger = getLogger("base_logger")
 def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, abs: {abs}, covavg: {covavg}")
 
-    # datasetの読み込み
+    # Load dataset
     dataset_dir = ViTExperiment.DATASET_DIR
     exp_obj = getattr(ViTExperiment, ds_name.replace("-", "_"))
     ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_fold{k}"))
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10" or ds_name == "tiny-imagenet":
         tf_func = transforms
         label_col = "label"
@@ -40,34 +40,34 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
 
     tgt_pos = ViTExperiment.CLS_IDX
     prefix = ("vscore_abs" if abs else "vscore") + ("_covavg" if covavg else "")
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     tgt_split_names = list(ds.keys()) # [train, repair, test]
-    # target_tgt_split_names = ["train", "repair"]
+    # Only use repair split for target
     target_tgt_split_names = ["repair"]
-    # target_tgt_split_namesは全てtgt_split_namesに含まれていることを前提とする
+    # Ensure all target_tgt_split_names are included in tgt_split_names
     assert all([tgt_split_name in tgt_split_names for tgt_split_name in target_tgt_split_names]), f"target_tgt_split_names should be subset of tgt_split_names"
-    # ラベルの取得
+    # Get labels
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}")
-    # pretrained modelのロード
+    # Load pretrained model
     model, loading_info = ViTForImageClassification.from_pretrained(pretrained_dir, output_loading_info=True)
     model.to(device).eval()
     model = maybe_initialize_repair_weights_(model, loading_info["missing_keys"])
     end_li = model.vit.config.num_hidden_layers
     batch_size = ViTExperiment.BATCH_SIZE
     
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     tgt_split = "repair"
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
@@ -79,15 +79,11 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
 
     logger.info(f"Process {tgt_split}...")
     t1 = time.perf_counter()
-    # 必要なディレクトリがない場合は先に作っておく
-    # vscore_before_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "vscores_before")
-    # vscore_after_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "vscores_after")
+    # Create necessary directories beforehand
     vscore_med_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", "vscores")
-    # os.makedirs(vscore_before_dir, exist_ok=True)
-    # os.makedirs(vscore_after_dir, exist_ok=True)
     os.makedirs(vscore_med_dir, exist_ok=True)
-    # 前提: すでに全データに対するv-scoreが計算済みであること
-    # なので，正しい分類ができたデータのv-scoreは計算せずコピーしてくる
+    # Assumption: v-scores for the entire dataset have already been computed
+    # So, for correctly classified samples, reuse existing v-scores
     for vname in ["vscores_before", "vscores_after", "vscores"]:
         if vname == "vscores_before" or vname == "vscores_after":
             continue
@@ -98,19 +94,19 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
     all_ahs = []
     all_mhs = []
     all_logits = []
-    # loop for dataset batch (only for Ineg)
+    # Loop over dataset batch (only for misclassified samples)
     tgt_ds = ds_preprocessed[tgt_split].select(indices=tgt_mis_indices)
     for entry_dic in tqdm(tgt_ds.iter(batch_size=batch_size), total=len(tgt_ds)//batch_size+1):
         x, y = entry_dic["pixel_values"].to(device), entry_dic["labels"]
         output = model.forward(x, tgt_pos=tgt_pos, output_hidden_states_before_layernorm=False, output_intermediate_states=True)
-        # CLSトークンに対応するintermediate statesを取得
+        # Get intermediate states corresponding to CLS token
         num_layer = len(output.intermediate_states)
         bhs, ahs, mhs = [], [], []
         for i in range(num_layer):
-            # output.intermediate_states[i]はiレイヤめの(中間ニューロンの前のニューロン, 中間ニューロン，中間ニューロンの後のニューロン)がタプルで入っている
+            # output.intermediate_states[i] is a tuple of (before neurons, mid neurons, after neurons)
             bhs.append(output.intermediate_states[i][0])
             mhs.append(output.intermediate_states[i][1])
-            ahs.append(output.intermediate_states[i][2]) # ここの時点ではレイヤの次元が先に来る
+            ahs.append(output.intermediate_states[i][2]) # dimensions are layer-first here
         bhs = np.array(bhs).transpose(1, 0, 2) # (batch_size, num_layers, num_neurons)
         mhs = np.array(mhs).transpose(1, 0, 2) # (batch_size, num_layers, num_neurons)
         ahs = np.array(ahs).transpose(1, 0, 2) # (batch_size, num_layers, num_neurons)
@@ -122,41 +118,35 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
     all_logits = np.concatenate(all_logits) # (num_samples, num_labels)
     all_pred_labels = np.argmax(all_logits, axis=-1) # (num_samples, )
     if misclf_type == "src_tgt":
-        # all_pred_labelsがすべてslabelになっていることを確認
+        # Verify all predictions are slabel
         assert all(all_pred_labels == slabel), f"all_pred_labels: {all_pred_labels}"
     elif misclf_type == "tgt":
         for pred_l, true_l in zip(all_pred_labels, labels[tgt_split][tgt_mis_indices]):
-            # pred_lとtrue_lが異なることを保証
+            # Ensure prediction and true label are different
             assert pred_l != true_l, f"pred_l: {pred_l}, true_l: {true_l}"
-            # # pred_lかtrue_lがtlabelであることを保証
-            # assert pred_l == tlabel or true_l == tlabel, f"pred_l: {pred_l}, true_l: {true_l}"
     all_bhs = np.concatenate(all_bhs)
     all_ahs = np.concatenate(all_ahs)
     all_mhs = np.concatenate(all_mhs)
     logger.info(f"all_bhs: {all_bhs.shape}, all_ahs: {all_ahs.shape}, all_mhs: {all_mhs.shape}, all_logits: {all_logits.shape}")
 
     t2 = time.perf_counter()
-    # 正解/不正解データに対するv-scoreの計算を行い，保存する
-    # for all_states, vscore_dir in zip([all_bhs, all_ahs, all_mhs], [vscore_before_dir, vscore_after_dir, vscore_med_dir]): # bhs, ahs での繰り返し
-    for all_states, vscore_dir in zip([all_mhs], [vscore_med_dir]): # bhs, ahs での繰り返し
-        # 対象のレイヤに対してvscoreを計算
-        # =================================
+    # Compute v-scores for correct/incorrect samples and save
+    for all_states, vscore_dir in zip([all_mhs], [vscore_med_dir]): # using mid-states
         vscore_per_layer = []
         for tgt_layer in range(end_li):
             logger.info(f"tgt_layer: {tgt_layer}")
             tgt_mid_state = all_states[:, tgt_layer, :] # (num_samples, num_neurons)
-            # vscoreを計算
             vscore = get_vscore(tgt_mid_state, abs=abs, covavg=covavg) # (num_neurons, )
             vscore_per_layer.append(vscore)
-        vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
-        # vscoresを保存
+        vscores = np.array(vscore_per_layer) # (num_layers, num_neurons)
+        # Save vscores
         ds_type = f"ori_{tgt_split}" if fpfn is None else f"ori_{tgt_split}_{fpfn}"
         if misclf_type == "src_tgt":
             vscore_save_path = os.path.join(vscore_dir, f"{prefix}_l1tol{end_li}_{slabel}to{tlabel}_{ds_type}_mis.npy")
         elif misclf_type == "tgt":
             vscore_save_path = os.path.join(vscore_dir, f"{prefix}_l1tol{end_li}_{tlabel}_{ds_type}_mis.npy")
         np.save(vscore_save_path, vscores)
-        logger.info(f"vscore ({vscores.shape}) saved at {vscore_save_path}") # mid_statesがnan (correct or incorrect predictions の数が 0) の場合はvscoreもnanになる
+        logger.info(f"vscore ({vscores.shape}) saved at {vscore_save_path}")
         print(f"vscore ({vscores.shape}) saved at {vscore_save_path}")
     t3 = time.perf_counter()
     t_collect_hs = t2 - t1
@@ -164,20 +154,8 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, abs, covavg):
     total_time = t3 - t1
     logger.info(f"total_time: {total_time} sec, collect_hs: {t_collect_hs} sec, vscore: {t_vscore} sec")
 
-    # NOTE: 中間ニューロン状態自体の保存は必要そうになったら実装する
-    # # 各サンプルに対するレイヤごとの隠れ状態を保存していく
-    # # 将来的なことを考えてnumpy->tensorに変換してから保存
-    # num_layers = model.vit.config.num_hidden_layers
-    # for l_idx in range(num_layers):
-    #     # 特定のレイヤのstatesだけ抜き出し
-    #     tgt_mid_states = torch.tensor(all_mid_states[:, l_idx, :]).cpu()
-    #     # 保存
-    #     intermediate_save_path = os.path.join(cache_dir, f"intermediate_states_l{l_idx}.pt")
-    #     torch.save(tgt_mid_states, intermediate_save_path)
-    #     print(f"tgt_mid_states: {tgt_mid_states.shape} is saved at {intermediate_save_path}")
-
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', nargs="?", type=list, help="the fold id (0 to K-1)")
@@ -194,15 +172,12 @@ if __name__ == "__main__":
     run_all = args.run_all
 
     if run_all:
-        # run_allがtrueなのにkとtgt_rankが指定されている場合はエラー
+        # Error if run_all is true but k and tgt_rank are specified
         assert k_list is None and tgt_rank_list is None, "run_all and k_list or tgt_rank_list cannot be specified at the same time"
-        # k_list = range(5)
         k_list = [0]
         tgt_rank_list = range(1, 4)
         misclf_type_list = ["src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
-        # abs_list = [True, False]
-        # covavg_list = [True, False]
         abs_list = [True]
         covavg_list = [False]
 

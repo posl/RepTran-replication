@@ -27,7 +27,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
     ds_dirname = f"{ds_name}_fold{k}"
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
@@ -35,8 +35,8 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
     }
     tgt_pos = ViTExperiment.CLS_IDX
     
-    # 結果とかログの保存先を先に作っておく
-    # pretrained modelのディレクトリ
+    # Create save directories for results and logs in advance
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
@@ -45,14 +45,14 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     os.makedirs(save_dir, exist_ok=True)
         
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"exp-fl-3_{this_file_name}_n{n_ratio}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n_ratio: {n_ratio}, w_num: {w_num}, misclf_type: {misclf_type}")
 
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
@@ -83,14 +83,14 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
     logger.info(f"vscore_before_dir: {vscore_before_dir}")
     logger.info(f"vscore_dir: {vscore_dir}")
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
-    # vscoreとmean_activationを用いたlocalizationを実行
+    # vscoreとmean_activationを用いたExecute localization
     method_name = "vscore_mean_activation"
     location_save_path = os.path.join(save_dir, f"exp-fl-3_location_n{n_ratio}_w{w_num}_neuron.npy")
     places_to_neuron, tgt_neuron_score = localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n_ratio, intermediate_states=cached_mid_states, tgt_mis_indices=tgt_mis_indices, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
-    # log表示
+    # Display logs
     logger.info(f"places_to_neuron={places_to_neuron}")
     logger.info(f"num(pos_to_fix)={len(places_to_neuron)}")
-    # 位置情報を保存
+    # 位置情報をSave
     np.save(location_save_path, places_to_neuron)
     logger.info(f"saved location information to {location_save_path}")
     print(f"saved location information to {location_save_path}")
@@ -100,7 +100,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
     
     # ここまでで Vdiff x Use_i によるニューロン特定ができたので，次は勾配も使った重み特定をする．
     
-    # キャッシュの保存用のディレクトリ
+    # キャッシュのSave用のディレクトリ
     cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     # cache_pathに存在することを確認
@@ -121,7 +121,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
     vit_from_last_layer.eval()
     optimizer = optim.SGD(model.parameters(), lr=0.01)
     
-    # 結果の保存用
+    # 結果のSave用
     results = defaultdict(lambda: torch.tensor([])) # key: bef or aft, value: mean of grad_loss of the weights (shape: (out_dim, in_dim))
     
     # 誤分類サンプル集合に対してWbef, Waftの重みのロスに対する勾配を取得
@@ -185,7 +185,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num):
     pos_before = np.array([np.unravel_index(idx, original_shape_bef) for idx in top_indices_bef])
     pos_after = np.array([np.unravel_index(idx, original_shape_aft) for idx in top_indices_aft])
 
-    # 位置情報を保存
+    # 位置情報をSave
     location_save_path = os.path.join(save_dir, f"exp-fl-3_location_n{n_ratio}_w{w_num}_weight.npy")
     np.save(location_save_path, (pos_before, pos_after))
     print(f"saved location information to {location_save_path}")
@@ -216,6 +216,6 @@ if __name__ == "__main__":
                 continue
             elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n_ratio, w_num)
             results.append({"ds": ds, "k": k, "n_ratio": n_ratio, "w_num": w_num, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-fl-3-1_time.csv", index=False)

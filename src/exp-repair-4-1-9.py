@@ -10,18 +10,18 @@ import pandas as pd
 from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
 
-# ──────────── 実験設定 ──────────────────────────────────────────
-DATASETS     = ["c100", "tiny-imagenet"]   # データセット
-SPLITS       = ["repair", "test"]          # 評価 split
+# ──────────── Experiment settings ──────────────────────────────────────────
+DATASETS     = ["c100", "tiny-imagenet"]   # datasets
+SPLITS       = ["repair", "test"]          # evaluation splits
 K            = 0                           # fold id
-TGT_RANKS    = [1, 2, 3]                   # 誤分類ランキング
+TGT_RANKS    = [1, 2, 3]                   # misclassification ranks
 MISCLF_TPS   = ["src_tgt", "tgt_fp", "tgt_fn"]
-WN_LIST      = [11, 236, 472, 944]             # 3 通りの重み数
-REPS         = range(5)                    # 5 回リピート
+WN_LIST      = [11, 236, 472, 944]         # number of weights
+REPS         = range(5)                    # 5 repetitions
 ALPHA_STR    = 10/11
 ROOT_TMPL    = "/src/src/out_vit_{ds}_fold{K}"
 
-# 3 手法と JSON ファイル名中のキー
+# 3 methods and their corresponding keys in JSON filenames
 METHODS = {"ours": "ours", "arachne": "bl", "random": "random"}
 PAIRS   = [("ours", "arachne"),
            ("ours", "random"),
@@ -29,20 +29,20 @@ PAIRS   = [("ours", "arachne"),
 
 METRIC_INFO = dict(
     RR=("repair_rate_tgt",  "Repair Rate"),
-    BR=("break_rate_overall",   "Break  Rate"),
+    BR=("break_rate_overall",   "Break Rate"),
 )
 
-# ──────────── JSON ⇒ 値 ────────────────────────────────────────
+# ──────────── JSON ⇒ metric values ────────────────────────────────────────
 def metric_value(ds, split, mtype, rank, rep,
                  wnum, meth_key, json_key):
-    """1 個の JSON を開き，目的メトリクスを返す"""
+    """Open one JSON file and return the target metric"""
     base = Path(ROOT_TMPL.format(ds=ds, K=K))
     jdir = base / f"misclf_top{rank}" / f"{mtype}_repair_weight_by_de"
     if wnum != 11:
         fn = (f"exp-repair-4-1-metrics_for_{split}_"
             f"n{wnum}_alpha{ALPHA_STR}_boundsArachne_{meth_key}_reps{rep}.json")
     else:
-        # rep_key (手法名) ごとに微妙にファイル名がちゃうねんな
+        # File naming is slightly different per method
         if meth_key == "bl":
             fn = f"exp-repair-3-1-metrics_for_{split}_alpha{ALPHA_STR}_boundsArachne_{meth_key}_reps{rep}.json"
         elif meth_key == "ours" or meth_key == "random":
@@ -53,7 +53,7 @@ def metric_value(ds, split, mtype, rank, rep,
     with open(jdir / fn) as f:
         return json.load(f)[json_key]
 
-# ──────────── Wilcoxon & Cliff's Δ (対応あり) ────────────────
+# ──────────── Wilcoxon & Cliff’s Δ (paired) ───────────────────────────────
 def paired_cliffs_delta(v1: np.ndarray, v2: np.ndarray) -> float:
     diff = v1 - v2
     return (np.sum(diff > 0) - np.sum(diff < 0)) / diff.size
@@ -61,7 +61,7 @@ def paired_cliffs_delta(v1: np.ndarray, v2: np.ndarray) -> float:
 def wilcoxon_block(values: dict, show_flag: bool) -> dict:
     """
     values = {method: np.array(9)}  # 3ranks x 3types = 9 points
-    → Holm 補正後 p 値 & Cliff's Δ（符号付き）
+    → Holm-adjusted p-values & signed Cliff’s Δ
     """
     out, p_raw = {}, []
     for m1, m2 in PAIRS:
@@ -70,7 +70,7 @@ def wilcoxon_block(values: dict, show_flag: bool) -> dict:
             print(m1, m2)
             print(v1, v2)
             print(paired_cliffs_delta(v1, v2))
-        # p 値 (同値なら 1.0)
+        # p-value (set to 1.0 if identical)
         if np.allclose(v1, v2):
             p = 1.0
         else:
@@ -82,7 +82,7 @@ def wilcoxon_block(values: dict, show_flag: bool) -> dict:
         out[f"{tag}_p_raw"] = p
         out[f"{tag}_d"]     = d
         p_raw.append(p)
-    # Holm
+    # Holm correction
     _, p_adj, _, _ = multipletests(p_raw, method="holm")
     for (m1, m2), p_c in zip(PAIRS, p_adj):
         out[f"{m1[:1].upper()}v{m2[:1].upper()}_p"] = p_c
@@ -95,26 +95,25 @@ def cell(d, p):
     return f"'{d:+.2f} {stars(p)}"
 
 # ──────────── main ────────────────────────────────────────────
-per_metric_tables = {}            # ★ 追加：あとでマージするため保持
+per_metric_tables = {}            # store per-metric tables for later merge
 show_flag = False
 for met_tag, (json_key, nice_name) in METRIC_INFO.items():
     rows = []
 
     for ds, split, wnum in itertools.product(DATASETS, SPLITS, WN_LIST):
 
-        # 9 点 (3ranks x 3types) × 3 手法を収集
+        # Collect 9 points (3 ranks × 3 types) × 3 methods
         vals = {m: [] for m in METHODS}
         
-        # まず各 rank, type, rep の組み合わせで値を収集し、rep ごとに平均を取る
+        # First gather values for each rank × type × rep, then average over reps
         for rank, mtype in itertools.product(TGT_RANKS, MISCLF_TPS):
-            # 各手法について5回のrepの平均を取る
             for m, key in METHODS.items():
                 rep_values = []
                 for rep in REPS:
                     rep_values.append(metric_value(ds, split, mtype,
-                                                 rank, rep, wnum,
-                                                 key, json_key))
-                # 5回のrepの平均値を追加
+                                                   rank, rep, wnum,
+                                                   key, json_key))
+                # Append mean of 5 reps
                 vals[m].append(np.mean(rep_values))
         
         vals = {m: np.asarray(v) for m, v in vals.items()}
@@ -135,7 +134,7 @@ for met_tag, (json_key, nice_name) in METRIC_INFO.items():
             AvR          = cell(stat["AvR_d"], stat["AvR_p"]),
         ))
 
-    # 列順 & 並び替え
+    # Column order & sorting
     df = pd.DataFrame(rows)
     df.sort_values(
         by=["dataset", "split", "wnum"],
@@ -147,24 +146,24 @@ for met_tag, (json_key, nice_name) in METRIC_INFO.items():
             ),
             ordered=True)).reset_index(drop=True, inplace=True)
 
-    # 保存
+    # Save
     out_csv = f"exp-repair-4-1-9_wilcoxon_cliffs_ranksxtypes_{met_tag}.csv"
     df.to_csv(out_csv, index=False)
     print(f"[✓] {nice_name}  →  {out_csv}")
     
-    per_metric_tables[met_tag] = df          # ★ 保存
+    per_metric_tables[met_tag] = df          # save
     
 # ─────────────────────────────────────────────
-# ★ ここから統合テーブル（split == test だけ）
+# Merge into a combined table (split == test only)
 # ─────────────────────────────────────────────
 df_rr = per_metric_tables["RR"].query("split == 'test'").copy()
 df_br = per_metric_tables["BR"].query("split == 'test'").copy()
 
-# 列名を衝突しないように付け替え
+# Rename columns to avoid collisions
 df_rr.rename(columns={"OvA":"RR_OvA","OvR":"RR_OvR","AvR":"RR_AvR"}, inplace=True)
 df_br.rename(columns={"OvA":"BR_OvA","OvR":"BR_OvR","AvR":"BR_AvR"}, inplace=True)
 
-# マージ（dataset, wnum で結合 - misclf_type は削除）
+# Merge (by dataset, wnum – misclf_type removed)
 merge_cols = ["dataset","wnum"]
 df_merge = (df_rr[merge_cols + ["RR_OvA","RR_OvR","RR_AvR"]]
             .merge(df_br[merge_cols + ["BR_OvA","BR_OvR","BR_AvR"]],
@@ -175,11 +174,11 @@ df_merge = (df_rr[merge_cols + ["RR_OvA","RR_OvR","RR_AvR"]]
                                             else WN_LIST),
                             ordered=True)))
 
-# 見出し #weights をラベル付きにしても OK
+# Rename columns for readability
 df_merge.rename(columns={"wnum":"#weights"}, inplace=True)
 df_merge["dataset"] = df_merge["dataset"].map({"c100": "C100", "tiny-imagenet": "TinyImg"})
 
-# --- 表示名マッピング ---
+# --- Column label mapping ---
 pair_label_map = {
     "RR_OvA": "Rep vs. AraW",
     "RR_OvR": "Rep vs. Rand",
@@ -189,12 +188,12 @@ pair_label_map = {
     "BR_AvR": "AraW vs. Rand",
 }
 
-# --- 表示順序に並び替え（元のキーの順で並べたあとrename） ---
+# --- Final column order ---
 col_order = ["dataset", "#weights",
              "RR_OvA", "RR_OvR", "RR_AvR", "BR_OvA", "BR_OvR", "BR_AvR"]
 
 df_ordered = df_merge[col_order].rename(columns=pair_label_map)
 
 out_all = "exp-repair-4-1-9_merged_test_ranksxtypes.csv"
-df_ordered.to_csv(out_all, index=False, quoting=1)   # quoting=1 → 全セルを "…" で囲む
+df_ordered.to_csv(out_all, index=False, quoting=1)   # quoting=1 → wrap all cells with quotes
 print(f"[✓] wrote merged table → {out_all}")

@@ -5,7 +5,7 @@ from utils.helper import get_device
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -15,7 +15,7 @@ if __name__ == "__main__":
     print(f"ds_name: {ds_name}, fold_id: {k}")
     device = get_device()
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # pretrained modelのロード
+    # Load pretrained model
     loaded_model = AutoModelForImageClassification.from_pretrained(pretrained_dir).to(device)
     loaded_model.eval()
     

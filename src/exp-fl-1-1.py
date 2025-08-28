@@ -15,7 +15,7 @@ logger = getLogger("base_logger")
 def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
     print(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, misclf_type: {misclf_type}, fpfn: {fpfn}, fl_target: {fl_target}, n: {n}")
     
-    # 変更する対象を決定
+    # Determine the target to modify
     if fl_target == "neuron":
         fl_methods = {
             "vdiff": localize_neurons,
@@ -29,8 +29,8 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
     else:
         raise ValueError(f"fl_target: {fl_target} is not supported.")
     
-    # 結果とかログの保存先を先に作っておく
-    # pretrained modelのディレクトリ
+    # Create save directories for results and logs in advance
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     if misclf_type == "all":
@@ -39,14 +39,14 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     os.makedirs(save_dir, exist_ok=True)
         
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"exp-fl-1_{this_file_name}_n{n}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, misclf_type: {misclf_type}")
 
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
@@ -69,7 +69,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
     logger.info(f"vscore_before_dir: {vscore_before_dir}")
     logger.info(f"vscore_dir: {vscore_dir}")
     logger.info(f"vscore_after_dir: {vscore_after_dir}")
-    # localizationを実行
+    # Execute localization
     for method_name, fl_method in fl_methods.items():
         print(f"fl_target: {fl_target}, method_name: {method_name}")
         location_save_path = os.path.join(save_dir, f"exp-fl-1_location_n{n}_{fl_target}_{method_name}.npy")
@@ -77,25 +77,25 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n):
         ret = fl_method(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, misclf_pair=misclf_pair, tgt_label=tgt_label, fpfn=fpfn)
         et = time.perf_counter()
         logger.info(f"localization time: {et-st} sec.")
-        # ニューロン単位の場合
+        # For neuron-level
         if fl_target == "neuron":
             places_to_fix, _ = ret
-            # log表示
+            # Display logs
             logger.info(f"places_to_fix={places_to_fix}")
             logger.info(f"num(pos_to_fix)={len(places_to_fix)}")
             print(f"num(pos_to_fix)={len(places_to_fix)}")
-            # 位置情報を保存
+            # Save position information
             np.save(location_save_path, places_to_fix)
             logger.info(f"saved location information to {location_save_path}")
-        # 重み単位の場合
+        # For weight-level
         elif fl_target == "weight":
             pos_before, pos_after = ret
-            # log表示
+            # Display logs
             logger.info(f"pos_before={pos_before}")
             logger.info(f"pos_after={pos_after}")
             logger.info(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
             print(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
-            # 位置情報を保存
+            # Save position information
             np.save(location_save_path, (pos_before, pos_after))
             logger.info(f"saved location information to {location_save_path}")
 

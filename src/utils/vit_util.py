@@ -17,8 +17,8 @@ met_f1 = evaluate.load("f1")
 
 def transforms(batch):
     """
-    画像のバッチを前処理する
-    ラベルを表すカラム名がlabel (c10) の場合に適用可能
+    Preprocess image batch
+    Applicable when the column name representing labels is label (c10)
     
     Parameters
     ------------------
@@ -27,17 +27,17 @@ def transforms(batch):
     ------------------
     
     """
-    # 画像のバッチを変換してtorch.tensorにする
+    # Convert image batch to torch.tensor
     inputs = processor(images=batch["img"], return_tensors="pt")
 
-    # ラベルのフィールドも前処理時に追加
+    # Add label field during preprocessing
     inputs["labels"] = batch["label"]
     return inputs
 
 def transforms_c100(batch):
     """
-    画像のバッチを前処理する
-    ラベルを表すカラム名が fine_label (c100) の場合に適用可能
+    Preprocess image batch
+    Applicable when the column name representing labels is fine_label (c100)
     
     Parameters
     ------------------
@@ -46,10 +46,10 @@ def transforms_c100(batch):
     ------------------
     
     """
-    # 画像のバッチを変換してtorch.tensorにする
+    # Convert image batch to torch.tensor
     inputs = processor(images=batch["img"], return_tensors="pt")
 
-    # ラベルのフィールドも前処理時に追加
+    # Add label field during preprocessing
     inputs["labels"] = batch["fine_label"]
     
     if "ori_correct" in batch:
@@ -213,12 +213,12 @@ def localize_neurons_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt
             ds_type = f"ori_{tgt_split}"
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
             if misclf_pair is not None and cor_mis == "mis":
-                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                # If misclf_pair is specified, get only the data for that target
                 assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
                 slabel, tlabel = misclf_pair
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
             if tgt_label is not None and cor_mis == "mis":
-                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                # If tgt_label is specified, get only the data for that target
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
                 if fpfn is not None:
                     vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
@@ -259,12 +259,12 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
         vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
         if cor_mis == "mis":
             if misclf_pair is not None:
-                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                # If misclf_pair is specified, get only the data for that target
                 assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
                 slabel, tlabel = misclf_pair
                 vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{slabel}to{tlabel}_{ds_type}_mis.npy")
             if tgt_label is not None:
-                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                # If tgt_label is specified, get only the data for that target
                 vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{tgt_label}_{ds_type}_mis.npy")
                 if fpfn is not None:
                     vscore_save_path = os.path.join(vscore_dir, f"{vscore_path_prefix}_l1tol12_{tgt_label}_{ds_type}_{fpfn}_mis.npy")
@@ -360,22 +360,22 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
 def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, rank_type="abs"):
 
     vdiff_dic = defaultdict(defaultdict)
-    # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
+    # Iteration of neurons before intermediate neurons, intermediate neurons, and neurons after intermediate neurons
     for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
         vdiff_dic[ba] = defaultdict(np.array)
         vmap_dic = defaultdict(np.array)
-        # 正解と不正解時のvscoreを読み込む
+        # Load vscore for correct and incorrect cases
         for cor_mis in ["cor", "mis"]:
             vmap_dic[cor_mis] = defaultdict(np.array)
             ds_type = f"ori_{tgt_split}"
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
             if misclf_pair is not None and cor_mis == "mis":
-                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                # If misclf_pair is specified, get only the data for that target
                 assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
                 slabel, tlabel = misclf_pair
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
             if tgt_label is not None and cor_mis == "mis":
-                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                # If tgt_label is specified, get only the data for that target
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
                 if fpfn is not None:
                     vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
@@ -383,29 +383,29 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
             vmap_dic[cor_mis] = vscores.T
         vmap_cor = vmap_dic["cor"]
         vmap_mis = vmap_dic["mis"]
-        # vdiffとそのランキングをbaに紐づいた辞書に保存
+        # Save vdiff and its ranking in dictionary linked to ba
         vmap_diff = vmap_cor - vmap_mis
         if rank_type == "abs":
             vdiff_dic[ba]["vdiff"] = np.abs(vmap_diff[:, tgt_layer])
-            vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"]) # 絶対値の降順
+            vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"]) # Descending order of absolute values
             order = "desc"
         else:
             vdiff_dic[ba]["vdiff"] = vmap_diff[:, tgt_layer]
             if rank_type == "desc":
-                vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"]) # 絶対値取る前の値の大きい順
+                vdiff_dic[ba]["rank"] = rank_descending(vdiff_dic[ba]["vdiff"]) # Descending order of values before taking absolute value
                 order = "desc"
             elif rank_type == "asc":
-                vdiff_dic[ba]["rank"] = rank_descending(- vdiff_dic[ba]["vdiff"]) # 絶対値取る前の値の小さい順
+                vdiff_dic[ba]["rank"] = rank_descending(- vdiff_dic[ba]["vdiff"]) # Ascending order of values before taking absolute value
                 order = "asc"
             else:
                 raise NotImplementedError
-        # vdiff_dic[ba]["vdiff"]のi番目の値の順位がvdiff_dic[ba]["rank"]のi番目と等しいことを確認
+        # Verify that the rank of the i-th value of vdiff_dic[ba]["vdiff"] equals the i-th value of vdiff_dic[ba]["rank"]
         for i, r in enumerate(vdiff_dic[ba]["rank"]):
             assert return_rank(vdiff_dic[ba]["vdiff"], i, order) == r, f"Error: {i}, {r}"
-        # rankのユニーク性の確認のためのプリント
+        # Print for verification of rank uniqueness
         # print(f"{len(set(vdiff_dic[ba]['rank']))} / {len(vdiff_dic[ba]['rank'])}")
         # print(f'({ba}) |vdiff| [min, max] = [{np.min(vdiff_dic[ba]["vdiff"])}, {np.max(vdiff_dic[ba]["vdiff"])}]')
-    # before,afterからtop n個ずつ，intermediateからtop 4n個を取得
+    # Get top n from before,after and top 4n from intermediate
     top_idx_dic = defaultdict(list)
     for ba, dic in vdiff_dic.items():
         if ba == "intermediate":
@@ -414,7 +414,7 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
             topx = n
         top_idx_dic[ba] = np.where(dic["rank"] < topx)[0]
         # print(f"{ba}: {top_idx_dic[ba]}")
-    # before-intermediate, intermediate-afterの修正箇所を返す
+    # Return repair locations for before-intermediate, intermediate-after
     pos_before = np.array(list(product(top_idx_dic["intermediate"], top_idx_dic["before"])))
     pos_after = np.array(list(product(top_idx_dic["after"], top_idx_dic["intermediate"])))
     return pos_before, pos_after
@@ -422,22 +422,22 @@ def localize_weights(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer,
 def get_vscore_diff_and_sim(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None):
 
     vdiff_dic = defaultdict(np.array)
-    # 中間ニューロンの前のニューロン，中間ニューロン，中間ニューロンの後のニューロンそれぞれの繰り返し
+    # Iteration of neurons before intermediate neurons, intermediate neurons, and neurons after intermediate neurons
     for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
         vdiff_dic[ba] = defaultdict(np.array)
         vmap_dic = defaultdict(np.array)
-        # 正解と不正解時のvscoreを読み込む
+        # Load vscore for correct and incorrect cases
         for cor_mis in ["cor", "mis"]:
             vmap_dic[cor_mis] = defaultdict(np.array)
             ds_type = f"ori_{tgt_split}"
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
             if misclf_pair is not None and cor_mis == "mis":
-                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                # If misclf_pair is specified, get only the data for that target
                 assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
                 slabel, tlabel = misclf_pair
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
             if tgt_label is not None and cor_mis == "mis":
-                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                # If tgt_label is specified, get only the data for that target
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
                 if fpfn is not None:
                     vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
@@ -446,7 +446,7 @@ def get_vscore_diff_and_sim(vscore_before_dir, vscore_dir, vscore_after_dir, tgt
             vmap_dic[cor_mis] = vscores.T
         vmap_cor = vmap_dic["cor"]
         vmap_mis = vmap_dic["mis"]
-        # vdiffとそのランキングをbaに紐づいた辞書に保存
+        # Save vdiff and its ranking in dictionary linked to ba
         vmap_diff = vmap_cor - vmap_mis
         vdiff_dic[ba]["vdiff"] = vmap_diff
         dot_products = np.sum(vmap_cor * vmap_mis, axis=0)
@@ -462,12 +462,12 @@ def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt
             ds_type = f"ori_{tgt_split}"
             vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_all_label_{ds_type}_{cor_mis}.npy")
             if misclf_pair is not None and cor_mis == "mis":
-                # misclf_pairが指定されている場合は，その対象のデータのみを取得
+                # If misclf_pair is specified, get only the data for that target
                 assert len(misclf_pair) == 2, f"Error: {misclf_pair}"
                 slabel, tlabel = misclf_pair
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{slabel}to{tlabel}_{ds_type}_{cor_mis}.npy")
             if tgt_label is not None and cor_mis == "mis":
-                # tgt_labelが指定されている場合は，その対象のデータのみを取得
+                # If tgt_label is specified, get only the data for that target
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{cor_mis}.npy")
                 if fpfn is not None:
                     vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol12_{tgt_label}_{ds_type}_{fpfn}_{cor_mis}.npy")
@@ -478,13 +478,13 @@ def localize_weights_random(vscore_before_dir, vscore_dir, vscore_after_dir, tgt
     for ba, vscore_dir in zip(["before", "intermediate", "after"], [vscore_before_dir, vscore_dir, vscore_after_dir]):
         vscore_shape = _get_vscore_shape(vscore_dir)
         num_neurons = vscore_shape[1]
-        # ランダムにn もしくは 4n個のニューロンを選ぶ
+        # Randomly select n or 4n neurons
         if ba == "intermediate":
             topx = 4*n
         else:
             topx = n
         top_idx_dic[ba] = np.random.choice(num_neurons, topx, replace=False)
-    # before-intermediate, intermediate-afterの修正箇所を返す
+    # Return repair locations for before-intermediate, intermediate-after
     pos_before = np.array(list(product(top_idx_dic["intermediate"], top_idx_dic["before"])))
     pos_after = np.array(list(product(top_idx_dic["after"], top_idx_dic["intermediate"])))
     return pos_before, pos_after
@@ -507,7 +507,7 @@ class ViTFromLastLayer(nn.Module):
     
 # def generate_random_positions(start_layer_idx, end_layer_idx, num_neurons, num_kn):
 #     """
-#     ランダムに知識ニューロンの位置 (start_layer_idx以上かつend_layer_idx-1以下のレイヤ番号, 0以上num_neurons以下のニューロン番号) を選ぶ
+#     Randomly select knowledge neuron positions (layer numbers >= start_layer_idx and <= end_layer_idx-1, neuron numbers >= 0 and <= num_neurons)
 #     """
 #     kn_list = []
 #     for _ in range(num_kn):
@@ -517,14 +517,14 @@ class ViTFromLastLayer(nn.Module):
 #     return kn_list
 
 def get_misclf_info(pred_labels, true_labels, num_classes):
-    # 誤分類の数をカウント
+    # Count number of misclassifications
     mis_matrix = np.zeros((num_classes, num_classes), dtype=int)
     mis_indices = {i: {j: [] for j in range(num_classes) if i != j} for i in range(num_classes)}
     for idx, (pred, true) in enumerate(zip(pred_labels, true_labels)):
         if pred != true:
             mis_matrix[pred, true] += 1
             mis_indices[pred][true].append(idx)  # Track the indices where the misclassification occurred
-    # 誤分類のランキングを作成
+    # Create misclassification ranking
     mis_ranking = []
     for i in range(num_classes):
         for j in range(num_classes):
@@ -535,16 +535,16 @@ def get_misclf_info(pred_labels, true_labels, num_classes):
     for i, j, mis in mis_ranking[:10]:
         print(f"pred {i} -> true {j}: {mis} / {mis_matrix.sum()} = {100 * mis / mis_matrix.sum():.2f} %")
 
-    # クラスごとのメトリクスを1つの辞書にまとめる
+    # Combine metrics for each class into one dictionary
     met_dict = defaultdict(np.array)
     precision, recall, f1_metric = evaluate.load("precision"), evaluate.load("recall"), evaluate.load("f1")
-    precisions = precision.compute(predictions=pred_labels, references=true_labels, average=None) # {"metric_name": クラスごとのmetric valueのarray} の辞書形式
+    precisions = precision.compute(predictions=pred_labels, references=true_labels, average=None) # Dictionary format {"metric_name": array of metric values for each class}
     recalls = recall.compute(predictions=pred_labels, references=true_labels, average=None)
     f1_scores = f1_metric.compute(predictions=pred_labels, references=true_labels, average=None)
     for met_item in [precisions, recalls, f1_scores]:
         met_dict.update(met_item)
 
-    # metricの悪い順にidxとmetricのペアを表示
+    # Display pairs of idx and metric in order of worst metrics
     for metric in met_dict.keys():
         print(f"Top 10 worst {metric} scores:")
         met_ranking = sorted(enumerate(met_dict[metric]), key=lambda x: x[1])
@@ -555,20 +555,20 @@ def get_misclf_info(pred_labels, true_labels, num_classes):
 
 def src_tgt_selection(mis_ranking, mis_indices, tgt_rank):
     """
-    src-tgt型のrepairをしたい場合に使う
-    src-tgt型の誤分類において，tgt_rank番目の誤分類情報を取り出す．
-    具体的には予測ラベル，正解ラベル，該当サンプルのインデックスを取り出す．
+    Used when performing src-tgt type repair
+    Extract the tgt_rank-th misclassification information from src-tgt type misclassifications.
+    Specifically, extract prediction label, true label, and corresponding sample index.
     """
-    # ランキングから対象の誤分類情報を取り出す
+    # Extract target misclassification information from ranking
     slabel, tlabel, mis_cnt = mis_ranking[tgt_rank-1]
     tgt_mis_indices = mis_indices[slabel][tlabel]
     return slabel, tlabel, np.array(tgt_mis_indices)
 
 def tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1"):
     """
-    tgt型のrepairをしたい場合に使う
-    tgt型の誤分類において，tgt_rank番目にused_metの悪いラベルを特定し，その情報を取り出す．
-    具体的には対象ラベル，該当サンプルのインデックスを取り出す．
+    Used when performing tgt type repair
+    In tgt type misclassifications, identify the label with the worst used_met at tgt_rank-th position and extract that information.
+    Specifically, extract target label and corresponding sample index.
     """
     metrics = met_dict[used_met]
     num_labels = len(metrics)
@@ -577,23 +577,23 @@ def tgt_selection(met_dict, mis_indices, tgt_rank, used_met="f1"):
     tgt_mis_indices = []
     for pred_label in range(num_labels):
         for true_label in range(num_labels):
-            # used_metによって誤分類の定義を変える
+            # Change misclassification definition based on used_met
             if used_met == "f1": # false positive and false negative
                 cond_fpfn = (pred_label == tgt_label or true_label == tgt_label)
             elif used_met == "precision": # false positive
                 cond_fpfn = (pred_label == tgt_label)
             elif used_met == "recall": # false negative
                 cond_fpfn = (true_label == tgt_label)
-            # pred_label != true_labelなので誤分類サンプル
-            # pred_label == tgt_labelはFalse positive, true_label == tgt_labelはFalse negative
+            # pred_label != true_label so it's a misclassified sample
+            # pred_label == tgt_label is False positive, true_label == tgt_label is False negative
             if cond_fpfn and pred_label != true_label:
                 tgt_mis_indices.extend(mis_indices[pred_label][true_label])
     return tgt_label, np.array(tgt_mis_indices)
 
 def all_selection(mis_indices):
     """
-    all型のrepairをする場合に使う.
-    mis_indices[i][j]に格納されているすべてのリストを1次元にして結合する.
+    Used when performing all type repair.
+    Flatten and concatenate all lists stored in mis_indices[i][j] into one dimension.
     """
     tgt_mis_indices = []
     for mi in mis_indices.values():
@@ -603,13 +603,13 @@ def all_selection(mis_indices):
     return np.array(tgt_mis_indices)
 
 def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", tgt_rank=1, fpfn=None):
-    # インデックスのロード
+    # Load indices
     with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_indices.pkl"), "rb") as f:
         mis_indices = pickle.load(f)
-    # ランキングのロード
+    # Load ranking
     with open(os.path.join(misclf_info_dir, f"{tgt_split}_mis_ranking.pkl"), "rb") as f:
         mis_ranking = pickle.load(f)
-    # metrics dictのロード
+    # Load metrics dict
     with open(os.path.join(misclf_info_dir, f"{tgt_split}_met_dict.pkl"), "rb") as f:
         met_dict = pickle.load(f)
     if misclf_type == "src_tgt":
@@ -638,9 +638,9 @@ def identfy_tgt_misclf(misclf_info_dir, tgt_split="repair", misclf_type="tgt", t
 
 def get_ori_model_predictions(pred_res_dir, labels, tgt_split="repair", misclf_type="tgt", tgt_label=None):
     """
-    すでにpklで保存された, 古いモデルのtgt_splitに対する予測結果を取得する.
+    Get prediction results for tgt_split of an old model that has already been saved as pkl.
     """
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # Get correct/incorrect indices for each sample in the repair set of the original model
     with open(os.path.join(pred_res_dir, f"{tgt_split}_pred.pkl"), "rb") as f:
         pred_res = pickle.load(f)
     pred_logits = pred_res.predictions
@@ -649,10 +649,10 @@ def get_ori_model_predictions(pred_res_dir, labels, tgt_split="repair", misclf_t
     indices_to_correct = np.where(is_correct)[0]
     if misclf_type == "tgt":
         assert tgt_label is not None, f"tgt_label should be specified when misclf_type is tgt."
-        # misclf_type == "tgt"の場合は，tgt_labelで正解したものだけをcorrectとして扱う
+        # If misclf_type == "tgt", treat only those that were correct with tgt_label as correct
         is_correct_tgt = is_correct & (labels[tgt_split] == tgt_label)
         indices_to_correct_tgt = np.where(is_correct_tgt)[0]
-        # is_correctのリストからis_correct_for_tgtを除外したものをis_correctにする
+        # Set is_correct to the list excluding is_correct_for_tgt from is_correct
         is_correct_others = is_correct & (labels[tgt_split] != tgt_label)
         indices_to_correct_others = np.where(is_correct_others)[0]
         return ori_pred_labels, is_correct_tgt, indices_to_correct_tgt, is_correct_others, indices_to_correct_others
@@ -660,13 +660,13 @@ def get_ori_model_predictions(pred_res_dir, labels, tgt_split="repair", misclf_t
 
 def get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=0):
     """
-    まだ保存されていない, 新しいモデルのtgt_splitに対する予測結果を取得する.
+    Get prediction results for tgt_split of a new model that has not been saved yet.
     """
     all_pred_labels = []
     all_true_labels = []
     for cache_state, y in zip(batch_hs_before_layernorm, batch_labels):
         logits = vit_from_last_layer(hidden_states_before_layernorm=cache_state, tgt_pos=tgt_pos)
-        # 出力されたlogitsを確率に変換
+        # Convert output logits to probabilities
         proba = torch.nn.functional.softmax(logits, dim=-1)
         pred_label = torch.argmax(proba, dim=-1)
         for pl, tl in zip(pred_label, y):
@@ -682,11 +682,11 @@ def get_batched_hs(hs_save_path, batch_size, tgt_indices=None, device=torch.devi
     else:
         hs_before_layernorm = hs
     if tgt_indices is not None:
-        # 使うインデックスに対する状態だけを取り出す
+        # Extract only the states for the indices to use
         hs_before_layernorm_tgt = hs_before_layernorm[tgt_indices]
     else:
         hs_before_layernorm_tgt = hs_before_layernorm
-    num_batches = (hs_before_layernorm_tgt.shape[0] + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
+    num_batches = (hs_before_layernorm_tgt.shape[0] + batch_size - 1) // batch_size  # Calculate number of batches (round up to use the last incomplete batch)
     batch_hs_before_layernorm_tgt = np.array_split(hs_before_layernorm_tgt, num_batches)
     return batch_hs_before_layernorm_tgt
 
@@ -695,7 +695,7 @@ def get_batched_labels(labels, batch_size, tgt_indices=None):
         labels_tgt = labels[tgt_indices]
     else:
         labels_tgt = labels
-    num_batches = (len(labels_tgt) + batch_size - 1) // batch_size  # バッチの数を計算 (最後の中途半端なバッチも使いたいので，切り上げ)
+    num_batches = (len(labels_tgt) + batch_size - 1) // batch_size  # Calculate number of batches (round up to use the last incomplete batch)
     batch_labels = np.array_split(labels_tgt, num_batches)
     return batch_labels
 
@@ -734,27 +734,27 @@ def sample_true_positive_indices_per_class(
     ori_pred_labels,
 ):
     """
-    True Positive からクラス分布に比例してインデックスを無作為抽出する。
+    Randomly sample indices proportionally to class distribution from True Positive.
 
     Parameters
     ----------
     num_sampled_from_correct : int
-        取り出したいインデックスの総数 (上限)。
+        Total number of indices to extract (upper limit).
     indices_to_correct : Iterable[int]
-        True Positive となっている元データのインデックス集合。
+        Set of indices of original data that are True Positive.
     ori_pred_labels : Sequence[int]
-        各サンプルの予測ラベル。
+        Prediction label for each sample.
 
     Returns
     -------
     np.ndarray
-        抽出されたインデックス (dtype=int)。
+        Extracted indices (dtype=int).
     """
     rng = np.random.default_rng()
 
-    # --- 1) クラスごとの TP インデックスを収集 -----------------------------
+    # --- 1) Collect TP indices for each class -----------------------------
     tp_per_class = defaultdict(list)
-    indices_to_correct = set(indices_to_correct)  # O(1) 参照用にセット化
+    indices_to_correct = set(indices_to_correct)  # Convert to set for O(1) reference
     for idx, pred_label in enumerate(ori_pred_labels):
         if idx in indices_to_correct:
             tp_per_class[pred_label].append(idx)
@@ -762,43 +762,43 @@ def sample_true_positive_indices_per_class(
     if not tp_per_class:
         return np.array([], dtype=int)
 
-    # --- 2) 抽出数をクラス分布に比例配分 -----------------------------------
+    # --- 2) Allocate extraction numbers proportionally to class distribution -----------------------------------
     counts = {lbl: len(lst) for lbl, lst in tp_per_class.items()}
     total_tp = sum(counts.values())
     num_to_sample = min(num_sampled_from_correct, total_tp)
     print(f"sampling {num_to_sample} samples from {total_tp} samples...")
 
-    # 初期割当（床関数で丸める）
+    # Initial allocation (round down with floor function)
     alloc = {lbl: (num_to_sample * cnt) // total_tp for lbl, cnt in counts.items()}
-    # この段階では割当の合計が num_to_sample より小さいことがある
+    # At this stage, the total allocation may be smaller than num_to_sample
     assert sum(alloc.values()) <= num_to_sample, f"alloc: {alloc}, num_to_sample: {num_to_sample}, total_tp: {total_tp}"
 
-    # --- 3) 端数を余力のあるクラスへランダムに配分 --------------------------
+    # --- 3) Randomly allocate remainders to classes with capacity --------------------------
     remaining = num_to_sample - sum(alloc.values())
     leftover = {lbl: counts[lbl] - alloc[lbl] for lbl in counts}
     
     while remaining > 0:
-        # まだ取り出せるクラスを候補に
+        # Add classes that can still be extracted to candidates
         candidates = [lbl for lbl, cap in leftover.items() if cap > 0]
         if not candidates:
-            break  # 念のため
-        # 余力に比例して確率付け
+            break  # Just in case
+        # Set probabilities proportional to remaining capacity
         probs = np.array([leftover[lbl] for lbl in candidates], dtype=float)
         probs /= probs.sum()
         chosen = rng.choice(candidates, p=probs)
         alloc[chosen] += 1
         leftover[chosen] -= 1
         remaining -= 1
-    # この段階では割当の合計が num_to_sample と等しくないとおかしい
+    # At this stage, the total allocation should equal num_to_sample
     assert sum(alloc.values()) == num_to_sample, f"alloc: {alloc}, num_to_sample: {num_to_sample}, total_tp: {total_tp}"
 
-    # --- 4) サンプリング ----------------------------------------------------
+    # --- 4) Sampling ----------------------------------------------------
     sampled = []
     for lbl, k in alloc.items():
         if k > 0:
             sampled.extend(rng.choice(tp_per_class[lbl], k, replace=False).tolist())
     assert len(sampled) == num_to_sample, f"len(sampled): {len(sampled)}, num_to_sample: {num_to_sample}, total_tp: {total_tp}"
-    # sampledの各インデックスが正解インデックスに含まれていることを保証
+    # Ensure that each index in sampled is included in the correct indices
     for idx in sampled:
         assert idx in indices_to_correct, f"Error: {idx} not in indices_to_correct"
     return np.array(sampled, dtype=int)
@@ -816,26 +816,26 @@ def maybe_initialize_repair_weights_(model, missing_keys):
 class WeightedTrainer(Trainer):
     def __init__(self, *args, alpha=0.5, **kwargs):
         super().__init__(*args, **kwargs)
-        self.alpha = alpha # 正解/不正解サンプルへのロス計算における重み
+        self.alpha = alpha # Weight in loss calculation for correct/incorrect samples
         assert 0 <= alpha <= 1, f"alpha must be in [0, 1], but got {alpha}"
     def compute_loss(self, model, inputs, return_outputs=False):
-        # NOTE: この関数は1バッチに対するロスの計算
+        # NOTE: This function calculates loss for one batch
         labels = inputs.get("labels")
         outputs = model(**inputs)
         logits = outputs.get("logits")
 
         loss_fct = torch.nn.CrossEntropyLoss(reduction="none")
-        loss_per_sample = loss_fct(logits, labels) # (バッチサイズ, )
+        loss_per_sample = loss_fct(logits, labels) # (batch_size, )
         
-        # 🔍 予測ラベル vs 正解ラベルから成否を計算
+        # 🔍 Calculate success/failure from prediction label vs true label
         pred_labels = torch.argmax(logits, dim=1)
-        # バッチごとの正解/不正解によってロスに異なるフィルターをかける
+        # Apply different filters to loss based on correct/incorrect for each batch
         is_correct = (pred_labels == labels).to(dtype=torch.float32)
-        # スコアの定義
+        # Score definition
         score = torch.where(
             is_correct == 1,
-            torch.ones_like(loss_per_sample),                      # 正解なら1
-            1.0 / (loss_per_sample + 1.0)                 # 不正解なら 1 / (Loss + 1)
+            torch.ones_like(loss_per_sample),                      # 1 if correct
+            1.0 / (loss_per_sample + 1.0)                 # 1 / (Loss + 1) if incorrect
         )
         # print(f"score: {score}")
         
@@ -843,7 +843,7 @@ class WeightedTrainer(Trainer):
         n_correct_batch = max((is_correct == 1).sum().item(), 1)
         n_incorrect_batch = max((is_correct == 0).sum().item(), 1)
 
-        # alphaを使って重みを調整
+        # Adjust weights using alpha
         sample_weights = torch.where(
             is_correct == 1,
             self.alpha / n_correct_batch,

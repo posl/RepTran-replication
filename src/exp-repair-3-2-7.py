@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-# rq1_stats_table_rr_br.py  –  RR / BR  の Wilcoxon＋Holm＋Cliff’s Δ
+# rq1_stats_table_rr_br.py – Wilcoxon + Holm + Cliff’s Δ for RR / BR
 
 import os, json, math, itertools, warnings
 from pathlib import Path
@@ -9,7 +9,7 @@ import pandas as pd
 from scipy.stats import wilcoxon
 from statsmodels.stats.multitest import multipletests
 
-# ────── 固定パラメータ ──────────────────────────────────────────
+# ────── Fixed parameters ─────────────────────────────────────────
 DATASETS   = ["c100", "tiny-imagenet"]
 SPLITS     = ["repair", "test"]
 K          = 0
@@ -29,30 +29,30 @@ METRIC_INFO = dict(
     BR=("break_rate_overall",   "Break  Rate"),
 )
 
-# ────── JSON 読み出し ───────────────────────────────────────────
+# ────── JSON loader ─────────────────────────────────────────────
 def metric_value(ds, split, mtype, rank, rep, method_key, json_key):
     base = Path(ROOT_TMPL.format(ds=ds, K=K))
     jdir = base / f"misclf_top{rank}" / f"{mtype}_repair_weight_by_de"
     if method_key in {"ours", "random"}:
         fn = f"exp-repair-3-2-metrics_for_{split}_{ALPHA_STR}_{method_key}_reps{rep}.json"
-    else:           # arachne (bl)
+    else:            # arachne (bl)
         fn = f"exp-repair-3-1-metrics_for_{split}_{ALPHA_STR}_bl_reps{rep}.json"
     with open(jdir / fn) as f:
         return json.load(f)[json_key]
 
-# ────── Wilcoxon & Cliff’s Δ (対応あり) ──────────────────────────
+# ────── Wilcoxon & Cliff’s Δ (paired) ───────────────────────────
 def paired_cliffs_delta(v1: np.ndarray, v2: np.ndarray):
-    """対応あり Cliff’s Δ  =  (n_pos - n_neg) / N"""
+    """Paired Cliff’s Δ = (n_pos - n_neg) / N"""
     diff = v1 - v2
     n_pos = np.sum(diff > 0)
     n_neg = np.sum(diff < 0)
     return (n_pos - n_neg) / diff.size if diff.size else 0.0
 
 def wilcoxon_block(values):
-    """values = {method: np.array(15)}   ->   {OvA_p, OvA_d, …}"""
+    """values = {method: np.array(15)} -> {OvA_p, OvA_d, …}"""
     out = {}
     p_raw = []
-    # 生 p と Δ をまず計算
+    # Compute raw p-values and Δ first
     for m1, m2 in PAIRS:
         v1, v2 = values[m1], values[m2]
         if np.allclose(v1, v2):
@@ -67,7 +67,7 @@ def wilcoxon_block(values):
         out[f"{tag}_d"]     = d
         p_raw.append(p)
 
-    # Holm 補正
+    # Holm correction
     _, p_adj, _, _ = multipletests(p_raw, method="holm")
     for (m1, m2), p_c in zip(PAIRS, p_adj):
         tag = f"{m1[:1].upper()}v{m2[:1].upper()}"
@@ -78,13 +78,13 @@ def star(p):
     return "***" if p <= .001 else "**" if p <= .01 else "*" if p <= .05 else ""
 
 def cell(d, p):
-    return f"'{d:+.2f} {star(p)}"      # +0.45 ** のように符号を残す
+    return f"'{d:+.2f} {star(p)}"      # keep the sign, e.g., +0.45 **
 
 # ────── main ────────────────────────────────────────────────────
 for metric_tag, (json_key, nice_name) in METRIC_INFO.items():
     rows = []
     for ds, split, mtype in itertools.product(DATASETS, SPLITS, MISCLF_TPS):
-        # 15 データ点 × 3 手法
+        # 15 data points × 3 methods
         vals = {m: [] for m in METHODS}
         for rank, rep in itertools.product(TGT_RANKS, REPS):
             for m, key in METHODS.items():
@@ -103,7 +103,7 @@ for metric_tag, (json_key, nice_name) in METRIC_INFO.items():
             "AvR": cell(stat["AvR_d"], stat["AvR_p"]),
         })
 
-    # 並べ替え & 保存
+    # Sort & save
     order = dict(dataset=DATASETS, split=SPLITS,
                  misclf_type=MISCLF_TPS)
     df = pd.DataFrame(rows).sort_values(

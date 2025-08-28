@@ -16,7 +16,7 @@ logger = getLogger("base_logger")
 def main(ds_name, k):
     print(f"ds_name: {ds_name}, fold_id: {k}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -28,9 +28,9 @@ def main(ds_name, k):
 
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     split_names = list(ds.keys()) # [train, repair, test]
     # target_split_names = ["train", "repair"]
@@ -43,9 +43,9 @@ def main(ds_name, k):
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
@@ -110,7 +110,7 @@ def main(ds_name, k):
         assert len(incorrect_bhs) == len(incorrect_ahs), f"len(incorrect_bhs) != len(incorrect_ahs)"
         t2 = time.perf_counter()
 
-        # 正解/不正解データに対するv-scoreの計算を行い，保存する
+        # 正解/不正解データに対するv-scoreの計算を行い，Saveする
         for correct_mid_states, incorrect_mid_states, vscore_dir in zip([correct_bhs, correct_ahs, correct_mhs], [incorrect_bhs, incorrect_ahs, incorrect_mhs], [vscore_before_dir, vscore_after_dir, vscore_mid_dir]): # bhs, ahs での繰り返し
             for cor_mis, mid_states in zip(["cor", "mis"], [correct_mid_states, incorrect_mid_states]):
                 logger.info(f"cor_mis: {cor_mis}, len({cor_mis}_states): {len(mid_states)}") # correct, incorrectでの繰り返し
@@ -124,7 +124,7 @@ def main(ds_name, k):
                     vscore = get_vscore(tgt_mid_state)
                     vscore_per_layer.append(vscore)
                 vscores = np.array(vscore_per_layer) # (num_tgt_layer, num_neurons)
-                # vscoresを保存
+                # vscoresをSave
                 ds_type = f"ori_{split}"
                 vscore_save_path = os.path.join(vscore_dir, f"vscore_l1tol{end_li}_all_label_{ds_type}_{cor_mis}.npy")
                 np.save(vscore_save_path, vscores)
@@ -132,20 +132,20 @@ def main(ds_name, k):
         t3 = time.perf_counter()
         logger.info(f"elapsed time: {t3-t1} sec (vscore: {t3-t2} sec)")
         
-        # NOTE: 中間ニューロン状態自体の保存は必要そうになったら実装する
-        # # 各サンプルに対するレイヤごとの隠れ状態を保存していく
-        # # 将来的なことを考えてnumpy->tensorに変換してから保存
+        # NOTE: 中間ニューロン状態自体のSaveは必要そうになったら実装する
+        # # 各サンプルに対するレイヤごとの隠れ状態をSaveしていく
+        # # 将来的なことを考えてnumpy->tensorに変換してからSave
         # num_layers = model.vit.config.num_hidden_layers
         # for l_idx in range(num_layers):
         #     # 特定のレイヤのstatesだけ抜き出し
         #     tgt_mid_states = torch.tensor(all_mid_states[:, l_idx, :]).cpu()
-        #     # 保存
+        #     # Save
         #     intermediate_save_path = os.path.join(cache_dir, f"intermediate_states_l{l_idx}.pt")
         #     torch.save(tgt_mid_states, intermediate_save_path)
         #     print(f"tgt_mid_states: {tgt_mid_states.shape} is saved at {intermediate_save_path}")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k_list', type=int, nargs="*", default=[0, 1, 2, 3, 4], help="the fold id(s) to run (default: 0 1 2 3 4)")

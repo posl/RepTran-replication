@@ -15,24 +15,24 @@ from transformers import ViTForImageClassification
 import torch
 import torch.optim as optim
 
-# デバイス (cuda, or cpu) の取得
+# Get device (cuda, or cpu)
 device = get_device()
 
 def calculate_top_n_flattened(grad_loss_list, fwd_imp_list, n, weight_grad_loss=0.5, weight_fwd_imp=0.5):
     """
-    BI, FIを平滑化し、重み付き平均でスコアを計算して上位n件を取得。
+    Flatten BI, FI, calculate scores with weighted average, and get top n items.
     
     Args:
-        grad_loss_list (list): BI のリスト [W_bef の BI, W_aft の BI]
-        fwd_imp_list (list): FI のリスト [W_bef の FI, W_aft の FI]
-        n (int): 上位n件を取得する数
-        weight_grad_loss (float): grad_loss の重み (0~1の範囲)
-        weight_fwd_imp (float): fwd_imp の重み (0~1の範囲)
+        grad_loss_list (list): List of BI [BI of W_bef, BI of W_aft]
+        fwd_imp_list (list): List of FI [FI of W_bef, FI of W_aft]
+        n (int): Number to get top n items
+        weight_grad_loss (float): Weight of grad_loss (range 0~1)
+        weight_fwd_imp (float): Weight of fwd_imp (range 0~1)
     
     Returns:
-        dict: 上位n件のインデックス {"bef": [...], "aft": [...]} とそのスコア
+        dict: Top n indices {"bef": [...], "aft": [...]} and their scores
     """
-    # BI, FIを一列に変換
+    # Convert BI, FI to single column
     flattened_grad_loss = torch.cat([x.flatten() for x in grad_loss_list])
     flattened_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list])
 
@@ -74,12 +74,12 @@ def calculate_pareto_front_flattened(grad_loss_list, fwd_imp_list):
     """
     BI, FIを平滑化してパレートフロントを計算
     Args:
-        grad_loss_list (list): BI のリスト [W_bef の BI, W_aft の BI]
-        fwd_imp_list (list): FI のリスト [W_bef の FI, W_aft の FI]
+        grad_loss_list (list): List of BI [BI of W_bef, BI of W_aft]
+        fwd_imp_list (list): List of FI [FI of W_bef, FI of W_aft]
     Returns:
         dict: パレートフロントのインデックス {"bef": [...], "aft": [...]}
     """
-    # BI, FIを一列に変換
+    # Convert BI, FI to single column
     flattened_grad_loss = torch.cat([x.flatten() for x in grad_loss_list])
     flattened_fwd_imp = torch.cat([x.flatten() for x in fwd_imp_list])
     
@@ -215,7 +215,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     sample_from_correct = True
     ts = time.perf_counter()
     
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     tgt_pos = ViTExperiment.CLS_IDX
@@ -224,7 +224,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     ds_dirname = f"{ds_name}_fold{k}"
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
     label_col = "fine_label"
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
@@ -232,21 +232,21 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     }
     true_labels = labels[tgt_split]
     
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # location informationの保存先
+    # location informationのSave先
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     vit_from_last_layer = ViTFromLastLayer(model)
     vit_from_last_layer.eval()
     optimizer = optim.SGD(model.parameters(), lr=0.01)
     
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     _, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
     
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # Get correct/incorrect indices for each sample in the repair set of the original model
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     if misclf_type == "tgt":
         ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
@@ -254,25 +254,25 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
         ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
     print(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
     
-    # 正解データからrepairに使う一定数だけランダムに取り出す
+    # Randomly sample a certain number from correct data for repair
     if sample_from_correct:
         # サンプルする場合
         sampled_indices_to_correct = sample_from_correct_samples(len(indices_to_incorrect), indices_to_correct)
     else:
         # サンプルしない場合
         sampled_indices_to_correct = indices_to_correct
-    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
-    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() は 非破壊的method
-    # tgt_indicesは全てユニークな値であることを保証
+    # Combine extracted correct data and all incorrect data into one dataset
+    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() is a non-destructive method
+    # Ensure all tgt_indices are unique values
     assert len(tgt_indices) == len(set(tgt_indices)), f"len(tgt_indices): {len(tgt_indices)}, len(set(tgt_indices)): {len(set(tgt_indices))}"
     print(f"len(tgt_indices): {len(tgt_indices)})")
-    # tgt_indicesに対応するデータトラベルを取り出す
+    # Extract data labels corresponding to tgt_indices
     tgt_labels = labels[tgt_split][tgt_indices]
     # FLに使う各サンプルの予測ラベルと正解ラベルを表示
     print(f"ori_pred_labels[tgt_indices]: {ori_pred_labels[tgt_indices]} (len: {len(ori_pred_labels[tgt_indices])})")
     print(f"ori_tgt_labels[tgt_indices]: {tgt_labels} (len: {len(tgt_labels)})")
     
-    # キャッシュの保存用のディレクトリ
+    # キャッシュのSave用のディレクトリ
     cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     # cache_pathに存在することを確認
@@ -348,7 +348,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, n, sample_from_correct=False, 
     print(f"pos_before: {pos_before}")
     print(f"pos_after: {pos_after}")
     
-    # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報を保存する
+    # 最終的に，location_save_pathに各中間ニューロンの重みの位置情報をSaveする
     if fpfn is not None and misclf_type == "tgt":
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     elif misclf_type == "all":
@@ -388,6 +388,6 @@ if __name__ == "__main__":
             continue
         elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, n=n, strategy=strategy)
         results.append({"ds": ds, "k": k, "n": n, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "elapsed_time": elapsed_time})
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv(f"./exp-fl-2-2_time_n{n_str}_{strategy}.csv", index=False)

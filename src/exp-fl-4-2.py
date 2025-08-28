@@ -197,7 +197,7 @@ if __name__ == "__main__":
                 result_table.loc[(target_val, method_val), col_name] = n_pos
 
         #========================================================================
-        # 6) テーブルを保存 (列は misclf_type だけ)
+        # 6) テーブルをSave (列は misclf_type だけ)
         #========================================================================
         print("\n===== Final Table: (fl_method, fl_target) x misclf_type =====")
         print(result_table)

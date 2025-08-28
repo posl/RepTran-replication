@@ -53,15 +53,15 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
     # ニューロンへの介入の方法のリスト
     op_list = ["enhance", "suppress"]
     
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先
+    # 結果とかログのSave先
     save_dir = get_save_dir(pretrained_dir, tgt_rank, misclf_type, fpfn)
     
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"exp-fl-2_{this_file_name}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, tgt_rank: {tgt_rank}, n: {n}, misclf_type: {misclf_type}, tgt_split: {tgt_split}, tgt_layer: {tgt_layer}")
     
@@ -94,7 +94,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
     # ==============================================================
     # 読み込んだニューロン/重みの位置情報から，モデルに介入を加える
     # ==============================================================
-    # キャッシュの保存用のディレクトリ
+    # キャッシュのSave用のディレクトリ
     cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     # cache_pathに存在することを確認
@@ -134,7 +134,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_method, n):
             batched_hidden_states_before_layernorm,
             total=len(batched_hidden_states_before_layernorm),
         ):
-            # ここでViTFromLastLayerのforwardが実行される
+            # ViTFromLastLayer forward is executed here
             logits = vit_from_last_layer(
                 hidden_states_before_layernorm=cached_state,
                 tgt_pos=tgt_pos, imp_pos=imp_pos, imp_op=imp_op

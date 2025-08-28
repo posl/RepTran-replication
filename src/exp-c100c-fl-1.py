@@ -18,9 +18,9 @@ logger = getLogger("base_logger")
 
 def main(n_ratio, w_num):
     pretrained_dir = ViTExperiment.c100.OUTPUT_DIR.format(k=0)
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=pretrained_dir, exp_name=this_file_name)
     label_col = "fine_label"
@@ -34,13 +34,13 @@ def main(n_ratio, w_num):
     }
     ds_preprocessed = ds.with_transform(transforms_c100)
     
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     # configuration
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     
-    # accuracyのbottom3のノイズタイプのみ処理したい
+    # Only process bottom3 noise types by accuracy
     bottom3_keys = get_bottom3_keys_from_json(os.path.join(pretrained_dir, "corruption_accuracy.json"))
     
     # ノイズタイプごとの誤ったサンプルのインデックスを取得
@@ -48,7 +48,7 @@ def main(n_ratio, w_num):
         mis_indices_dict = json.load(f)
         mis_indices_dict = {k: v for k, v in mis_indices_dict.items() if k in bottom3_keys}
     
-    # vscoresの保存ディレクトリ
+    # vscoresのSaveディレクトリ
     vscore_before_dir = os.path.join(pretrained_dir, "vscores_before") # 使わないので実際はなくていい
     vscore_dir = os.path.join(pretrained_dir, "vscores")
     vscore_after_dir = os.path.join(pretrained_dir, "vscores_after") # 使わないので実際はなくていい
@@ -73,15 +73,15 @@ def main(n_ratio, w_num):
         cached_mid_states = cached_mid_states.detach().numpy().copy() # (keyにおける誤ったサンプル数, 3072)
         print(f"cached_mid_states.shape: {cached_mid_states.shape}")
         
-        # 結果保存用のディレクトリ
+        # 結果Save用のディレクトリ
         save_dir = os.path.join(pretrained_dir, f"corruptions_top{rank+1}", f"weights_location")
         os.makedirs(save_dir, exist_ok=True)
         location_save_path = os.path.join(save_dir, f"exp-c100c-fl-1_location_n{n_ratio}_w{w_num}_neuron.npy")
         places_to_neuron, tgt_neuron_score = localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n_ratio, intermediate_states=cached_mid_states, tgt_mis_indices=None)
-        # log表示
+        # Display logs
         logger.info(f"places_to_neuron={places_to_neuron}")
         logger.info(f"num(pos_to_fix)={len(places_to_neuron)}")
-        # 位置情報を保存
+        # 位置情報をSave
         np.save(location_save_path, places_to_neuron)
         logger.info(f"saved location information to {location_save_path}")
         print(f"saved location information to {location_save_path}")
@@ -91,7 +91,7 @@ def main(n_ratio, w_num):
 
         # ここまでで Vdiff x Use_i によるニューロン特定ができたので，次は勾配も使った重み特定をする．
     
-        # キャッシュの保存用のディレクトリ
+        # キャッシュのSave用のディレクトリ
         cache_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{key}")
         cache_path = os.path.join(cache_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
         # cache_pathに存在することを確認
@@ -111,7 +111,7 @@ def main(n_ratio, w_num):
         vit_from_last_layer.eval()
         optimizer = optim.SGD(model.parameters(), lr=0.01)
         
-        # 結果の保存用
+        # 結果のSave用
         results = defaultdict(lambda: torch.tensor([])) # key: bef or aft, value: mean of grad_loss of the weights (shape: (out_dim, in_dim))
         
         # 誤分類サンプル集合に対してWbef, Waftの重みのロスに対する勾配を取得
@@ -174,7 +174,7 @@ def main(n_ratio, w_num):
         pos_before = np.array([np.unravel_index(idx, original_shape_bef) for idx in top_indices_bef])
         pos_after = np.array([np.unravel_index(idx, original_shape_aft) for idx in top_indices_aft])
 
-        # 位置情報を保存
+        # 位置情報をSave
         location_save_path = os.path.join(save_dir, f"exp-c100c-fl-1_location_n{n_ratio}_w{w_num}_weight.npy")
         np.save(location_save_path, (pos_before, pos_after))
         print(f"saved location information to {location_save_path}")
@@ -200,6 +200,6 @@ if __name__ == "__main__":
             ret["w_num"] = w_num
         results.extend(ret_list)
         print(results)
-    # results を csv にして保存
+    # results を csv にしてSave
     result_df = pd.DataFrame(results)
     result_df.to_csv("./exp-c100c-fl-1_time.csv", index=False)

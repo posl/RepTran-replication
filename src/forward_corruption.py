@@ -10,7 +10,7 @@ from utils.vit_util import processor, transforms, compute_metrics, transforms_c1
 from utils.constant import ViTExperiment
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument("--ct", type=str, help="corruption type for fine-tuned dataset. when set to None, original model is used", default=None)
@@ -21,7 +21,7 @@ if __name__ == "__main__":
     severity = args.severity
     print(f"ds_name: {ds_name}, ori_ct: {ori_ct}, severity: {severity}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10c":
         tf_func = transforms
         label_col = "label"
@@ -31,7 +31,7 @@ if __name__ == "__main__":
     else:
         NotImplementedError
     
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     ct_list = get_corruption_types()
     dataset_dir = ViTExperiment.DATASET_DIR
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     else:
         model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
         training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
-    # 予測結果格納ディレクトリ
+    # Directory for storing prediction results
     pred_out_dir = os.path.join(adapt_out_dir, "pred_results", "PredictionOutput") if ori_ct is not None \
             else os.path.join(pretrained_dir, "pred_results_divided_corr", "PredictionOutput")
     os.makedirs(pred_out_dir, exist_ok=True)
@@ -56,7 +56,7 @@ if __name__ == "__main__":
         print(f"{'='*60}\ncorrp_type: {ct} ({i+1}/{len(ct_list)})\n{'='*60}")
         # 対象のcorruption, severityのdatasetをロード
         ds = load_from_disk(os.path.join(dataset_dir, f"{ds_name}_severity{severity}", ct))
-        # 読み込まれた時にリアルタイムで前処理を適用するようにする
+        # Apply preprocessing in real-time when loaded
         ds_preprocessed = ds.with_transform(tf_func)
         # datasetをtrain, testに分ける
         ds_split = ds_preprocessed.train_test_split(test_size=0.4, shuffle=True, seed=777) # XXX: !SEEDは絶対固定!
@@ -71,13 +71,13 @@ if __name__ == "__main__":
             eval_dataset=ds_test,
             tokenizer=processor,
         )
-        # データセットのサイズとバッチサイズからイテレーション回数を計算
+        # Calculate number of iterations from dataset size and batch size
         eval_batch_size = training_args.per_device_eval_batch_size
         eval_iter = math.ceil(len(ds_test) / eval_batch_size)
         # テストデータに対する推論実行
         print(f"predict {ds_name}:{ct} data... #iter = {eval_iter} ({len(ds_test)} samples / {eval_batch_size} batches)")
         pred = trainer.predict(ds_test)
-        # 予測結果を格納するPredictionOutputオブジェクトをpickleで保存
+        # Save PredictionOutput object containing prediction results with pickle
         with open(os.path.join(pred_out_dir, f"{ds_name}_{ct}_pred.pkl"), "wb") as f:
             pickle.dump(pred, f)
         print(f"saved to {os.path.join(pred_out_dir, f'{ds_name}_{ct}_pred.pkl')}")

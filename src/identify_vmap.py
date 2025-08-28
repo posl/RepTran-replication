@@ -21,7 +21,7 @@ if __name__ == "__main__":
     # corruption typeのリストとデバイス設定
     ct_list = get_corruption_types()
     device = get_device()
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         label_col = "label"
         num_labels = 10
@@ -30,7 +30,7 @@ if __name__ == "__main__":
         num_labels = 100
     else:
         NotImplementedError
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
@@ -44,7 +44,7 @@ if __name__ == "__main__":
     for tgt_ct in ct_list:
         print(f"\ntarget corruption type: {tgt_ct}\n")
         vmap_dic[tgt_ct] = defaultdict(defaultdict)
-        vmap_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, f"{tgt_ct}_severity4", "vmap") # 結果保存先のdir
+        vmap_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, f"{tgt_ct}_severity4", "vmap") # 結果Save先のdir
         os.makedirs(vmap_dir, exist_ok=True)
         for cor_mis in ["cor", "mis"]:
             vmap_dic[tgt_ct][cor_mis] = defaultdict(np.array)
@@ -65,7 +65,7 @@ if __name__ == "__main__":
         condition = np.abs(vmap_diff[:, target_layer]).reshape(-1) > top10
         top10_idx = np.where(condition)[0]
         print(f"Top 10% Neurons (Layer {target_layer}, {len(top10_idx)} neurons): {top10_idx}")
-        # vmap_diffとtop10%のニューロンの位置を保存
+        # vmap_diffとtop10%のニューロンの位置をSave
         vmap_diff_path = os.path.join(vmap_dir, f"vmap_diff_{used_column}_l{start_li}tol{end_li}.npy")
         np.save(vmap_diff_path, vmap_diff)
         top10_idx_path = os.path.join(vmap_dir, f"top10_idx_{used_column}_l{target_layer}.npy")

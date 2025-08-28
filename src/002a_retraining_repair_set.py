@@ -8,7 +8,7 @@ from utils.vit_util import processor, transforms, transforms_c100, compute_metri
 from utils.constant import ViTExperiment
 
 def retraining_with_repair_set(ds_name, k):
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -18,7 +18,7 @@ def retraining_with_repair_set(ds_name, k):
     else:
         NotImplementedError
 
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
     dataset_dir = ViTExperiment.DATASET_DIR
     data_collator = DefaultDataCollator()
@@ -26,21 +26,21 @@ def retraining_with_repair_set(ds_name, k):
 
     # 対象のcorruption, severityのdatasetをロード
     ds = load_from_disk(os.path.join(dataset_dir, ds_dirname))
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
     ds_train, ds_repair, ds_test = ds_preprocessed["train"], ds_preprocessed["repair"], ds_preprocessed["test"]
 
-    # pretrained modelのロード
+    # Load pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
-    # オリジナルモデルの学習時の設定をロード
+    # オリジナルモデルのLoad training configuration
     training_args = torch.load(os.path.join(pretrained_dir, "training_args.bin"))
     # オリジナルの学習から設定を少し変える
     adapt_out_dir = os.path.join(pretrained_dir, "retraining_with_repair_set")
     training_args.output_dir = adapt_out_dir
     training_args.num_epochs = 2
     training_args.logging_strategy = "no"
-    # Trainerオブジェクトの作成
+    # Create Trainer object
     trainer = Trainer(
         model=model,
         args=training_args,
@@ -50,14 +50,14 @@ def retraining_with_repair_set(ds_name, k):
         eval_dataset=ds_test,
         tokenizer=processor,
     )
-    # 学習の実行
+    # Execute training
     train_results = trainer.train()
-    # 保存
-    trainer.save_model() # from_pretrained()から読み込めるようになる
-    trainer.save_state() # save_model()よりも多くの情報を保存する
+    # Save
+    trainer.save_model() # Can be loaded with from_pretrained()
+    trainer.save_state() # save_model()よりも多くの情報をSaveする
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str, help="dataset name")
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")

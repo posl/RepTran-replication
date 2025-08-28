@@ -13,7 +13,7 @@ import seaborn as sns
 
 NUM_IDENTIFIED_NEURONS = Experiment1.NUM_IDENTIFIED_NEURONS
 
-# デバイス (cuda, or cpu) の取得
+# Get device (cuda or cpu)
 device = get_device()
 
 WBEF_SHAPE = (3072, 768)
@@ -133,15 +133,15 @@ def compute_topk_overlap(fl_rank: np.ndarray, gt_rank: np.ndarray,
 
 def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
     
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     tgt_split = "repair" # NOTE: we only use repair split for repairing
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     tgt_pos = ViTExperiment.CLS_IDX
     
-    # exp-fl-5の結果保存用ディレクトリ
+    # exp-fl-5の結果Save用ディレクトリ
     exp_dir = os.path.join("./exp-fl-5", f"{ds_name}_fold{k}")
     
-    # ニューロン/重みの位置情報が保存されたディレクトリ
+    # ニューロン/重みの位置情報がSaveされたディレクトリ
     if fpfn is not None and misclf_type == "tgt":
         location_save_dir = os.path.join(exp_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_weights_location")
     elif misclf_type == "all":
@@ -174,7 +174,7 @@ def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
     N = fl_gt_rank_combined.size
     print(f"Combined N = {N}")  # e.g. ~4,718,592
     
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     misclf_info_dir = os.path.join(exp_dir, "misclf_info")
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
@@ -191,7 +191,7 @@ def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
     fl_method_list = ["ours", "bl", "random"]
     FL_ranks = {}
     for fl_method in fl_method_list:
-        # location informationの保存先
+        # location informationのSave先
         if fl_method == "random":
             # fl_gtと同じ形状の乱数を生成
             pos_before = generate_random_indices(WBEF_SHAPE)
@@ -316,7 +316,7 @@ def main(ds_name, k, tgt_rank_list, misclf_type, fpfn, n):
     print(f"Saved: {location_save_dir}/{saved_filename}.png/pdf")
     plt.close(fig)
     
-    # ret_dictを保存
+    # ret_dictをSave
     with open(os.path.join(location_save_dir, saved_filename + ".json"), "w") as f:
         json.dump(ret_dict, f, indent=4)
     

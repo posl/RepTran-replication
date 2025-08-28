@@ -83,7 +83,7 @@ if __name__ == "__main__":
             # ★ 変更点3: 文字列をそのままテーブルに書き込み
             result_table.loc[(target_val, method_val), "total_misclf"] = result_str
 
-        # CSVに保存
+        # CSVにSave
         out_csv = f"./exp-fl-4-3_{ds}_no_rank_table_wnum{wnum}.csv"
         desired_index_order = [
             ("neuron", "random"),

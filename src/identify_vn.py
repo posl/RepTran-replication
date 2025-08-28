@@ -17,7 +17,7 @@ if __name__ == "__main__":
     used_column = args.used_column
     # argparseで受け取った引数のサマリーを表示
     print(f"ds_name: {ds_name}, start_layer_idx: {start_layer_idx}, used_column: {used_column}")
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         label_col = "label"
         num_labels = 10
@@ -29,7 +29,7 @@ if __name__ == "__main__":
 
     for tgt_label in range(num_labels):
         print(f"tgt_label: {tgt_label}")
-        # neuronごとのscoreの保存されているnpy
+        # neuronごとのscoreのSaveされているnpy
         res_dir = os.path.join(getattr(ViTExperiment, ds_name).OUTPUT_DIR, "neuron_scores")
         # scoreをロード
         vscore_path = os.path.join(res_dir, f"vscore_l{start_layer_idx}tol12_{tgt_label}.npy")
@@ -41,7 +41,7 @@ if __name__ == "__main__":
         # 上位3%のインデックス (レイヤ番号, ニューロン番号) のリスト
         vn = [(int(l_id+start_layer_idx), int(n_id)) for l_id, n_id in indices]
 
-        # 結果を保存
+        # 結果をSave
         save_dict = {}
         save_dict["num_kn"] = len(vn)
         save_dict["num_kn_per_layer"] = {l: len([n_id for l_id, n_id in vn if l_id == l]) for l in range(start_layer_idx, 12)}

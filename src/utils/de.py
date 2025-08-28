@@ -1,5 +1,5 @@
 import pickle, os, sys, time, math, copy
-# utilsをインポートできるようにパスを追加
+# Add path to import utils
 import torch
 import numpy as np
 from tqdm import tqdm
@@ -11,53 +11,53 @@ from logging import getLogger
 logger = getLogger("base_logger")
 
 def check_new_weights(patch, pos_before, pos_after, old_model, new_model, device=torch.device("cuda"), op=None):
-    # patchの最初のlen(pos_before)個はintermediateのpos_beforeの重み，それ以降のlen(pos_after)個はoutputのpos_afterの重み
+    # The first len(pos_before) elements of patch are weights of pos_before in intermediate, and the subsequent len(pos_after) elements are weights of pos_after in output
     assert len(patch) == len(pos_before) + len(pos_after), "The length of patch should be equal to the sum of the lengths of pos_before and pos_after"
     num_pos_before = len(pos_before)
     num_pos_after = len(pos_after)
-    # pos_before, afterそれぞれの繰り返し
+    # Iterate over pos_before and after respectively
     for ba, pos in enumerate([pos_before, pos_after]):
         list_for_comparison = []
         for model in [old_model, new_model]:
-            # patch_candidateのindexを設定
+            # Set index of patch_candidate
             if ba == 0:
                 idx_patch_candidate = range(0, num_pos_before)
-                tgt_weight_data = model.base_model_last_layer.intermediate.dense.weight.data # これは破壊的な変更
+                tgt_weight_data = model.base_model_last_layer.intermediate.dense.weight.data # This is a destructive change
             else:
                 idx_patch_candidate = range(num_pos_before, num_pos_before + num_pos_after)
                 tgt_weight_data = model.base_model_last_layer.output.dense.weight.data
-            # posで指定された位置のニューロンを書き換える
+            # Rewrite neurons at positions specified by pos
             xi, yi = pos[:, 0], pos[:, 1]
             list_for_comparison.append(tgt_weight_data[xi, yi])
-        # 重みが変わっているかどうかを確認
+        # Check if weights have changed
         sum_new_weights = list_for_comparison[1]
         sum_old_weights = list_for_comparison[0]
         if op is "sup":
-            check_val = torch.sum(sum_new_weights).item() # 0にしているので新しい重みの合計が0になっているかどうかを確認
+            check_val = torch.sum(sum_new_weights).item() # Check if the sum of new weights is 0 since we're setting them to 0
         elif op is "enh":
             diff = list_for_comparison[1] - list_for_comparison[0] # new-old
-            check_val = torch.sum(diff - list_for_comparison[0]).item() # 2倍にしているのでnew - 2 old は0になってるはず
-        # check_valが0になっているかどうかを確認
+            check_val = torch.sum(diff - list_for_comparison[0]).item() # Since we're doubling, new - 2 old should be 0
+        # Check if check_val is 0
         assert np.isclose(check_val, 0, atol=1e-8), f"check_val should be close to 0 (check_val: {check_val})"
 
 def set_new_weights(patch, pos_before, pos_after, model, device=torch.device("cuda"), op=None):
-    # patchの最初のlen(pos_before)個はintermediateのpos_beforeの重み，それ以降のlen(pos_after)個はoutputのpos_afterの重み
+    # The first len(pos_before) elements of patch are weights of pos_before in intermediate, and the subsequent len(pos_after) elements are weights of pos_after in output
     assert len(patch) == len(pos_before) + len(pos_after), "The length of patch should be equal to the sum of the lengths of pos_before and pos_after"
     num_pos_before = len(pos_before)
     num_pos_after = len(pos_after)
-    # pos_before, afterそれぞれの繰り返し
+    # Iterate over pos_before and after respectively
     for ba, pos in enumerate([pos_before, pos_after]):
-        # pareto_frontを取る方法 (BL) の場合，len(pos_before)もしくはlen(pos_after)が0の時がある
+        # In the method of taking pareto_front (BL), len(pos_before) or len(pos_after) may be 0
         if len(pos) == 0:
             continue
-        # patch_candidateのindexを設定
+        # Set index for patch_candidate
         if ba == 0:
             idx_patch_candidate = range(0, num_pos_before)
-            tgt_weight_data = model.base_model_last_layer.intermediate.dense.weight.data # これは破壊的な変更
+            tgt_weight_data = model.base_model_last_layer.intermediate.dense.weight.data # This is a destructive change
         else:
             idx_patch_candidate = range(num_pos_before, num_pos_before + num_pos_after)
             tgt_weight_data = model.base_model_last_layer.output.dense.weight.data
-        # posで指定された位置のニューロンを書き換える
+        # Rewrite neurons at positions specified by pos
         xi, yi = pos[:, 0], pos[:, 1]
         if op is None:
             tgt_weight_data[xi, yi] = torch.from_numpy(patch[idx_patch_candidate]).to(device)
@@ -113,21 +113,21 @@ class DE_searcher(object):
         self.tgt_vdiff = tgt_vdiff
         self.is_multi_label = is_multi_label
         self.maximum_fitness = 0.0  # the maximum fitness value
-        self.mdl = copy.deepcopy(partial_model) # DE_searcher内でいくらモデルをいじっても元のモデルは変わらないようにする
+        self.mdl = copy.deepcopy(partial_model) # Ensure that the original model doesn't change no matter how much the model is modified within DE_searcher
         self.max_search_num = max_search_num
         self.indices_to_sampled_correct = None
         self.tgt_pos = 0 # TODO: should not be hard coded
         self.pop_size = pop_size
         self.mode = mode
         self.custom_bounds = custom_bounds
-        # ラベルの設定
+        # Set labels
         self.batched_labels = batch_labels
         self.ground_truth_labels = np.concatenate(batch_labels, axis=0)
 
         # fitness computation related initialisation
         self.fitness = 0.0
 
-        # deap関連の設定
+        # deap related settings
         self.creator.create("FitnessMax", self.base.Fitness, weights=(1.0,))  # maximisation
         self.creator.create("Individual", np.ndarray, fitness=self.creator.FitnessMax, model_name=None)
 
@@ -147,24 +147,24 @@ class DE_searcher(object):
         # fitness
         self.alpha = alpha
 
-        # modeがweightの場合の処理
+        # Processing when mode is weight
         if mode == "weight":
             self.weight_before2med = weight_before2med
             self.weight_med2after = weight_med2after
-            # minとmaxも表示
+            # Also display min and max
             logger.info(f"self.weight_before2med.shape: {self.weight_before2med.shape}, min: {np.min(self.weight_before2med)}, max: {np.max(self.weight_before2med)}")
             logger.info(f"self.weight_med2after.shape: {self.weight_med2after.shape}, min: {np.min(self.weight_med2after)}, max: {np.max(self.weight_med2after)}")
-            # DEの初期値生成のために平均と標準偏差を出しておく
+            # Calculate mean and standard deviation for DE initial value generation
             self.mean_b2m = np.mean(self.weight_before2med)
             self.std_b2m = np.std(self.weight_before2med)
             self.mean_m2a = np.mean(self.weight_med2after)
             self.std_m2a = np.std(self.weight_med2after)
-            # pos_before, afterの長さを取得しておく
+            # Get length of pos_before, after
             self.num_pos_before = len(pos_before)
             self.num_pos_after = len(pos_after)
             self.num_total_pos = self.num_pos_before + self.num_pos_after
         
-        # modeがneuronでもweightでもない場合はエラー終了
+        # If mode is neither neuron nor weight, exit with error
         if mode not in ["neuron", "weight"]:
             NotImplementedError("mode should be either 'neuron' or 'weight'")
 
@@ -198,32 +198,32 @@ class DE_searcher(object):
             NotImplementedError(f"{custom_bounds} is not supported yet")
 
     def eval_neurons(self, patch_candidate, places_to_fix, show_log=True):
-        # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
-        # データの予測時は，places_to_fixの位置のニューロンをpatch_candidateの値に変更して予測する
+        # Predict data from self.inputs and return fitness function value using loss
+        # When predicting data, change neurons at places_to_fix positions to patch_candidate values for prediction
         all_proba = []
         losses_of_all = []
-        loss_fn = torch.nn.CrossEntropyLoss(reduction="none") # NOTE: バッチ内の各サンプルずつのロスを出すため. デフォルトのreduction="mean"だとバッチ内の平均になってしまう
+        loss_fn = torch.nn.CrossEntropyLoss(reduction="none") # NOTE: To output loss for each sample in the batch. Default reduction="mean" would give batch average
         for cached_state, y in zip(self.batch_hs_before_layernorm, self.batched_labels):
             logits = self.mdl(hidden_states_before_layernorm=cached_state, tgt_pos=self.tgt_pos, imp_pos=places_to_fix, imp_op=patch_candidate)
-            # 出力されたlogitsを確率に変換
+            # Convert output logits to probabilities
             proba = torch.nn.functional.softmax(logits, dim=-1)
             all_proba.append(proba.detach().cpu().numpy())
-            # sampleごとのロスを計算
+            # Calculate loss for each sample
             loss = loss_fn(proba, torch.from_numpy(y).to(self.device)).cpu().detach().numpy()
             losses_of_all.append(loss)
         losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
         all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
         all_pred_laebls = np.argmax(all_proba, axis=-1) # (num_of_data, )
 
-        # 予測結果が合ってるかどうかを評価
+        # Evaluate whether prediction results are correct
         is_correct = all_pred_laebls == self.ground_truth_labels
-        # 元々正解だったサンプルが変わらず正解だった数を取得
+        # Get number of samples that were originally correct and remained correct
         num_intact = sum(is_correct[self.indices_to_correct])
-        # 元々不正解だったサンプルが正解になった数を取得
+        # Get number of samples that were originally incorrect and became correct
         num_patched = sum(is_correct[self.indices_to_wrong])
-        # 元々正解だったサンプルに対するロスの平均を取得
+        # Get average loss for originally correct samples
         losses_of_correct = np.mean(losses_of_all[self.indices_to_correct])
-        # 元々不正解だったサンプルに対するロスの平均を取得
+        # Get average loss for originally incorrect samples
         losses_of_wrong = np.mean(losses_of_all[self.indices_to_wrong])
 
         fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (losses_of_correct + 1)
@@ -237,16 +237,16 @@ class DE_searcher(object):
     def eval_weights(self, patch_candidate, pos_before, pos_after, show_log=True):
         assert len(patch_candidate) == self.num_total_pos, "The length of patch_candidate should be equal to the number of total positions"
         set_new_weights(patch=patch_candidate, pos_before=pos_before, pos_after=pos_after, model=self.mdl, device=self.device)
-        # self.inputsのデータを予測してlossを使ったfitness functionの値を返す
+        # Predict data from self.inputs and return fitness function value using loss
         all_proba = []
         losses_of_all = []
         loss_fn = torch.nn.CrossEntropyLoss(reduction="none")
         for cached_state, y in zip(self.batch_hs_before_layernorm, self.batched_labels):
             logits = self.mdl(hidden_states_before_layernorm=cached_state, tgt_pos=self.tgt_pos)
-            # 出力されたlogitsを確率に変換
+            # Convert output logits to probabilities
             proba = torch.nn.functional.softmax(logits, dim=-1)
             all_proba.append(proba.detach().cpu().numpy())
-            # sampleごとのロスを計算
+            # Calculate loss for each sample
             loss = loss_fn(proba, torch.from_numpy(y).to(self.device)).cpu().detach().numpy()
             losses_of_all.append(loss)
         losses_of_all = np.concatenate(losses_of_all, axis=0) # (num_of_data, )
@@ -254,27 +254,27 @@ class DE_searcher(object):
         losses_to_wrong = losses_of_all[self.indices_to_wrong]
         all_proba = np.concatenate(all_proba, axis=0) # (num_of_data, num_of_classes)
         all_pred_labels = np.argmax(all_proba, axis=-1) # (num_of_data, )
-        # 予測結果が合ってるかどうかを評価
-        is_correct = all_pred_labels == self.ground_truth_labels # 修正後モデルで正しい予測のデータインデックス
-        indices_to_correct_to_correct = is_correct[self.indices_to_correct] # 元々正解だったサンプルが変わらず正解だったサンプルのインデックス
-        indices_to_correct_to_wrong = ~indices_to_correct_to_correct # 元々正解だったサンプルが不正解に変わったサンプルのインデックス
-        indices_to_wrong_to_correct = is_correct[self.indices_to_wrong] # 元々不正解だったサンプルが正解に変わったサンプルのインデックス
-        indices_to_wrong_to_wrong = ~indices_to_wrong_to_correct # 元々不正解だったサンプルが変わらず不正解だったサンプルのインデックス
+        # Evaluate whether prediction results are correct
+        is_correct = all_pred_labels == self.ground_truth_labels # Data indices with correct predictions in the modified model
+        indices_to_correct_to_correct = is_correct[self.indices_to_correct] # Indices of samples that were originally correct and remained correct
+        indices_to_correct_to_wrong = ~indices_to_correct_to_correct # Indices of samples that were originally correct and became incorrect
+        indices_to_wrong_to_correct = is_correct[self.indices_to_wrong] # Indices of samples that were originally incorrect and became correct
+        indices_to_wrong_to_wrong = ~indices_to_wrong_to_correct # Indices of samples that were originally incorrect and remained incorrect
         assert sum(indices_to_correct_to_correct) + sum(indices_to_correct_to_wrong) == len(self.indices_to_correct), f"The sum of indices_to_correct_to_correct and indices_to_correct_to_wrong should be equal to the length of indices_to_correct (sum(indices_to_correct_to_correct): {sum(indices_to_correct_to_correct)}, sum(indices_to_correct_to_wrong): {sum(indices_to_correct_to_wrong)}, len(self.indices_to_correct): {len(self.indices_to_correct)}"
         assert sum(indices_to_wrong_to_correct) + sum(indices_to_wrong_to_wrong) == len(self.indices_to_wrong), f"The sum of indices_to_wrong_to_correct and indices_to_wrong_to_wrong should be equal to the length of indices_to_wrong (sum(indices_to_wrong_to_correct): {sum(indices_to_wrong_to_correct)}, sum(indices_to_wrong_to_wrong): {sum(indices_to_wrong_to_wrong)}, len(self.indices_to_wrong): {len(self.indices_to_wrong)}"
 
-        # TODO: fitness_fnの形は微妙にバリエーションがあるのでカスタマイズできるようにしたい．
-        # 元々正解だったサンプルが変わらず正解だった数を取得
+        # TODO: The form of fitness_fn has subtle variations, so we want to make it customizable.
+        # Get number of samples that were originally correct and remained correct
         num_intact = sum(indices_to_correct_to_correct)
-        # 元々不正解だったサンプルが正解になった数を取得
+        # Get number of samples that were originally incorrect and became correct
         num_patched = sum(indices_to_wrong_to_correct)
-        # 元々正解だったサンプルに対するロスの平均を取得
+        # Get average loss for originally correct samples
         mean_of_losses_of_correct = np.mean(losses_of_all[self.indices_to_correct])
-        # 元々不正解だったサンプルに対するロスの平均を取得
+        # Get average loss for originally incorrect samples
         mean_of_losses_of_wrong = np.mean(losses_of_all[self.indices_to_wrong])
-        # 元々正解だったサンプルのうち不正解に変わってしまったサンプルに対するロス
+        # Loss for samples that were originally correct but became incorrect
         losses_of_correct_to_wrong = losses_to_correct[indices_to_correct_to_wrong]
-        # 元々不正解だったサンプルのうち変わらず不正解だったサンプルに対するロス
+        # Loss for samples that were originally incorrect and remained incorrect
         losses_of_wrong_to_wrong = losses_to_wrong[indices_to_wrong_to_wrong]
 
         # fitness_for_correct = (num_intact / len(self.indices_to_correct) + 1) / (mean_of_losses_of_correct + 1)
@@ -289,13 +289,13 @@ class DE_searcher(object):
         term1_neg = num_patched
         term2_neg = np.sum(1 / (losses_of_wrong_to_wrong + 1)) if len(losses_of_wrong_to_wrong) > 0 else 0
         fitness_for_wrong = (term1_neg + term2_neg) / len(self.indices_to_wrong)
-        # fitness_for_correct, fitness_for_wrongはどちらも[0, 1]の範囲に収まる
+        # Both fitness_for_correct and fitness_for_wrong are in the range [0, 1]
         assert 0 <= fitness_for_correct <= 1, f"fitness_for_correct should be in [0, 1] (fitness_for_correct: {fitness_for_correct})"
         assert 0 <= fitness_for_wrong <= 1, f"fitness_for_wrong should be in [0, 1] (fitness_for_wrong: {fitness_for_wrong})"
         # print(f"num_intact: {num_intact}/{len(self.indices_to_correct)}, num_patched: {num_patched}/{len(self.indices_to_wrong)}")
         # print(f"fitness_for_correct: {fitness_for_correct}, fitness_for_wrong: {fitness_for_wrong}")
         final_fitness = (1-self.alpha) * fitness_for_correct + self.alpha * fitness_for_wrong
-        # 思い切ってintact_rateとpatched_rateだけにしちゃう
+        # Boldly use only intact_rate and patched_rate
         # final_fitness = num_intact / len(self.indices_to_correct) + self.alpha * num_patched / len(self.indices_to_wrong)
         
         if show_log:
@@ -341,7 +341,7 @@ class DE_searcher(object):
         pop_size = self.pop_size
         toolbox = self.base.Toolbox()
 
-        # DEの経過観察用のデータ
+        # Data for observing DE progress
         fitness_tracker = {
             "fitness": [],
             "fitness_for_correct": [],
@@ -353,7 +353,7 @@ class DE_searcher(object):
             "all_pred_labels": [],
         }
 
-        # ニューロン修正の際の初期値生成 (ニューロンのx倍なので，初期値はN(1, 1)からサンプリング)
+        # Initial value generation for neuron modification (since it's x times the neuron, sample initial values from N(1, 1))
         def init_indiv_neurons():
             v_sample = lambda mean_v: np.random.normal(loc=mean_v, scale=1, size=1)[0] # N(mean_v, 1)からサンプリング
             ind = np.float32(list(map(v_sample, np.ones(num_places_to_fix, dtype=np.float32))))
@@ -527,10 +527,10 @@ class DE_searcher(object):
         # if self.empty_graph is not None:
         logger.info(f"best ind.: {best}, fitness: {best.fitness.values[0]}")
 
-        # bestをnpyで保存
+        # bestをnpyでSave
         np.save(patch_save_path, best)
         logger.info("The model is saved to {}".format(patch_save_path))
-        # tracker_save_pathが指定されている場合はpklで保存
+        # tracker_save_pathが指定されている場合はpklでSave
         if tracker_save_path is not None:
             with open(tracker_save_path, "wb") as f:
                 pickle.dump(fitness_tracker, f)

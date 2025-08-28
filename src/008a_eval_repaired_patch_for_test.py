@@ -34,7 +34,7 @@ def log_info_preds(pred_labels, true_labels, is_correct):
     logger.info(f"correct rate: {sum(is_correct) / len(is_correct):.4f}")
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -64,16 +64,16 @@ if __name__ == "__main__":
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
         NotImplementedError, "randomly weights selection is not implemented yet."
-    # 設定のjsonファイルが指定された場合
+    # If a settings JSON file is specified
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
         setting_dic = json2dict(setting_path)
-        # setting_idは setting_{setting_id}.json というファイル名になる
+        # setting_id becomes the filename in the format setting_{setting_id}.json
         setting_id = os.path.basename(setting_path).split(".")[0].split("_")[-1]
-    # 設定のjsonファイルが指定されない場合はnとalphaだけカスタムorデフォルトの設定を使う
+    # If no settings JSON file is specified, use custom or default settings for n and alpha only
     else:
         setting_dic = DEFAULT_SETTINGS
-        # custom_n, custom_alpha, custom_boundsが1つでも指定されている場合はいったん空文字にする
+        # If any of custom_n, custom_alpha, custom_bounds are specified, temporarily set to empty string
         setting_id = "default" if (custom_n is None) and (custom_alpha is None) and (custom_bounds is None) else ""
         is_first = True
         if custom_n is not None:
@@ -88,9 +88,9 @@ if __name__ == "__main__":
             setting_dic["bounds"] = custom_bounds
             setting_id += f"bounds{custom_bounds}" if is_first else f"_bounds{custom_bounds}"
             is_first = False
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先を先に作っておく
+    # Create save directories for results and logs in advance
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
     elif misclf_type == "all":
@@ -105,15 +105,15 @@ if __name__ == "__main__":
         tracker_save_path = os.path.join(save_dir, f"tracker_{setting_id}_random.pkl")
     else:
         NotImplementedError
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_{setting_id}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, setting_path: {setting_path}")
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -125,19 +125,19 @@ if __name__ == "__main__":
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     end_li = model.vit.config.num_hidden_layers
@@ -147,7 +147,7 @@ if __name__ == "__main__":
     tgt_layer = 11 # NOTE: we only use the last layer for repairing
     logger.info(f"tgt_layer: {tgt_layer}, tgt_split: {tgt_split}")
 
-    # repairのメトリクスを保存するファイルのパス
+    # repairのメトリクスをSaveするファイルのパス
     if fl_method == "vdiff":
         metrics_dir = os.path.join(save_dir, f"{tgt_split}_metrics_for_repair_{setting_id}.json")
     elif fl_method == "random":
@@ -182,7 +182,7 @@ if __name__ == "__main__":
     patch = np.load(patch_save_path)
     fitness_tracker = pickle.load(open(tracker_save_path, "rb"))
 
-    # 最終層だけのモデルを準備
+    # Prepare model with only the final layer
     vit_from_last_layer = ViTFromLastLayer(model)
     vit_from_last_layer.eval()
 
@@ -234,7 +234,7 @@ if __name__ == "__main__":
         # misclf_typeがsrc_tgtの場合は，slabel, tlabelを取得してその間違えかたをしたindexを取得
         if misclf_type == "src_tgt":
             slabel, tlabel = misclf_pair
-            tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxを保存するためのもの
+            tgt_mis_indices = [] # repair setにおける頻繁な間違い方と同じものをtest setでもしていたidxをSaveするためのもの
             for idx, (pl, tl) in enumerate(zip(pred_labels_old, true_labels_old)):
                 if pl == slabel and tl == tlabel:
                     tgt_mis_indices.append(idx)
@@ -303,13 +303,13 @@ if __name__ == "__main__":
         metrics_dic["diff_tgt_misclf_cnt"] = tgt_misclf_cnt_new - tgt_misclf_cnt_old
         metrics_dic["new_injected_faults"] = new_injected_faults
         # NOTE: s->t の誤分類サンプルの予測が変わる = 治るではない．s,t以外->tになることもあり，これは誤分類タイプの変化を示す
-    # metricsを保存
+    # metricsをSave
     logger.info(f"metrics_dic:\n{metrics_dic}")
     with open(metrics_dir, "w") as f:
         json.dump(metrics_dic, f, indent=4)
     logger.info(f"metrics are saved in {metrics_dir}")
 
-    # 修正後モデルの誤分類情報の保存
+    # 修正後モデルの誤分類情報のSave
     misclf_info_dir = os.path.join(save_dir, f"misclf_info_{setting_id}")
     os.makedirs(misclf_info_dir, exist_ok=True)
     mis_matrix, mis_ranking, mis_indices, met_dict = get_misclf_info(pred_labels_new, true_labels_new, num_classes=num_classes)

@@ -27,7 +27,7 @@ DEFAULT_SETTINGS = {
 
 
 if __name__ == "__main__":
-    # データセットをargparseで受け取る
+    # Accept dataset via argparse
     parser = argparse.ArgumentParser()
     parser.add_argument("ds", type=str)
     parser.add_argument('k', type=int, help="the fold id (0 to K-1)")
@@ -59,16 +59,16 @@ if __name__ == "__main__":
     # TODO: あとでrandomly weights selectionも実装
     if fl_method == "random":
         NotImplementedError, "randomly weights selection is not implemented yet."
-    # 設定のjsonファイルが指定された場合
+    # If a settings JSON file is specified
     if setting_path is not None:
         assert os.path.exists(setting_path), f"{setting_path} does not exist."
         setting_dic = json2dict(setting_path)
-        # setting_idは setting_{setting_id}.json というファイル名になる
+        # setting_id becomes the filename in the format setting_{setting_id}.json
         setting_id = os.path.basename(setting_path).split(".")[0].split("_")[-1]
-    # 設定のjsonファイルが指定されない場合はnとalphaだけカスタムorデフォルトの設定を使う
+    # If no settings JSON file is specified, use custom or default settings for n and alpha only
     else:
         setting_dic = DEFAULT_SETTINGS
-        # custom_n, custom_alpha, custom_boundsが1つでも指定されている場合はいったん空文字にする
+        # If any of custom_n, custom_alpha, custom_bounds are specified, temporarily set to empty string
         setting_id = "default" if (custom_n is None) and (custom_alpha is None) and (custom_bounds is None) else ""
         is_first = True
         if custom_n is not None:
@@ -83,9 +83,9 @@ if __name__ == "__main__":
             setting_dic["bounds"] = custom_bounds
             setting_id += f"bounds{custom_bounds}" if is_first else f"_bounds{custom_bounds}"
             is_first = False
-    # pretrained modelのディレクトリ
+    # Directory for pretrained model
     pretrained_dir = getattr(ViTExperiment, ds_name).OUTPUT_DIR.format(k=k)
-    # 結果とかログの保存先を先に作っておく
+    # Create save directories for results and logs in advance
     if fpfn is not None and misclf_type == "tgt":
         save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_{fpfn}_repair_weight_by_de")
     elif misclf_type == "all":
@@ -102,15 +102,15 @@ if __name__ == "__main__":
     else:
         NotImplementedError
     os.makedirs(save_dir, exist_ok=True)
-    # このpythonのファイル名を取得
+    # Get this Python file name
     this_file_name = os.path.basename(__file__).split(".")[0]
     exp_name = f"{this_file_name}_{setting_id}"
-    # loggerの設定をして設定情報を表示
+    # Set up logger and display configuration information
     logger = set_exp_logging(exp_dir=save_dir, exp_name=exp_name)
     logger.info(f"ds_name: {ds_name}, fold_id: {k}, setting_path: {setting_path}")
     logger.info(f"setting_dic (id={setting_id}): {setting_dic}")
 
-    # datasetごとに違う変数のセット
+    # Set different variables for each dataset
     if ds_name == "c10":
         tf_func = transforms
         label_col = "label"
@@ -121,19 +121,19 @@ if __name__ == "__main__":
         NotImplementedError
     tgt_pos = ViTExperiment.CLS_IDX
     ds_dirname = f"{ds_name}_fold{k}"
-    # デバイス (cuda, or cpu) の取得
+    # Get device (cuda or cpu)
     device = get_device()
-    # datasetをロード (初回の読み込みだけやや時間かかる)
+    # Load dataset (takes some time only on first load)
     ds = load_from_disk(os.path.join(ViTExperiment.DATASET_DIR, ds_dirname))
-    # ラベルの取得 (shuffleされない)
+    # Get labels (not shuffled)
     labels = {
         "train": np.array(ds["train"][label_col]),
         "repair": np.array(ds["repair"][label_col]),
         "test": np.array(ds["test"][label_col])
     }
-    # 読み込まれた時にリアルタイムで前処理を適用するようにする
+    # Apply preprocessing in real-time when loaded
     ds_preprocessed = ds.with_transform(tf_func)
-    # pretrained modelのロード
+    # Load pretrained model
     model = ViTForImageClassification.from_pretrained(pretrained_dir).to(device)
     model.eval()
     end_li = model.vit.config.num_hidden_layers
@@ -156,7 +156,7 @@ if __name__ == "__main__":
         location_save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_type}_weights_location")
     location_save_path = os.path.join(location_save_dir, f"location_n{setting_dic['n']}_{fl_method}.npy")
     pos_before, pos_after = np.load(location_save_path, allow_pickle=True)
-    # log表示
+    # Display logs
     logger.info(f"pos_before={pos_before}")
     logger.info(f"pos_after={pos_after}")
     logger.info(f"num(pos_to_fix)=num(pos_before)+num(pos_before)={len(pos_before)}+{len(pos_after)}={len(pos_before)+len(pos_after)}")
@@ -165,13 +165,13 @@ if __name__ == "__main__":
     # Data preparation for repair
     # ===============================================
 
-    # tgt_rankの誤分類情報を取り出す
+    # Extract misclassification information for tgt_rank
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     misclf_pair, tgt_label, tgt_mis_indices = identfy_tgt_misclf(misclf_info_dir, tgt_split=tgt_split, tgt_rank=tgt_rank, misclf_type=misclf_type, fpfn=fpfn)
     indices_to_incorrect = tgt_mis_indices
-    # NOTE: indices_to_incorrectからはsampleしなくてよい？今のところ全部使うのでランダム性が入るのはcorrectのsamplingだけ
+    # NOTE: No need to sample from indices_to_incorrect? Currently using all, so randomness only comes from correct sampling
 
-    # original model の repair setの各サンプルに対する正解/不正解のインデックスを取得
+    # Get correct/incorrect indices for each sample in the repair set of the original model
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
     if misclf_type == "tgt":
         ori_pred_labels, is_correct, indices_to_correct, is_correct_others, indices_to_correct_others = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
@@ -179,7 +179,7 @@ if __name__ == "__main__":
         ori_pred_labels, is_correct, indices_to_correct = get_ori_model_predictions(pred_res_dir, labels, tgt_split=tgt_split, misclf_type=misclf_type, tgt_label=tgt_label)
     logger.info(f"len(indices_to_correct): {len(indices_to_correct)}, len(indices_to_incorrect): {len(indices_to_incorrect)}")
 
-    # 正解データからrepairに使う一定数だけランダムに取り出す
+    # Randomly sample a certain number from correct data for repair
     sampled_indices_to_correct = sample_from_correct_samples(setting_dic["num_sampled_from_correct"], indices_to_correct)
     if include_other_TP_for_fitness and misclf_type == "tgt":
         for pl, tl in zip(ori_pred_labels[indices_to_correct_others], labels[tgt_split][indices_to_correct_others]):
@@ -189,73 +189,73 @@ if __name__ == "__main__":
         other_TP_indices = sample_true_positive_indices_per_class(setting_dic["num_sampled_from_correct"], indices_to_correct_others, ori_pred_labels)
         sampled_indices_to_correct = np.concatenate([sampled_indices_to_correct, other_TP_indices])
     ori_sampled_indices_to_correct, ori_indices_to_incorrect = sampled_indices_to_correct.copy(), indices_to_incorrect.copy()
-    # 抽出した正解データと，全不正解データを結合して1つのデータセットにする
-    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() は 非破壊的method
-    # tgt_indicesは全てユニークな値であることを保証
+    # Combine extracted correct data and all incorrect data into one dataset
+    tgt_indices = sampled_indices_to_correct.tolist() + indices_to_incorrect.tolist() # .tolist() is a non-destructive method
+    # Ensure all tgt_indices are unique values
     assert len(tgt_indices) == len(set(tgt_indices)), f"len(tgt_indices): {len(tgt_indices)}, len(set(tgt_indices)): {len(set(tgt_indices))}"
     logger.info(f"tgt_indices: {tgt_indices} (len: {len(tgt_indices)})")
-    # tgt_indicesに対応するデータトラベルを取り出す
+    # Extract data labels corresponding to tgt_indices
     tgt_ds = ori_tgt_ds.select(tgt_indices)
     tgt_labels = ori_tgt_labels[tgt_indices]
     logger.info(f"ori_pred_labels[tgt_indices]: {ori_pred_labels[tgt_indices]} (len: {len(ori_pred_labels[tgt_indices])})")
     logger.info(f"ori_tgt_labels[tgt_indices]: {tgt_labels} (len: {len(tgt_labels)})")
     
-    # repair setに対するhidden_states_before_layernormを取得
+    # Get hidden_states_before_layernorm for repair set
     hs_save_dir = os.path.join(pretrained_dir, f"cache_hidden_states_before_layernorm_{tgt_split}")
     hs_save_path = os.path.join(hs_save_dir, f"hidden_states_before_layernorm_{tgt_layer}.npy")
     assert os.path.exists(hs_save_path), f"{hs_save_path} does not exist."
     batch_hs_before_layernorm_tgt = get_batched_hs(hs_save_path, batch_size, tgt_indices, device=device)
     batch_labels_tgt = get_batched_labels(ori_tgt_labels, batch_size, tgt_indices)
-    # repair set全体 (tgt_indicesを指定しない) のbatchも作成
+    # Also create batch for entire repair set (without specifying tgt_indices)
     batch_hs_before_layernorm = get_batched_hs(hs_save_path, batch_size, device=device)
     batch_labels = get_batched_labels(ori_tgt_labels, batch_size)
 
-    # repair に使ったデータの tgt_indices を npy で保存
+    # Save tgt_indices of data used for repair as npy
     tgt_indices_save_path = os.path.join(save_dir, f"tgt_indices_{setting_id}.npy") # TODO: tgt_indicesの特定にランダム性が入る場合はそれをトラックできるようなファイル名にする必要あり
-    # NOTE: 同じsetting_idでも乱数のシードを考慮していない
+    # NOTE: Random seed is not considered even for the same setting_id
     np.save(tgt_indices_save_path, tgt_indices)
 
     # ===============================================
     # DE search (patch generation)
     # ===============================================
 
-    # 最終層だけのモデルを準備
+    # Prepare model with only the final layer
     vit_from_last_layer = ViTFromLastLayer(model)
     vit_from_last_layer.eval()
 
-    # 読み込んだ直後の状態の学習済みViTに対して，repair set全体およびrepair対象のデータに対する予測結果を確認する
-    # repair set全体
+    # Check prediction results for entire repair set and repair target data on pretrained ViT immediately after loading
+    # entire repair set
     ori_pred_labels, ori_true_labels = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm, batch_labels, tgt_pos=tgt_pos)
     ori_is_correct = ori_pred_labels == ori_true_labels
-    # repair対象のデータ
+    # repair target data
     ori_pred_labels_tgt, ori_true_labels_tgt = get_new_model_predictions(vit_from_last_layer, batch_hs_before_layernorm_tgt, batch_labels_tgt, tgt_pos=tgt_pos)
     ori_is_correct_tgt = ori_pred_labels_tgt == ori_true_labels_tgt
-    # ログ表示
+    # Display logs
     logger.info(f"sum(ori_is_correct), len(ori_is_correct), {sum(ori_is_correct), len(ori_is_correct)}")
     logger.info(f"sum(ori_is_correct_tgt), len(ori_is_correct_tgt), {sum(ori_is_correct_tgt), len(ori_is_correct_tgt)}")
 
-    # pos_before, pos_afterの位置の重みを最適化の変数にする
+    # Make weights at pos_before, pos_after positions optimization variables
     linear_before2med = vit_from_last_layer.base_model_last_layer.intermediate.dense # on GPU
     weight_before2med = linear_before2med.weight.cpu().detach().numpy() # on CPU
     linear_med2after = vit_from_last_layer.base_model_last_layer.output.dense # on GPU
     weight_med2after = linear_med2after.weight.cpu().detach().numpy() # on CPU
 
-    # DE_searcherの初期化
+    # Initialize DE_searcher
     max_search_num = setting_dic["max_search_num"]
-    alpha = setting_dic["alpha"] # [0, 1]の値で，fitnessの正しい分類に対する重み: 誤分類に対する重み = 1-alpha: alpha になる
+    alpha = setting_dic["alpha"] # [0, 1] value where weight for correct classification in fitness: weight for misclassification = 1-alpha: alpha
     assert 0 <= alpha <= 1, f"alpha should be in [0, 1]. alpha: {alpha}"
-    logger.info(f"alpha of the fitness func.: {alpha}")
+    logger.info(f"alpha of the fitness function: {alpha}")
     pop_size = setting_dic["pop_size"]
     num_labels = len(set(labels["train"]))
-    # correct, incorrect indicesを更新
+    # Update correct, incorrect indices
     indices_to_correct_for_de_searcher = np.arange(len(sampled_indices_to_correct))
     indices_to_incorrect_for_de_searcher = np.arange(len(sampled_indices_to_correct), len(sampled_indices_to_correct) + len(indices_to_incorrect))
     logger.info(f"indices_to_correct_for_de_searcher: {indices_to_correct_for_de_searcher}, indices_to_incorrect_for_de_searcher: {indices_to_incorrect_for_de_searcher}")
-    # batch_hs_before_layernorm_tgtの最初のindices_to_correct_for_de_searcher個に対してはモデルが正解して，残りのindices_to_incorrect_for_de_searcher個に対してはモデルが不正解していることを確認
+    # Confirm that the model is correct for the first indices_to_correct_for_de_searcher samples of batch_hs_before_layernorm_tgt and incorrect for the remaining indices_to_incorrect_for_de_searcher samples
     assert np.sum(ori_is_correct_tgt[indices_to_correct_for_de_searcher]) == len(indices_to_correct_for_de_searcher), f"ori_is_correct_tgt[indices_to_correct_for_de_searcher]: {ori_is_correct_tgt[indices_to_correct_for_de_searcher]}"
     assert np.sum(ori_is_correct_tgt[indices_to_incorrect_for_de_searcher]) == 0, f"ori_is_correct_tgt[indices_to_incorrect_for_de_searcher]: {ori_is_correct_tgt[indices_to_incorrect_for_de_searcher]}"
     
-    # DE_searcherの初期化
+    # Initialize DE_searcher
     searcher = DE_searcher(
         batch_hs_before_layernorm=batch_hs_before_layernorm_tgt,
         batch_labels=batch_labels_tgt,
@@ -284,8 +284,8 @@ if __name__ == "__main__":
     # print(f"[after DE] {vit_from_last_layer.base_model_last_layer.intermediate.dense.weight.data[pos_before[0][0]][pos_before[0][1]]}")
     tot_time = e - s
     logger.info(f"Total execution time: {tot_time} sec.")
-    # 実行時間だけをメトリクスとしてjsonに保存
-    # (このjsonはあとでrepair rateなども追記される (007f))
+    # Save only execution time as metrics to json
+    # (This json will later have repair rate etc. added (007f))
     metrics = {"tot_time": tot_time}
     if fl_method == "vdiff":
         metrics_dir = os.path.join(save_dir, f"metrics_for_repair_{setting_id}.json")

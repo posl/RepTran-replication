@@ -7,7 +7,7 @@ from utils.constant import ViTExperiment
 from itertools import product
 
 if __name__ == "__main__":
-    # 変数の定義
+    # Variable definitions
     # ds = "c100"
     ds_list = ["c100", "tiny-imagenet"]
     k = 0
@@ -17,18 +17,17 @@ if __name__ == "__main__":
     tgt_split_list = ["repair", "test"]
     num_reps = 5
     alpha = 10 / 11
-    fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
+    fl_method_list = ["ours", "random"]  # Addition: include the random method for comparison
     setting_id = f"alpha{alpha}_boundsArachne"
     
     for ds in ds_list:
 
-        # 保存先ディレクトリ（仮定）
+        # Destination directory for results (assumed structure)
         exp_obj = getattr(ViTExperiment, ds.replace("-", "_"))
         pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
 
-        
         for fl_method in fl_method_list:
-            # 結果の格納用
+            # Container for aggregated results
             results = []
             
             for tgt_rank, misclf_type, fpfn in product(tgt_rank_list, misclf_type_list, fpfn_list):
@@ -55,11 +54,12 @@ if __name__ == "__main__":
                         if tgt_split == "repair":
                             t_repair_list.append(d.get("tot_time"))
 
-                    row[f"RR_{tgt_split}"] = sum(rr_list)/len(rr_list)
-                    row[f"BR_{tgt_split}"] = sum(br_list)/len(br_list)
+                    row[f"RR_{tgt_split}"] = sum(rr_list) / len(rr_list)
+                    row[f"BR_{tgt_split}"] = sum(br_list) / len(br_list)
                     row[f"Racc_{tgt_split} (#diff)"] = f"{sum(racc_list)/len(racc_list):.4f} ({sum(diff_corr_list)/len(diff_corr_list):.1f})"
                     if tgt_split == "repair":
                         if fl_method == "ours":
+                            # Look up FL (localization) time from the separate timing CSV
                             fl_time_path = f"/src/src/exp-repair-3-2-1_time_{ds}.csv"
                             df_fl_time = pd.read_csv(fl_time_path)
                             fpfn_match = "" if fpfn is None else fpfn
@@ -72,19 +72,25 @@ if __name__ == "__main__":
                             ]
                             row["t_fl"] = matched_row["elapsed_time"].values[0]
                         else:
+                            # For the random method, we treat FL time as 0
                             assert fl_method == "random", "Unknown FL method"
-                            row["t_fl"] = 0.0  # random methodではFL時間は0とする
-                        row["t_repair"] = sum(t_repair_list)/len(t_repair_list)
+                            row["t_fl"] = 0.0
+                        row["t_repair"] = sum(t_repair_list) / len(t_repair_list)
                 results.append(row)
-            # データフレーム化
+
+            # Convert to DataFrame
             df_flat = pd.DataFrame(results)
-            # 小数表示のフォーマット設定（小数第3位）
+
+            # Formatting for floats (round to 3 decimal places in display)
             float_cols = [col for col in df_flat.columns if is_float_dtype(df_flat[col])]
-            # 表示桁数を揃える（実体は変えず文字列化せず）
+            # Align displayed precision without converting to strings
             df_flat[float_cols] = df_flat[float_cols].round(3)
+
             csv_path = f"./exp-repair-3-2-6-{setting_id}_{fl_method}_{ds}.csv"
-            # 実行時間列を最後に移動
+
+            # Move timing columns to the end
             time_cols = ["t_fl", "t_repair"]
             other_cols = [col for col in df_flat.columns if col not in time_cols]
             df_flat = df_flat[other_cols + time_cols]
+
             df_flat.to_csv(csv_path, index=False, float_format="%.4f")
