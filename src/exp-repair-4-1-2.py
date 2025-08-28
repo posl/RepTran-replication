@@ -211,25 +211,25 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, w_num):
     return elapsed_time
 
 if __name__ == "__main__":
-    ds = "tiny-imagenet"
-    # k_list = range(5)
+    ds_list = ["c100", "tiny-imagenet"]
     k_list = [0]
-    tgt_rank_list = range(1, 4)
+    tgt_rank_list = [1, 2, 3]
     misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     w_num_list = [236, 472, 944] # exp-repair-4.md 参照
     
     results = []
-    for k, tgt_rank, misclf_type, fpfn, w_num in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, w_num_list):
-        print(f"\nStart: ds={ds}, k={k}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}, w_num={w_num} \n====================================================================")
-        if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
-            # print(f"Skipping: misclf_type={misclf_type} with fpfn={fpfn} is not valid.")
-            continue
-        if misclf_type == "tgt" and fpfn is None:
-            # print(f"Skipping: misclf_type={misclf_type} with fpfn={fpfn} is not valid.")
-            continue
-        elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, w_num=w_num)
-        results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "w_num": w_num, "elapsed_time": elapsed_time})
-    # results を csv にして保存
-    result_df = pd.DataFrame(results)
-    result_df.to_csv(f"./exp-repair-4-1-2_time_{ds}.csv", index=False)
+    for ds in ds_list:
+        for k, tgt_rank, misclf_type, fpfn, w_num in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, w_num_list):
+            print(f"\nStart: ds={ds}, k={k}, tgt_rank={tgt_rank}, misclf_type={misclf_type}, fpfn={fpfn}, w_num={w_num} \n====================================================================")
+            if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
+                # print(f"Skipping: misclf_type={misclf_type} with fpfn={fpfn} is not valid.")
+                continue
+            if misclf_type == "tgt" and fpfn is None:
+                # print(f"Skipping: misclf_type={misclf_type} with fpfn={fpfn} is not valid.")
+                continue
+            elapsed_time = main(ds, k, tgt_rank, misclf_type, fpfn, w_num=w_num)
+            results.append({"ds": ds, "k": k, "tgt_rank": tgt_rank, "misclf_type": misclf_type, "fpfn": fpfn, "w_num": w_num, "elapsed_time": elapsed_time})
+        # results を csv にして保存
+        result_df = pd.DataFrame(results)
+        result_df.to_csv(f"./exp-repair-4-1-2_time_{ds}.csv", index=False)

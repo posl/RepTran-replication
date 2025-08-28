@@ -6,25 +6,13 @@ NUM_REPS = 5
 
 if __name__ == "__main__":
     ds_list = ["c100", "tiny-imagenet"]
-    # ds = "c100"
-    # k_list = range(5)
-    # tgt_rank_list = range(1, 6)
-    
-    # TODO: BELOW SHOULD BE CHANGED FOR EACH RUN.
     k_list = [0]
     tgt_rank_list = [1, 2, 3]
-    
-    # misclf_type_list = ["src_tgt", "tgt"] # NOTE: SHOULD BE THIS.
-    misclf_type_list = ["tgt"]
-    
+    misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     alpha = float(10/11)
-    
     fl_method = "bl"
-    # fl_method_list = ["vmg"] # いったんvmgだけやって時間みたい
-    
-    # tgt_split_list = ["repair", "test"]
-    tgt_split_list = ["test"] # NOTE: THIS IS HARD CODED FOR NOW.
+    tgt_split_list = ["test"]
     
     for ds in ds_list:
         for k, tgt_rank, misclf_type, fpfn, tgt_split in product(

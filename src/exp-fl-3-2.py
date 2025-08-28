@@ -146,7 +146,7 @@ def main(ds_name, k, tgt_rank, misclf_type, fpfn, fl_target, n_ratio, w_num):
 if __name__ == "__main__":
     ds = "c100"
     k_list = range(5)
-    tgt_rank_list = range(1, 6)
+    tgt_rank_list = range(1, 4)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     fl_target_list = ["neuron", "weight"]

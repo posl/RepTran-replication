@@ -5,18 +5,16 @@ from utils.constant import Experiment3, ExperimentRepair1, ExperimentRepair2
 NUM_REPS = 5
 
 if __name__ == "__main__":
-    # ds = "c100"
-    ds = "tiny-imagenet"
-    k_list = [0]
-    tgt_rank_list = [1, 2, 3]
-    # misclf_type_list = ["all", "src_tgt", "tgt"]
-    misclf_type_list = ["src_tgt", "tgt"] # allはいらない説ある
+    ds_list = ["c100", "tiny-imagenet"]
+    k_list = range(5)
+    tgt_rank_list = range(1, 4)
+    misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     w_num_list = [236, 472, 944] # exp-repair-4.md 参照
     fl_method_list = ["ours", "bl", "random"]
     alpha = float(10/11) # same as the original Arachne paper, but the scale is different (we set this value so that the sum of weight becomes 1).
     
-    for k, tgt_rank, misclf_type, fpfn, w_num, fl_method in product(k_list, tgt_rank_list, misclf_type_list, fpfn_list, w_num_list, fl_method_list):
+    for ds, k, tgt_rank, misclf_type, fpfn, w_num, fl_method in product(ds_list, k_list, tgt_rank_list, misclf_type_list, fpfn_list, w_num_list, fl_method_list):
         if (misclf_type == "src_tgt" or misclf_type == "all") and fpfn is not None: # misclf_type == "src_tgt" or "all"の時はfpfnはNoneだけでいい
             # print(f"Skipping: misclf_type={misclf_type} with fpfn={fpfn} is not valid.")
             continue

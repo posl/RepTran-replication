@@ -6,28 +6,18 @@ NUM_REPS = 5
 
 if __name__ == "__main__":
     ds_list = ["c100", "tiny-imagenet"]
-    # ds = "tiny-imagenet"
-    # k_list = range(5)
-    # tgt_rank_list = range(1, 6)
-    
-    # TODO: BELOW SHOULD BE CHANGED FOR EACH RUN.
     k_list = [0]
     tgt_rank_list = [1, 2, 3]
     
-    # misclf_type_list = ["all", "src_tgt", "tgt"]
-    misclf_type_list = ["tgt"] # allはいらない説ある
-    # misclf_type_list = ["src_tgt", "tgt"] # allはいらない説ある
-    
+    misclf_type_list = ["src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     alpha = float(10/11)
     w_num = 11 # Arachneで特定された重み数の平均
     beta = None # XXX beta = 1を指定してたけど指定しない方法にしてみた XXX
     
-    # fl_method_list = ["ours"]  # 追加: random methodも試す場合
-    fl_method_list = ["ours", "random"]  # 追加: random methodも試す場合
+    fl_method_list = ["ours", "random"]
     
     tgt_split_list = ["test"]
-    # tgt_split_list = ["repair", "test"]
     
     for ds in ds_list:
         for k, tgt_rank, misclf_type, fpfn, fl_method, tgt_split in product(

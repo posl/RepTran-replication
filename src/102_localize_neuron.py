@@ -173,7 +173,7 @@ if __name__ == "__main__":
             k_list is None and tgt_rank_list is None and theta_list is None
         ), "run_all and k_list or tgt_rank_list or theta_list cannot be specified at the same time"
         k_list = range(5)
-        tgt_rank_list = range(1, 6)
+        tgt_rank_list = range(1, 4)
         theta_list = [5, 10, 15, 20, 25, 30]
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]

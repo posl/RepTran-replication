@@ -372,7 +372,7 @@ if __name__ == "__main__":
     # k_list = range(5)
     k_list = [0]
     tgt_rank_list = range(1, 4)
-    # tgt_rank_list = range(1, 6)
+    # tgt_rank_list = range(1, 4)
     misclf_type_list = ["all", "src_tgt", "tgt"]
     fpfn_list = [None, "fp", "fn"]
     # n_list = [Experiment1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair1.NUM_IDENTIFIED_WEIGHTS, ExperimentRepair2.NUM_IDENTIFIED_WEIGHTS]

@@ -160,7 +160,7 @@ if __name__ == "__main__":
         true_labels = range(100) if ds == "c100" else None
         tgt_split = "repair"
         k_list = range(5)
-        tgt_rank_list = range(1, 6)
+        tgt_rank_list = range(1, 4)
         n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
@@ -190,7 +190,7 @@ if __name__ == "__main__":
         true_labels = range(100) if ds == "c100" else None
         tgt_split = "repair"
         k_list = range(5)
-        tgt_rank_list = range(1, 6)
+        tgt_rank_list = range(1, 4)
         org_n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
         n_list = [round(n / math.sqrt(2)) for n in org_n_list]
         # fl_methods = ["vdiff_asc", "vdiff_desc"]

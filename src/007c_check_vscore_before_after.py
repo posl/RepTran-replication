@@ -169,7 +169,7 @@ if __name__ == "__main__":
         # run_allがtrueなのにkとtgt_rankが指定されている場合はエラー
         assert k_list is None and tgt_rank_list is None and n_list is None, "run_all and k_list or tgt_rank_list or n_list cannot be specified at the same time"
         k_list = range(5)
-        tgt_rank_list = range(1, 6)
+        tgt_rank_list = range(1, 4)
         n_list = [5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 77, 109]
         misclf_type_list = ["all", "src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]

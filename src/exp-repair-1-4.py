@@ -7,7 +7,7 @@ NUM_REPS = 5
 if __name__ == "__main__":
     ds = "c100"
     # k_list = range(5)
-    # tgt_rank_list = range(1, 6)
+    # tgt_rank_list = range(1, 4)
     
     # TODO: BELOW SHOULD BE CHANGED FOR EACH RUN.
     k_list = [0]

@@ -11,10 +11,8 @@ if __name__ == "__main__":
     fpfn_list = [None, "fp", "fn"]
     alpha = float(10/11)
     w_num_list = [236, 472, 944] # exp-repair-4.md 参照
-    fl_method_list = ["ours", "bl"]
-    # fl_method_list = ["ours", "bl", "random"]
+    fl_method_list = ["ours", "bl", "random"]
     tgt_split_list = ["test"]
-    # tgt_split_list = ["repair", "test"]
     
     for ds in ds_list:
         for k, tgt_rank, misclf_type, fpfn, w_num, fl_method, tgt_split in product(

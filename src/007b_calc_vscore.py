@@ -198,7 +198,7 @@ if __name__ == "__main__":
         assert k_list is None and tgt_rank_list is None, "run_all and k_list or tgt_rank_list cannot be specified at the same time"
         # k_list = range(5)
         k_list = [0]
-        tgt_rank_list = range(1, 6)
+        tgt_rank_list = range(1, 4)
         misclf_type_list = ["src_tgt", "tgt"]
         fpfn_list = [None, "fp", "fn"]
         # abs_list = [True, False]

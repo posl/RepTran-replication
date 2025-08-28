@@ -10,7 +10,7 @@ if __name__ == "__main__":
     fpfn_list = [None, "fp", "fn"]
     w_num_list = [236] # exp-repair-5.md 参照
     fl_method_list = ["ours", "bl", "random"]
-    tgt_split_list = ["repair", "test"]
+    tgt_split_list = ["test"]
     alpha_in_arachne_list = [1, 4, 8]
     alpha_list = [float(alpha / (1 + alpha)) for alpha in alpha_in_arachne_list]
     
