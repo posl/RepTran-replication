@@ -1,0 +1,13 @@
+version: '3'
+services:
+  socrates:
+    container_name: terry
+    tty: true
+    image: python3.7
+    build: ./
+    ports:
+      - "8888:8888"
+      - "6006:6006"
+    volumes:
+      - .:/src
+    # GPU関連設定は完全に削除

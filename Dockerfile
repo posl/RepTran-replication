@@ -2,6 +2,7 @@ FROM python:3.7.16
 WORKDIR /src
 ADD bash_setting /root/.bashrc
 ADD requirements.txt /src
+COPY transformers-4.30.2 /src/transformers-4.30.2
 RUN apt-get -qq update && \
 		apt-get install -y vim build-essential tree procps
 RUN pip install --upgrade pip 
