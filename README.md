@@ -3,6 +3,7 @@
 ![Requires Docker](https://img.shields.io/badge/Requires-Docker-blue?logo=docker)
 ![Requires Docker Compose](https://img.shields.io/badge/Requires-Docker--Compose-blue?logo=docker)
 ![Requires Make](https://img.shields.io/badge/Requires-Make-yellow?logo=gnu)
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/posl/RepTran-replication)
 
 ## 📋 Overview
 This repository contains the replication package for our paper "RepTran: Search-Based Repair of Transformer Models". This package focuses on fixing misclassifications in ViT models trained on CIFAR-100 and Tiny-ImageNet datasets.
