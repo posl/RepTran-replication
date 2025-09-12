@@ -26,3 +26,5 @@ uc-cpu: ## up & connect (CPU)
 #================================================
 help: ## this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
+gpu: ## test GPU availability in executor container
+	docker exec -it $(CONTAINER_NAME) python -c "import torch; print(torch.cuda.is_available())"
