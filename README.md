@@ -41,7 +41,7 @@ These become the original models that will be repaired.
 cd /src/script
 python 001a_fine_tune_vit.py                    # fine-tune ViT models
 python 001b_eval_initial_vit.py                 # evaluate fine-tuned ViT models
-pytrhon 007a_check_misclassification_type.py    # check the common misclf. types
+python 007a_check_misclassification_type.py    # check the common misclf. types
 ```
 
 #### 0.4. Cache Intermediate States
