@@ -10,6 +10,7 @@ services:
       - "6006:6006"
     volumes:
       - .:/src
+      - /opt/gurobi/gurobi.lic:/opt/gurobi/gurobi.lic:ro
     # setting to use GPU
     deploy:
       resources:
