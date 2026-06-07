@@ -54,9 +54,9 @@ cd /src/script
 python 003_cache_hidden_states_before_layernorm.py
 ```
 
-#### 0.5. VScore Calculation
+#### 0.5. Neuron-variance Calculation
 
-Calculate VScore as preparation for weight selection:
+Calculate the variance of the neuron activation scores as preparation for weight selection:
 
 ```bash
 cd /src/script
@@ -69,6 +69,7 @@ python 007b_calc_vscore.py
 
 The following script performs weight selection using RepTran, Arachne, and ArachneW methods.
 This script invokes multiple Python scripts as subprocesses, running with various weight configurations and different methods.
+Weight suspiciousness scores are calculated in this script using the variance computed by `python 007b_calc_vscore.py` and the bidirectional scores.
 
 ```bash
 cd /src/script
@@ -96,7 +97,7 @@ Saved information:
 - Best patch: The modified weight values. Since this is a list of $N_w$ values, it is saved in `.npy` format. (Example path: `/src/src/out_vit_tiny-imagenet_fold0/misclf_top1/tgt_fp_repair_weight_by_de/exp-repair-3-2-best_patch_alpha0.9090909090909091_boundsArachne_ours_reps0.npy`)
 - Sample set used for modification. This is saved in `.npy` format as indices in the repair set. (Example path: `/src/src/out_vit_tiny-imagenet_fold0/misclf_top1/tgt_fp_repair_weight_by_de/exp-repair-3-1-tgt_indices_alpha0.9090909090909091_boundsArachne_bl_reps0.npy`)
 - Fitness tracker: History of fitness values for each iteration of the differential evolution algorithm. (Example path: `/src/src/out_vit_tiny-imagenet_fold0/misclf_top1/tgt_fp_repair_weight_by_de/exp-repair-3-1-tracker_alpha0.9090909090909091_boundsArachne_bl_reps0.pkl`)
-
+- Note: In this case, $\alpha = 10$. In the filename, $\alpha/(1+\alpha)$ is used instead of $\alpha$, so it is represented as `alpha0.9090909090909091`.
 ---
 
 ### 📊 3. Evaluation for the Test Set
