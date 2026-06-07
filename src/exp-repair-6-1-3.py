@@ -58,7 +58,6 @@ if __name__ == "__main__":
     parser.add_argument("tgt_rank", type=int)
     parser.add_argument("reps_id",  type=int)
     parser.add_argument("--p",         type=float, default=0.5)
-    parser.add_argument("--fl_method", type=str,   default="ours", choices=["ours", "bl", "random"])
     parser.add_argument("--misclf_type", type=str, default="tgt", choices=["src_tgt", "tgt"])
     parser.add_argument("--fpfn",      type=str,   default=None, choices=["fp", "fn"])
     parser.add_argument("--tgt_split", type=str,   default="test", choices=["repair", "test"])
@@ -69,18 +68,20 @@ if __name__ == "__main__":
     tgt_rank    = args.tgt_rank
     reps_id     = args.reps_id
     p           = args.p
-    fl_method   = args.fl_method
     misclf_type = args.misclf_type
     fpfn        = args.fpfn
     tgt_split   = args.tgt_split
 
-    setting_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_p{p}"
+    setting_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_p{p}_ours"
 
     pretrained_dir         = getattr(ViTExperiment, ds_name.replace("-", "_")).OUTPUT_DIR.format(k=k)
     location_save_dir, save_dir = get_dirs(pretrained_dir, tgt_rank, misclf_type, fpfn)
 
-    location_path  = os.path.join(location_save_dir, f"exp-repair-4-1_location_n{FIXED_WNUM}_weight_{fl_method}.npy")
-    patch_path     = os.path.join(save_dir, f"exp-repair-6-1-best_patch_{setting_id}_{fl_method}_reps{reps_id}.npy")
+    location_path = os.path.join(
+        location_save_dir,
+        f"exp-repair-6-1-location_n{FIXED_WNUM}_p{p}_weight_ours.npy"
+    )
+    patch_path = os.path.join(save_dir, f"exp-repair-6-1-best_patch_{setting_id}_reps{reps_id}.npy")
 
     for path in (location_path, patch_path):
         if not os.path.exists(path):
@@ -153,7 +154,7 @@ if __name__ == "__main__":
     )
 
     if tgt_split == "repair":
-        tgt_indices_path = os.path.join(save_dir, f"exp-repair-6-1-tgt_indices_{setting_id}_{fl_method}_reps{reps_id}.npy")
+        tgt_indices_path = os.path.join(save_dir, f"exp-repair-6-1-tgt_indices_{setting_id}_reps{reps_id}.npy")
         if not os.path.exists(tgt_indices_path):
             logger_obj.error(f"[ERROR] {tgt_indices_path} not found.")
             sys.exit(1)
@@ -214,13 +215,13 @@ if __name__ == "__main__":
 
     if tgt_split == "repair":
         metrics_json_path = os.path.join(
-            save_dir, f"exp-repair-6-1-metrics_for_repair_{setting_id}_{fl_method}_reps{reps_id}.json"
+            save_dir, f"exp-repair-6-1-metrics_for_repair_{setting_id}_reps{reps_id}.json"
         )
         assert os.path.exists(metrics_json_path), f"{metrics_json_path} does not exist."
         metrics_dict = json2dict(metrics_json_path)
     else:
         metrics_json_path = os.path.join(
-            save_dir, f"exp-repair-6-1-metrics_for_test_{setting_id}_{fl_method}_reps{reps_id}.json"
+            save_dir, f"exp-repair-6-1-metrics_for_test_{setting_id}_reps{reps_id}.json"
         )
         metrics_dict = {}
 
