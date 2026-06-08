@@ -34,6 +34,7 @@ def load_results():
         pretrained_dir = getattr(ViTExperiment, ds.replace("-", "_")).OUTPUT_DIR.format(k=k)
         json_path = os.path.join(
             pretrained_dir,
+            f"misclf_top{tgt_rank}",
             f"exp-ig-1-1_{ds}_k{k}_top{tgt_rank}_{misclf_ptn}_{IG_LAYER_STR}.json"
         )
         if not os.path.exists(json_path):
@@ -51,10 +52,8 @@ def load_results():
             "fpfn":         fpfn,
             "n_tgt_mis":    d["n_tgt_mis"],
             "n_correct":    d["n_correct"],
-            "ig_mean_sec":      d["ig_mean_sec"],
-            "ig_std_sec":       d["ig_std_sec"],
-            "reptran_mean_sec": d["reptran_mean_sec"],
-            "reptran_std_sec":  d["reptran_std_sec"],
+            "ig_time_sec":      d["ig_time_sec"],
+            "reptran_time_sec": d["reptran_time_sec"],
             "speedup_x":        d["speedup_x"],
         })
     return pd.DataFrame(records)
@@ -75,16 +74,16 @@ if __name__ == "__main__":
     for ds in df["ds"].unique():
         sub = df[df["ds"] == ds]
         print(f"\n[{ds}]")
-        print(f"  IG      : {sub['ig_mean_sec'].mean():.2f} ± {sub['ig_mean_sec'].std():.2f} sec (mean across conditions)")
-        print(f"  REPTRAN : {sub['reptran_mean_sec'].mean():.2f} ± {sub['reptran_mean_sec'].std():.2f} sec")
+        print(f"  IG      : {sub['ig_time_sec'].mean():.2f} sec (mean across conditions)")
+        print(f"  REPTRAN : {sub['reptran_time_sec'].mean():.2f} sec")
         print(f"  Speedup : {sub['speedup_x'].mean():.1f}x  (median {sub['speedup_x'].median():.1f}x)")
 
     # ── Overall summary ───────────────────────────────────────────────────────
     print(f"\n{'='*60}")
     print("Overall summary (all datasets & conditions)")
     print("=" * 60)
-    print(f"  IG      : {df['ig_mean_sec'].mean():.2f} sec  (median {df['ig_mean_sec'].median():.2f})")
-    print(f"  REPTRAN : {df['reptran_mean_sec'].mean():.2f} sec  (median {df['reptran_mean_sec'].median():.2f})")
+    print(f"  IG      : {df['ig_time_sec'].mean():.2f} sec  (median {df['ig_time_sec'].median():.2f})")
+    print(f"  REPTRAN : {df['reptran_time_sec'].mean():.2f} sec  (median {df['reptran_time_sec'].median():.2f})")
     print(f"  Speedup : {df['speedup_x'].mean():.1f}x  (median {df['speedup_x'].median():.1f}x, "
           f"min {df['speedup_x'].min():.1f}x, max {df['speedup_x'].max():.1f}x)")
 

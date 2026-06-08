@@ -282,19 +282,15 @@ if __name__ == "__main__":
         "num_points": NUM_POINTS,
         "ig_layers":  ig_layers,
         "ig_total_forward_passes": int(len(ig_layers) * n_ig_samples * NUM_POINTS),
-        "ig_times_sec":      ig_times,
-        "reptran_times_sec": reptran_times,
-        "ig_mean_sec":       float(np.mean(ig_times)),
-        "ig_std_sec":        float(np.std(ig_times)),
-        "reptran_mean_sec":  float(np.mean(reptran_times)),
-        "reptran_std_sec":   float(np.std(reptran_times)),
-        "speedup_x":         float(np.mean(ig_times) / np.mean(reptran_times)),
+        "ig_time_sec":      float(ig_times[0]),
+        "reptran_time_sec": float(reptran_times[0]),
+        "speedup_x":        float(ig_times[0] / reptran_times[0]),
     }
 
     print(f"\n{'='*60}")
-    print(f"  IG mean:      {result['ig_mean_sec']:.2f} ± {result['ig_std_sec']:.2f} sec")
-    print(f"  REPTRAN mean: {result['reptran_mean_sec']:.2f} ± {result['reptran_std_sec']:.2f} sec")
-    print(f"  Speed-up:     {result['speedup_x']:.1f}x")
+    print(f"  IG:       {result['ig_time_sec']:.2f} sec")
+    print(f"  REPTRAN:  {result['reptran_time_sec']:.2f} sec")
+    print(f"  Speed-up: {result['speedup_x']:.1f}x")
     print(f"{'='*60}")
 
     misclf_ptn   = misclf_type if fpfn is None else f"{misclf_type}_{fpfn}"
