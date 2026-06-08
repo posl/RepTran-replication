@@ -42,9 +42,9 @@ if __name__ == "__main__":
 
         for reps_id in range(NUM_REPS):
             patch_path = get_patch_path(ds, k, tgt_rank, misclf_type, fpfn, p, reps_id)
-            # if os.path.exists(patch_path):
-            #     print(f"[SKIP] already exists: {patch_path}")
-            #     continue
+            if os.path.exists(patch_path):
+                print(f"[SKIP] already exists: {patch_path}")
+                continue
             print(f"{'='*90}\nProcessing: ds={ds}, k={k}, tgt_rank={tgt_rank}, "
                   f"misclf_type={misclf_type}, fpfn={fpfn}, p={p}, reps_id={reps_id}")
             cmd = [
