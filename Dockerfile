@@ -11,5 +11,7 @@ RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.d
 		&& apt-get install git-lfs && git lfs install
 ADD transformers-4.30.2 /src/transformers-4.30.2
 RUN cd transformers-4.30.2 && pip install -e .
+COPY gurobi.lic /src/gurobi.lic
+ENV GRB_LICENSE_FILE=/src/gurobi.lic
 EXPOSE 8888
 EXPOSE 6006

@@ -38,7 +38,7 @@ from utils.constant import ViTExperiment
 
 NUM_POINTS    = ViTExperiment.NUM_POINTS  # 20
 TGT_LAYER     = 11   # last transformer layer (0-indexed)
-IG_START_LAYER = 9   # default: KN uses layers 9,10,11
+IG_START_LAYER = 11  # last layer only
 TGT_SPLIT     = "repair"
 FIXED_WNUM    = 236
 
@@ -164,7 +164,7 @@ if __name__ == "__main__":
     pretrained_dir = getattr(ViTExperiment, ds_name.replace("-", "_")).OUTPUT_DIR.format(k=k)
 
     # ── Dataset ──────────────────────────────────────────────────────────────
-    if ds_name in ("c10", "tiny-imagenet"):
+    if ds_name == "tiny-imagenet":
         tf_func   = transforms
         label_col = "label"
     elif ds_name == "c100":
