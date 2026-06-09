@@ -96,6 +96,15 @@ def repair_lp(model, repair_ds, eps=0.01, device="cpu"):
     )
     encoding_time = timer() - start_encoding
 
+    K = len(set_of_labels)
+    S = len(repair_ds)
+    p = weight_matrix.shape[1]
+    gp_model.update()
+    print(f"  |K|={K}, |S|={S}, p={p}")
+    print(f"  LP vars (theory): (p+1)*|K| = {(p + 1) * K}")
+    print(f"  LP constrs (theory): |S|*(|K|+1) = {S * (K + 1)}")
+    print(f"  LP vars (actual): {gp_model.NumVars},  constrs (actual): {gp_model.NumConstrs}")
+
     start_solve = timer()
     gp_model.optimize()
     solve_time = timer() - start_solve

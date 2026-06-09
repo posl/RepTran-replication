@@ -7,10 +7,12 @@ Usage:
     python exp-provit-lp-1.py tiny-imagenet 0
 """
 import os, json, pickle
+os.environ.setdefault("GRB_LICENSE_FILE", "/src/gurobi.lic")
 from copy import deepcopy
 import argparse
 import numpy as np
 import torch
+from tqdm.auto import tqdm
 from datasets import load_from_disk
 from transformers import ViTForImageClassification
 from utils.helper import get_device
@@ -46,8 +48,9 @@ def run_inference(model, ds, device, batch_size=32):
     """Return predicted labels (numpy array) for all samples in ds."""
     model.eval()
     all_pred = []
+    n_batches = (len(ds) + batch_size - 1) // batch_size
     with torch.no_grad():
-        for batch in ds.iter(batch_size=batch_size):
+        for batch in tqdm(ds.iter(batch_size=batch_size), total=n_batches, desc="inference", leave=False):
             pixel_values = batch["pixel_values"].to(device)
             logits = model(pixel_values=pixel_values).logits
             all_pred.extend(logits.argmax(dim=-1).cpu().numpy().tolist())
