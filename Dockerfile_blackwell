@@ -1,0 +1,18 @@
+FROM pytorch/pytorch:2.7.0-cuda12.8-cudnn9-runtime
+WORKDIR /src
+ADD bash_setting /root/.bashrc
+ADD requirements_blackwell.txt /src
+COPY transformers-4.30.2 /src/transformers-4.30.2
+RUN apt-get -qq update && \
+		apt-get install -y vim build-essential tree procps curl
+RUN pip install --upgrade pip
+RUN pip install torch==2.7.0+cu128 torchvision==0.22.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+RUN pip install -r requirements_blackwell.txt
+RUN curl -s https://packagecloud.io/install/repositories/github/git-lfs/script.deb.sh | bash \
+		&& apt-get install -y git-lfs && git lfs install
+ADD transformers-4.30.2 /src/transformers-4.30.2
+RUN cd transformers-4.30.2 && pip install -e .
+COPY gurobi.lic /src/gurobi.lic
+ENV GRB_LICENSE_FILE=/src/gurobi.lic
+EXPOSE 8888
+EXPOSE 6006
