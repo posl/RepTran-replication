@@ -18,7 +18,7 @@ FIXED_WNUM       = 236
 ALPHA_IN_ARACHNE = 10
 FIXED_ALPHA      = ALPHA_IN_ARACHNE / (1 + ALPHA_IN_ARACHNE)
 FIXED_BOUNDS     = "Arachne"
-P_LIST           = [0.1, 0.9]
+P_LIST           = [0.5, 0.1, 0.9]
 
 
 def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
@@ -27,7 +27,6 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
     k_list        = [0]
     tgt_rank_list = [1, 2, 3]
     misclf_list   = ["src_tgt", "tgt_fp", "tgt_fn"]
-    fl_method_li  = ["ours", "bl", "random"]
 
     for k in k_list:
         pretrained_dir = getattr(ViTExperiment, ds.replace("-", "_")).OUTPUT_DIR.format(k=k)
@@ -39,39 +38,39 @@ def collect_records(ds: str, tgt_split: str) -> pd.DataFrame:
                     f"{misclf_full}_repair_weight_by_de",
                 )
                 for p in P_LIST:
-                    setting_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_p{p}"
-                    for flm in fl_method_li:
-                        for reps in range(NUM_REPS):
-                            # Test metrics
-                            jp = os.path.join(
-                                save_dir,
-                                f"exp-repair-6-1-metrics_for_{tgt_split}_{setting_id}_{flm}_reps{reps}.json",
-                            )
-                            if not os.path.exists(jp):
-                                raise FileNotFoundError(jp)
-                            with open(jp) as f:
-                                js = json.load(f)
+                    if p == 0.5:
+                        # Default p=0.5: results from exp-repair-4-1
+                        base_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}"
+                        jp_fmt      = os.path.join(save_dir, f"exp-repair-4-1-metrics_for_{tgt_split}_{base_id}_ours_reps{{reps}}.json")
+                        jp_rep_fmt  = os.path.join(save_dir, f"exp-repair-4-1-metrics_for_repair_{base_id}_ours_reps{{reps}}.json")
+                    else:
+                        # Additional p values: results from exp-repair-6-1
+                        base_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_p{p}_ours"
+                        jp_fmt      = os.path.join(save_dir, f"exp-repair-6-1-metrics_for_{tgt_split}_{base_id}_reps{{reps}}.json")
+                        jp_rep_fmt  = os.path.join(save_dir, f"exp-repair-6-1-metrics_for_repair_{base_id}_reps{{reps}}.json")
 
-                            # Repair metrics (for tot_time)
-                            jp_repair = os.path.join(
-                                save_dir,
-                                f"exp-repair-6-1-metrics_for_repair_{setting_id}_{flm}_reps{reps}.json",
-                            )
-                            with open(jp_repair) as f:
-                                js_repair = json.load(f)
+                    for reps in range(NUM_REPS):
+                        jp        = jp_fmt.format(reps=reps)
+                        jp_repair = jp_rep_fmt.format(reps=reps)
 
-                            records.append({
-                                "dataset":    ds,
-                                "misclf_type": misclf_full,
-                                "tgt_rank":   tgt_rank,
-                                "method":     flm,
-                                "p":          p,
-                                "reps_id":    reps,
-                                "RR_tgt":     js.get("repair_rate_tgt"),
-                                "BR_all":     js.get("break_rate_overall"),
-                                "delta_acc":  js.get("delta_acc"),
-                                "tot_time":   js_repair.get("tot_time"),
-                            })
+                        if not os.path.exists(jp):
+                            raise FileNotFoundError(jp)
+                        with open(jp) as f:
+                            js = json.load(f)
+                        with open(jp_repair) as f:
+                            js_repair = json.load(f)
+
+                        records.append({
+                            "dataset":    ds,
+                            "misclf_type": misclf_full,
+                            "tgt_rank":   tgt_rank,
+                            "p":          p,
+                            "reps_id":    reps,
+                            "RR_tgt":     js.get("repair_rate_tgt"),
+                            "BR_all":     js.get("break_rate_overall"),
+                            "delta_acc":  js.get("delta_acc"),
+                            "tot_time":   js_repair.get("tot_time"),
+                        })
     return pd.DataFrame(records)
 
 
