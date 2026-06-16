@@ -1,10 +1,16 @@
-"""
-Run PRoViTLP on all 9 fault benchmarks for a given dataset and fold.
-Reports RR, BR, and Ttot for each benchmark, matching the REPTRAN evaluation protocol.
+"""PRoViT-LP applied to the LAST encoder block's FFN (W_aft) instead of the
+classification head. This makes the repair *target* match REPTRAN (FFN weights
+of the last block), so the comparison isolates the repair *method*
+(LP vs differential evolution) rather than the repaired component.
+
+Like exp-provit-lp-1.py, it runs all 9 fault benchmarks for a dataset/fold and
+reports RR, BR, and Ttot, matching the REPTRAN evaluation protocol. RR/BR are
+measured on the true (non-linear) model; the LP only guarantees correctness on
+the LayerNorm-linearised surrogate (see utils/provit_lp_ffn.py).
 
 Usage:
-    python exp-provit-lp-1.py c100 0
-    python exp-provit-lp-1.py tiny-imagenet 0
+    python exp-provit-2.py c100 0
+    python exp-provit-2.py tiny-imagenet 0
 """
 import os, json, pickle
 os.environ.setdefault("GRB_LICENSE_FILE", "/src/gurobi.lic")
@@ -20,7 +26,7 @@ from utils.helper import get_device
 from utils.vit_util import transforms, transforms_c100, maybe_initialize_repair_weights_, identfy_tgt_misclf
 from utils.constant import ViTExperiment
 from utils.log import set_exp_logging
-from utils.provit_lp import repair_lp
+from utils.provit_lp_ffn import repair_lp_ffn
 from logging import getLogger
 
 logger = getLogger("base_logger")
@@ -87,12 +93,12 @@ if __name__ == "__main__":
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    save_dir = os.path.join(pretrained_dir, "provit_lp")
+    save_dir = os.path.join(pretrained_dir, "provit_lp_ffn")
     os.makedirs(save_dir, exist_ok=True)
 
     this_file = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=save_dir, exp_name=this_file)
-    logger.info(f"ds_name={ds_name}, k={k}, eps={args.eps}")
+    logger.info(f"ds_name={ds_name}, k={k}, eps={args.eps} (target=last-block W_aft)")
 
     tf_func = transforms_c100 if ds_name == "c100" else transforms
     label_col = "fine_label" if ds_name == "c100" else "label"
@@ -153,8 +159,8 @@ if __name__ == "__main__":
         # Fresh model copy for each benchmark
         model = deepcopy(orig_model)
 
-        # Apply PRoViTLP
-        model, classifier, enc_time, solve_time = repair_lp(
+        # Apply PRoViT-LP on the last block's FFN (W_aft)
+        model, out_dense, enc_time, solve_time, solve_status = repair_lp_ffn(
             model, repair_ds, eps=args.eps, device=device
         )
         Ttot = enc_time + solve_time
@@ -172,11 +178,11 @@ if __name__ == "__main__":
             "Ttot": Ttot,
         }
 
-        if classifier is None:
-            logger.info("LP infeasible.")
-            result.update({"status": "infeasible", "RR": None, "BR": None})
+        if out_dense is None:
+            logger.info(f"No usable solution ({solve_status}).")
+            result.update({"status": solve_status, "RR": None, "BR": None})
         else:
-            logger.info(f"LP solved. enc={enc_time:.1f}s, solve={solve_time:.1f}s")
+            logger.info(f"LP {solve_status}. enc={enc_time:.1f}s, solve={solve_time:.1f}s")
             t0 = timer()
             repaired_test_preds = run_inference(model, ds_preprocessed["test"], device)
             infer_time = timer() - t0
@@ -184,7 +190,7 @@ if __name__ == "__main__":
             RR = float(np.mean(repaired_test_preds[I_test_mis] == test_true_labels[I_test_mis]))
             BR = float(np.mean(repaired_test_preds[I_test_cor] != test_true_labels[I_test_cor]))
             logger.info(f"RR={RR:.4f}, BR={BR:.4f}, Ttot={Ttot:.1f}s (infer={infer_time:.1f}s)")
-            result.update({"status": "success", "RR": RR, "BR": BR,
+            result.update({"status": solve_status, "RR": RR, "BR": BR,
                            "infer_time": infer_time, "Ttot": Ttot})
 
         all_results.append(result)
