@@ -35,26 +35,31 @@ guarantee. It reuses the FT and LP machinery of the other two variants.
 
 For each of the 18 benchmarks:
 
-1. Load fine-tuned ViT; build `S = I_repair_mis` (as in `exp-provit-lp-1.py`).
-2. **FT step:** one iteration of head-only fine-tuning on `S`
-   (reuse `utils/provit_ft.py` with `max_epochs=1` / single optimizer step).
+1. Load fine-tuned ViT; build `S = I_repair_mis` (as in `exp-provit-2.py`).
+2. **FT step:** one iteration of last-block FFN (W_bef+W_aft) fine-tuning on `S`
+   (`repair_ft(..., max_epochs=1)`).
 3. Compute efficacy on `S`.
-   - If 100% → done; `model` is the FT'd model. `Ttot = T_ft`.
-   - Else → run `repair_lp` (from `utils/provit_lp.py`) on the FT'd model to edit
-     the head rows for labels in `S`; `Ttot = T_ft + enc_time + solve_time`.
-4. Evaluate on test set → RR, BR (shared helpers).
-5. Record which path was taken (FT-only vs FT+LP), efficacy, and timing components.
+   - If 100% → done; `model` is the FT'd model. `lp_status="ft_only"`.
+   - Else → run `repair_lp_ffn` (from `utils/provit_lp_ffn.py`) on the FT'd
+     model to edit the same block's W_aft; `Ttot = ft + enc + solve + infer`.
+4. Evaluate on test set → RR, BR (shared helpers). Recompute `efficacy_final` on
+   the true model.
+5. Record which path was taken (`used_lp`, `lp_status`), efficacy, and timing.
 
 ## 4. Implementation
 
-- New driver: `exp-provit-ft-lp.py`.
-  - Reuses `repair_ft` (1 iteration) from `utils/provit_ft.py` and `repair_lp`
-    from `utils/provit_lp.py`. No new solver module needed.
-  - `save_dir = .../provit_ft_lp`. CLI: `python exp-provit-ft-lp.py c100 0`.
-  - Result JSON adds: `ft_time`, `efficacy_after_ft`, `used_lp` (bool),
-    `enc_time`, `solve_time`, `Ttot`.
-- **Dependency:** requires `utils/provit_ft.py` from
-  [`exp-provit-ft.md`](exp-provit-ft.md) to exist first.
+Same runner/launcher split as PRoViTFT (segfault isolation + GPU release per rep,
+incremental per-benchmark save + resume, retry, `USE_TF=0`, `GRB_LICENSE_FILE`):
+
+- **Runner** `exp-provit-ft-lp-1.py <ds> <fold> <reps_id>`: 9 benchmarks for one
+  rep; FT 1-iter (`repair_ft`, `utils/provit_ft.py`) → LP fallback
+  (`repair_lp_ffn`, `utils/provit_lp_ffn.py`). `save_dir = .../provit_ft_lp`,
+  saves `results_lr{lr}_eps{eps}_rep{reps_id}.json` after every benchmark
+  (resume on restart). Fields: `efficacy_after_ft`, `efficacy_final`, `used_lp`,
+  `lp_status`, `ft_time`, `enc_time`, `solve_time`, `infer_time`, `Ttot`, RR, BR.
+- **Launcher** `exp-provit-ft-lp-2.py <ds> <fold> [--n-reps 5]`: subprocess per
+  rep, retry crashed reps, merge per-rep JSONs into `results_lr{lr}_eps{eps}.json`.
+- **Dependency:** `utils/provit_ft.py` and `utils/provit_lp_ffn.py`.
 
 ## 5. Expected outcome
 
@@ -77,7 +82,8 @@ with `efficacy_after_ft`, `efficacy_final`, `used_lp`, `lp_status`, timing split
 
 | Step | Subtask | Script | C100 | tiny-imagenet |
 | ---- | ------- | ------ | ---- | ------------- |
-| 0 | (dep) `utils/provit_ft.py` ready | — | ✅ | ✅ |
-| 1 | Driver (FT 1-iter → LP fallback), 5-run | `exp-provit-ft-lp.py` | 🏝️ | 🏝️ |
-| 2 | Run 18 benchmarks (fold0) | — | 🥚 | 🥚 |
-| 3 | Integrate into RQ1/RQ2 + stats | (shared) | 🥚 | 🥚 |
+| 0 | (dep) `provit_ft.py` + `provit_lp_ffn.py` | — | ✅ | ✅ |
+| 1 | Runner (1 rep, FT 1-iter → LP, incremental+resume) | `exp-provit-ft-lp-1.py` | 🏝️ | 🏝️ |
+| 2 | Launcher (subprocess/rep, retry, merge) | `exp-provit-ft-lp-2.py` | 🏝️ | 🏝️ |
+| 3 | Run 5 reps × 18 benchmarks (fold0) | — | 🥚 | 🥚 |
+| 4 | Integrate into RQ1/RQ2 + stats | (shared) | 🥚 | 🥚 |
