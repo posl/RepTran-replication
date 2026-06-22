@@ -118,8 +118,33 @@ For each of the 18 fault benchmarks (2 datasets × 3 misclf types × 3 ranks):
 
 | Step | Subtask | Script / module | C100 | tiny-imagenet |
 | ---- | ------- | --------------- | ---- | ------------- |
-| 1 | Implement `repair_ft` (mini-batch, seeded) | `utils/provit_ft.py` | 🏝️ | 🏝️ |
-| 2 | Runner (1 rep, 9 bench, incremental+resume) | `exp-provit-ft-1.py` | 🏝️ | 🏝️ |
-| 3 | Launcher (subprocess/rep, retry, merge) | `exp-provit-ft-2.py` | 🏝️ | 🏝️ |
-| 4 | Run 5 reps × 18 benchmarks (fold0) | — | 🥚 | 🥚 |
+| 1 | Implement `repair_ft` (mini-batch, seeded) | `utils/provit_ft.py` | ✅ | ✅ |
+| 2 | Runner (1 rep, 9 bench, incremental+resume) | `exp-provit-ft-1.py` | ✅ | ✅ |
+| 3 | Launcher (subprocess/rep, retry, merge) | `exp-provit-ft-2.py` | ✅ | ✅ |
+| 4 | Run 5 reps × 18 benchmarks (fold0) | — | ✅ | ✅ |
 | 5 | Integrate into RQ1/RQ2 tables + stats | (shared) | 🥚 | 🥚 |
+
+### 8.1 Results (2026-06-17, fold0, lr=1e-3, timeout=1800 s, 5 runs)
+
+Merged results in `out_vit_<ds>_fold0/provit_ft/results_lr0.001_tl1800.json`
+(5 reps × 9 benchmarks = 45 rows each; no crashes, retries never fired).
+
+**Overall:** c100 RR=0.870, BR=0.0171 · tiny-imagenet RR=0.744, BR=0.0188.
+
+| benchmark | c100 RR / BR | tiny RR / BR |
+| --- | --- | --- |
+| src_tgt rank1–3 | 1.00 / ~0.011 | 1.00–0.89 / ~0.005 |
+| **tgt_fp rank1–3** | **0.56–0.74** / ~0.012 | **0.24–0.47** / ~0.010–0.025 |
+| tgt_fn rank1–3 | 0.97–1.00 / 0.021–0.034 | 0.77–1.00 / 0.008–0.072 |
+
+Notes:
+- **17/18 benchmarks reach 100% efficacy in a few epochs / seconds.** The sole
+  exception is tiny `tgt_fp_rank3`: every rep exhausts the 1800 s `time_limit`
+  (~4170 epochs) at efficacy 0.99999994 (one stubborn sample), RR=0.392±0.030.
+  **Kept as real data** (per 2026-06-17 decision); reported as a legitimate FT
+  property (no provable guarantee) in the response letter — do NOT loosen the
+  efficacy threshold.
+- **tgt_fp is consistently the weakest type on both datasets** (esp. tiny),
+  mirroring PRoViTLP(FFN) — supports "final-layer-style repair is weak on FP".
+- Run-to-run RR sd ≈ 0 except c100/tiny tgt_fp (the FT loss surface there is the
+  only place the seeded mini-batch order changes the outcome).

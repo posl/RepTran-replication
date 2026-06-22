@@ -87,3 +87,11 @@ with `efficacy_after_ft`, `efficacy_final`, `used_lp`, `lp_status`, timing split
 | 2 | Launcher (subprocess/rep, retry, merge) | `exp-provit-ft-lp-2.py` | 🏝️ | 🏝️ |
 | 3 | Run 5 reps × 18 benchmarks (fold0) | — | 🥚 | 🥚 |
 | 4 | Integrate into RQ1/RQ2 + stats | (shared) | 🥚 | 🥚 |
+
+> [!NOTE] Deps ready (2026-06-17): PRoViTFT (step 0 `provit_ft.py`) and
+> PRoViTLP (`provit_lp_ffn.py`, `exp-provit-2.py`) are both fully run and
+> validated — see `exp-provit-ft.md` §8.1 and `exp-provit.md`. PRoViTFT+LP is the
+> last of the three variants left to run:
+> `python exp-provit-ft-lp-2.py c100 0 && python exp-provit-ft-lp-2.py tiny-imagenet 0`.
+> Caveat: the LP fallback only fires when FT 1-iter misses 100% efficacy; on the
+> heavy tiny benchmarks that LP solve can add up to a 30-min Gurobi `TimeLimit`.
