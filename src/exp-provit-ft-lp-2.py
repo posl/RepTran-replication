@@ -25,11 +25,15 @@ if __name__ == "__main__":
     parser.add_argument("--gamma", type=float, default=0.995)
     parser.add_argument("--batch-size", type=int, default=10)
     parser.add_argument("--eps", type=float, default=0.01)
+    parser.add_argument("--save-subdir", type=str, default="provit_ft_lp",
+                        help="sub-directory to save results "
+                             "(use provit_ft_lp_rerun for the index/weight-saving re-run)")
     args = parser.parse_args()
 
     runner = os.path.join(os.path.dirname(os.path.abspath(__file__)), "exp-provit-ft-lp-1.py")
     common = ["--lr", str(args.lr), "--gamma", str(args.gamma),
-              "--batch-size", str(args.batch_size), "--eps", str(args.eps)]
+              "--batch-size", str(args.batch_size), "--eps", str(args.eps),
+              "--save-subdir", args.save_subdir]
 
     for reps_id in range(args.n_reps):
         cmd = [sys.executable, runner, args.ds, str(args.k), str(reps_id)] + common
@@ -49,7 +53,7 @@ if __name__ == "__main__":
 
     # Merge per-rep JSONs into one combined results file.
     exp_obj = getattr(ViTExperiment, args.ds.replace("-", "_"))
-    save_dir = os.path.join(exp_obj.OUTPUT_DIR.format(k=args.k), "provit_ft_lp")
+    save_dir = os.path.join(exp_obj.OUTPUT_DIR.format(k=args.k), args.save_subdir)
     pat = os.path.join(save_dir, f"results_lr{args.lr}_eps{args.eps}_rep*.json")
     merged = []
     for fp in sorted(glob.glob(pat)):

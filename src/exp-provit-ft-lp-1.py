@@ -109,6 +109,9 @@ if __name__ == "__main__":
                         help="mini-batch size for FT (PRoViT default: 10)")
     parser.add_argument("--eps", type=float, default=0.01,
                         help="LP margin epsilon for the PRoViTLP step (default: 0.01)")
+    parser.add_argument("--save-subdir", type=str, default="provit_ft_lp",
+                        help="sub-directory under pretrained_dir to save results "
+                             "(use e.g. provit_ft_lp_rerun for an index-saving re-run)")
     args = parser.parse_args()
     ds_name = args.ds
     k = args.k
@@ -119,8 +122,11 @@ if __name__ == "__main__":
     pretrained_dir = exp_obj.OUTPUT_DIR.format(k=k)
     misclf_info_dir = os.path.join(pretrained_dir, "misclf_info")
     pred_res_dir = os.path.join(pretrained_dir, "pred_results", "PredictionOutput")
-    save_dir = os.path.join(pretrained_dir, "provit_ft_lp")
+    save_dir = os.path.join(pretrained_dir, args.save_subdir)
     os.makedirs(save_dir, exist_ok=True)
+    # Per-benchmark/per-rep change-index sets + repaired FFN weights live here.
+    ckpt_dir = os.path.join(save_dir, "checkpoints")
+    os.makedirs(ckpt_dir, exist_ok=True)
 
     this_file = os.path.basename(__file__).split(".")[0]
     logger = set_exp_logging(exp_dir=save_dir, exp_name=f"{this_file}_rep{reps_id}")
@@ -229,6 +235,40 @@ if __name__ == "__main__":
         BR = float(np.mean(repaired_test_preds[I_test_cor] != test_true_labels[I_test_cor]))
         logger.info(f"eff_final={eff_final:.4f}, RR={RR:.4f}, BR={BR:.4f}, "
                     f"Ttot={Ttot:.1f}s (infer={infer_time:.1f}s)")
+
+        # --- Per-sample change sets, in the SAME index spaces REPTRAN uses
+        #     (cf. exp-repair-4-1-5.py), so they drop straight into the Venn diagram:
+        #   repair_indices_tgt    : positions WITHIN I_test_mis that became correct
+        #   break_indices_overall : absolute test indices that went correct -> wrong
+        repair_indices_tgt = np.where(
+            repaired_test_preds[I_test_mis] == test_true_labels[I_test_mis])[0]
+        break_indices_overall = np.where(
+            (orig_test_preds == test_true_labels)
+            & (repaired_test_preds != test_true_labels))[0]
+        npz_path = os.path.join(
+            ckpt_dir,
+            f"change_indices_test_lr{args.lr}_eps{args.eps}_{bname}_rep{reps_id}.npz")
+        np.savez(npz_path,
+                 repair_indices_tgt=repair_indices_tgt,
+                 break_indices_overall=break_indices_overall,
+                 I_test_mis=I_test_mis, I_test_cor=I_test_cor)
+
+        # --- Repaired model weights: only the last block's FFN changes under FT+LP,
+        #     so saving these two linear layers fully reconstructs the repaired model
+        #     (base model on disk + this state_dict). ~19MB vs ~340MB for a full save.
+        last_ffn = model.vit.encoder.layer[-1]
+        ffn_ckpt_path = os.path.join(
+            ckpt_dir,
+            f"ffn_weights_lr{args.lr}_eps{args.eps}_{bname}_rep{reps_id}.pt")
+        torch.save({
+            "intermediate.dense": last_ffn.intermediate.dense.state_dict(),
+            "output.dense":       last_ffn.output.dense.state_dict(),
+            "meta": {"ds": ds_name, "k": k, "reps_id": reps_id,
+                     "benchmark": bname, "used_lp": used_lp,
+                     "lr": args.lr, "eps": args.eps},
+        }, ffn_ckpt_path)
+        logger.info(f"saved change_indices -> {npz_path}")
+        logger.info(f"saved FFN weights    -> {ffn_ckpt_path}")
 
         all_results.append({
             "benchmark": bname,

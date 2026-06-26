@@ -249,7 +249,13 @@ def return_rank(x, i, order="desc"):
     else:
         raise NotImplementedError
 
-def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False, vscore_abs=False, covavg=True, vscore_cor_dir=None, return_before_norm=False):
+def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_after_dir, tgt_layer, n, intermediate_states, tgt_mis_indices, tgt_split="repair", misclf_pair=None, tgt_label=None, fpfn=None, corruption_type=None, rank_type="abs", alpha=None, return_all_neuron_score=False, vscore_abs=False, covavg=True, vscore_cor_dir=None, return_before_norm=False, score_mode="full"):
+    # score_mode controls the composition of neuron_score (for the Meta3 / exp-repair-7 ablation).
+    #   "full"   : neuron_score = VDiff x MisAct (= vmap_diff_abs * mean_activation, default / existing behavior)
+    #   "vdiff"  : neuron_score = VDiff only  (MisAct treated as a uniform 1)
+    #   "misact" : neuron_score = MisAct only (VDiff  treated as a uniform 1)
+    # In all cases each component is min-max normalized as before; only the selected component(s) are used.
+    assert score_mode in ("full", "vdiff", "misact"), f"Unknown score_mode: {score_mode}"
     vmap_dic = defaultdict(np.array)
     # abs, covavg (vscore計算のバリエーション) によってファイル名が違う
     vscore_path_prefix = ("vscore_abs" if vscore_abs else "vscore") + ("_covavg" if covavg else "")
@@ -316,10 +322,18 @@ def localize_neurons_with_mean_activation(vscore_before_dir, vscore_dir, vscore_
     mean_activation = (mean_activation - np.min(mean_activation)) / (np.max(mean_activation) - np.min(mean_activation))
     
     if alpha is None:
-        # neuron_score として，上の2つのベクトルの要素ごとの積を使う
-        neuron_score = vmap_diff_abs * mean_activation # shape: (num_neurons,)
+        # neuron_score として，上の2つのベクトルの要素ごとの積を使う（score_modeで成分を切り替え）
+        if score_mode == "full":
+            neuron_score = vmap_diff_abs * mean_activation # shape: (num_neurons,)
+        elif score_mode == "vdiff":
+            # MisAct（mean_activation）を一様1扱いにして VDiff のみ使う
+            neuron_score = vmap_diff_abs # shape: (num_neurons,)
+        else:  # score_mode == "misact"
+            # VDiff（vmap_diff_abs）を一様1扱いにして MisAct のみ使う
+            neuron_score = mean_activation # shape: (num_neurons,)
     else:
         # neuron_score として，上の2つのベクトルの重み付き和
+        assert score_mode == "full", f"score_mode={score_mode} is only supported with alpha=None"
         neuron_score = alpha * vmap_diff_abs + (1-alpha) * mean_activation # shape: (num_neurons,)
     
     if n is not None:

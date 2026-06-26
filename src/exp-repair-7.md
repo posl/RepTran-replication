@@ -52,7 +52,7 @@ neuron_score = VDiff × MisAct
 VDiff-only / MisAct-only の2条件で，Nw=472・localization＋repairを実行する．
 
 ## ステップ
-### ステップ0：localize関数にscore_modeを追加 🥚
+### ステップ0：localize関数にscore_modeを追加 ✅
 - `utils/vit_util.py` の `localize_neurons_with_mean_activation` に
   `score_mode ∈ {"full","vdiff","misact"}` 引数を追加する（default `"full"` で既存挙動を変えない）．
   - `"full"`   : `neuron_score = vmap_diff_abs * mean_activation`（現行）
@@ -61,7 +61,7 @@ VDiff-only / MisAct-only の2条件で，Nw=472・localization＋repairを実行
   - min-max正規化は各成分について現行どおり行い，使う成分だけを返す．
 - 既存呼び出し（exp-repair-4-1-1.py 等）は引数省略時に従来と同一の結果になることを確認．
 
-### ステップ1：Localization + Repairの実行 🥚
+### ステップ1：Localization + Repairの実行 🏝️
 - `exp-repair-6-1-1.py`（runner）をベースに，`--p` の代わりに `--score_mode {vdiff,misact}` を受け取るよう改造．
   - localizationで `localize_neurons_with_mean_activation(..., score_mode=args.score_mode)` を呼ぶ．
   - Nw=472, α=10/11, bounds=Arachne 固定．
@@ -69,11 +69,11 @@ VDiff-only / MisAct-only の2条件で，Nw=472・localization＋repairを実行
 - 該当スクリプト: `exp-repair-7-1-1.py`（runner），`exp-repair-7-1-2.py`（launcher）
   - launcherは exp-repair-6-1-2.py 同様，subprocess・retry・per-benchmark incremental save+resume・`USE_TF=0` を踏襲．
 
-### ステップ2：テストセットで評価してデータ記録 🥚
+### ステップ2：テストセットで評価してデータ記録 🏝️
 - exp-repair-6-1-3.py / -4.py と同様の評価スクリプト．`score_mode` を設定キーに含める．
 - 該当スクリプト: `exp-repair-7-1-3.py`，`exp-repair-7-1-4.py`
 
-### ステップ3：4条件を統合して図表化・統計検定 🥚
+### ステップ3：4条件を統合して図表化・統計検定 🏝️
 - 既存の Full（ours, n472）と No-neuron-score（bl, n472）の test結果を読み込み，
   新規2条件と結合して4条件のRR/BRを1つのデータフレームに集約．
 - 可視化：ベンチマーク別＋全体で RR・BR を4条件で並べる（棒グラフ / box）．
@@ -101,7 +101,7 @@ VDiff-only / MisAct-only の2条件で，Nw=472・localization＋repairを実行
 # 進捗表
 | ステップ | サブタスク | スクリプト名 | C100 | tiny-imagenet |
 | ---- | ---- | ---- | ---- | ---- |
-| 0 | localize関数に score_mode 追加 | `utils/vit_util.py` | 🥚 | 🥚 |
-| 1 | Localization + Repair（VDiff/MisAct） | `exp-repair-7-1-1.py`, `-2.py` | 🥚 | 🥚 |
-| 2 | テストセットで評価・記録 | `exp-repair-7-1-3.py`, `-4.py` | 🥚 | 🥚 |
-| 3 | 4条件統合・図表化・統計検定 | `exp-repair-7-1-5.py` | 🥚 | 🥚 |
+| 0 | localize関数に score_mode 追加 | `utils/vit_util.py` | ✅ | ✅ |
+| 1 | Localization + Repair（VDiff/MisAct） | `exp-repair-7-1-1.py`, `-2.py` | 🏝️ | 🏝️ |
+| 2 | テストセットで評価・記録 | `exp-repair-7-1-3.py`, `-4.py` | 🏝️ | 🏝️ |
+| 3 | 4条件統合・図表化・統計検定 | `exp-repair-7-1-5.py` | 🏝️ | 🏝️ |
