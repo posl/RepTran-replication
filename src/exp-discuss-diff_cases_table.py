@@ -20,10 +20,13 @@ set differences are well-defined. PRoViT (FT+LP) has a single configuration and
 is independent of N_w; its sets are the same across the three tables, while its
 *unique* counts can still differ (REPTRAN/ArachneW sets change with N_w).
 
+Rows are aggregated to (dataset, type) by SUMMING counts over the three target
+ranks (Dataset x Type = 6 rows per N_w).
+
 Outputs (written next to this script, in src/):
-    exp-discuss-diff_cases_unique_table_n{Nw}.csv   (one 18x6 table per N_w)
-    exp-discuss-diff_cases_unique_table_all.csv     (all three stacked)
-    exp-discuss-diff_cases_unique_table.tex         (LaTeX, booktabs, per N_w)
+    exp-discuss-diff_cases_unique_table_all.csv  (full 18-row raw counts + denoms)
+    exp-discuss-diff_cases_unique_table.csv      (rank-collapsed 6-row counts, all N_w)
+    exp-discuss-diff_cases_unique_table.tex      (full LaTeX table per N_w, paste format)
 
 Usage (inside the docker container):
     python exp-discuss-diff_cases_table.py
@@ -180,12 +183,6 @@ VALUE_COLS  = REPAIR_COLS + BREAK_COLS
 ID_COLS     = ["dataset", "rank", "benchmark"]
 
 
-def _fmt(count, denom):
-    """Plain count (percentages dropped for readability; denom kept in the
-    combined CSV for anyone who wants to recompute ratios)."""
-    return f"{int(count)}"
-
-
 def slash_bold_max(vals):
     """'a/b/c' for LaTeX, bolding the maximum value(s) in the triple via
     \\textbf{}. If all three are equal, nothing is bolded."""
@@ -197,55 +194,74 @@ def slash_bold_max(vals):
     return "/".join(parts)
 
 
-def formatted_view(sub):
-    """ID columns + each value as 'count (pct%)' (repair vs break denominators)."""
-    out = sub[ID_COLS].copy()
-    for col in REPAIR_COLS:
-        out[col] = [_fmt(c, d) for c, d in zip(sub[col], sub["denom_repair"])]
-    for col in BREAK_COLS:
-        out[col] = [_fmt(c, d) for c, d in zip(sub[col], sub["denom_break"])]
-    return out
+# Rows = (dataset, type); the three target ranks are collapsed by SUMMING counts
+# (see the module docstring on why we sum, not union).
+GROUP_COLS = ["dataset", "benchmark"]
+
+
+def tex_label(wnum):
+    return "tab:repaired_broken_cases" if wnum == 236 else f"tab:repaired_broken_cases_n{wnum}"
+
+
+def render_table(sub, wnum):
+    """Full LaTeX table in the user's paste format (rank-collapsed, lcc)."""
+    L = []
+    L.append(r"\begin{table}[t]")
+    L.append(r"    \centering")
+    L.append(r"    \caption{Number of unique repairs and unique breaks for \textsc{RepTran}, \arachnew, and PRoViT,")
+    L.append(r"    aggregated over the three target ranks.")
+    L.append(r"    Unique repairs (breaks) are samples consistently repaired (broken) in all five runs by one method but not by the others.")
+    L.append(r"    Each cell lists counts in the order \textsc{RepTran}/\arachnew/PRoViT; bold values indicate the highest count in that cell.}")
+    L.append(r"    \label{%s}" % tex_label(wnum))
+    L.append(r"    \setlength{\tabcolsep}{4pt}")
+    L.append(r"    \resizebox{\columnwidth}{!}{")
+    L.append(r"    \begin{tabular}{lcc}")
+    L.append(r"    \toprule")
+    L.append(r"    Dataset / Type & Unique Repairs & Unique Breaks \\")
+    L.append(r"    \midrule")
+    datasets = list(dict.fromkeys(sub["dataset"]))
+    for di, ds in enumerate(datasets):
+        block = sub[sub["dataset"] == ds].reset_index(drop=True)
+        for ri, r in block.iterrows():
+            rep = slash_bold_max([r[c] for c in REPAIR_COLS])
+            brk = slash_bold_max([r[c] for c in BREAK_COLS])
+            label = r"%s / \textit{%s}" % (r["dataset"], r["benchmark"])
+            end = r" \\ \midrule" if (ri == len(block) - 1 and di != len(datasets) - 1) else r" \\"
+            L.append(r"    %s & %s & %s%s" % (label, rep, brk, end))
+    L.append(r"    \bottomrule")
+    L.append(r"    \end{tabular}")
+    L.append(r"    }")
+    L.append(r"\end{table}")
+    return "\n".join(L)
 
 
 def main():
     here = os.path.dirname(os.path.abspath(__file__))
     df = build_table()
 
-    # one 18x6 counts table per N_w (CSV + console)
-    for wnum in W_NUM_LIST:
-        sub = df[df["N_w"] == wnum].reset_index(drop=True)
-        view = formatted_view(sub)
-        out = os.path.join(here, f"exp-discuss-diff_cases_unique_table_n{wnum}.csv")
-        view.to_csv(out, index=False)
-        print(f"\n===== N_w = {wnum}  (repaired 5/5 | broken 5/5; counts) =====")
-        print(view.to_string(index=False))
-        print(f"[saved] {out}")
-
-    # combined CSV: raw counts + denominators (for any further analysis)
+    # combined raw CSV (full granularity) + denominators, for any further analysis
     all_out = os.path.join(here, "exp-discuss-diff_cases_unique_table_all.csv")
     df[["N_w"] + ID_COLS + VALUE_COLS + ["denom_repair", "denom_break"]].to_csv(all_out, index=False)
-    print(f"\n[saved] {all_out}")
+    print(f"[saved] {all_out}")
 
-    # LaTeX (booktabs), one tabular per N_w.
-    # Each metric is a single slash-separated cell: REPTRAN/ArachneW/PRoViT.
-    tex_path = os.path.join(here, "exp-discuss-diff_cases_unique_table.tex")
-    header = (" & ".join(["Dataset", "Rank", "Bench",
-                          "Repaired (5/5)", "Broken (5/5)"]))
-    subhdr = " & & & REPTRAN/ArachneW/PRoViT & REPTRAN/ArachneW/PRoViT"
-    with open(tex_path, "w") as f:
+    # rank-collapsed aggregation (Dataset x Type), counts summed over ranks
+    agg = df.groupby(["N_w"] + GROUP_COLS, as_index=False)[VALUE_COLS].sum()
+    csv_out = os.path.join(here, "exp-discuss-diff_cases_unique_table.csv")
+    agg.to_csv(csv_out, index=False)
+    print(f"[saved] {csv_out}")
+
+    # one full LaTeX table per N_w, in the user's paste format
+    tex_out = os.path.join(here, "exp-discuss-diff_cases_unique_table.tex")
+    with open(tex_out, "w") as f:
         for wnum in W_NUM_LIST:
-            sub = df[df["N_w"] == wnum].reset_index(drop=True)
-            f.write(f"% N_w = {wnum}\n")
-            f.write("\\begin{tabular}{lll cc}\n\\toprule\n")
-            f.write(header + " \\\\\n")
-            f.write(subhdr + " \\\\\n\\midrule\n")
-            for _, r in sub.iterrows():
-                rep = slash_bold_max([r[c] for c in REPAIR_COLS])
-                brk = slash_bold_max([r[c] for c in BREAK_COLS])
-                cells = [str(r["dataset"]), str(r["rank"]), str(r["benchmark"]), rep, brk]
-                f.write(" & ".join(cells) + " \\\\\n")
-            f.write("\\bottomrule\n\\end{tabular}\n\n")
-    print(f"[saved] {tex_path}")
+            sub = agg[agg["N_w"] == wnum].reset_index(drop=True)
+            f.write(f"% ===== N_w = {wnum} =====\n")
+            f.write(render_table(sub, wnum) + "\n\n")
+    print(f"[saved] {tex_out}")
+
+    # console preview (N_w=236, the paper table)
+    print("\n----- N_w=236 (rank-collapsed, 6 rows) -----")
+    print(agg[agg["N_w"] == 236].reset_index(drop=True).to_string(index=False))
 
 
 if __name__ == "__main__":
