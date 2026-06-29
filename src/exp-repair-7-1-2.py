@@ -9,6 +9,7 @@ Per-benchmark incremental save + resume (skips if the patch already exists),
 subprocess with retry, USE_TF=0.
 """
 import os
+import argparse
 import subprocess
 from itertools import product
 
@@ -23,15 +24,21 @@ FIXED_BOUNDS = "Arachne"
 MAX_RETRY    = 3
 
 
-def get_patch_path(ds, k, tgt_rank, misclf_type, fpfn, score_mode, reps_id):
+def get_patch_path(ds, k, tgt_rank, misclf_type, fpfn, score_mode, reps_id, wnum):
     pretrained_dir = getattr(ViTExperiment, ds.replace("-", "_")).OUTPUT_DIR.format(k=k)
     misclf_ptn = f"{misclf_type}_{fpfn}" if (fpfn is not None and misclf_type == "tgt") else misclf_type
     save_dir = os.path.join(pretrained_dir, f"misclf_top{tgt_rank}", f"{misclf_ptn}_repair_weight_by_de")
-    setting_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_{score_mode}_ours"
+    setting_id = f"n{wnum}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_{score_mode}_ours"
     return os.path.join(save_dir, f"exp-repair-7-1-best_patch_{setting_id}_reps{reps_id}.npy")
 
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--wnum", type=int, default=FIXED_WNUM,
+                    help="equal weight budget N_w (default 472; use 236 for the tight-budget ablation)")
+    cli = ap.parse_args()
+    wnum = cli.wnum
+
     ds_list          = ["c100", "tiny-imagenet"]
     k_list           = [0]
     tgt_rank_list    = [1, 2, 3]
@@ -51,17 +58,18 @@ if __name__ == "__main__":
             continue
 
         for reps_id in range(NUM_REPS):
-            patch_path = get_patch_path(ds, k, tgt_rank, misclf_type, fpfn, score_mode, reps_id)
+            patch_path = get_patch_path(ds, k, tgt_rank, misclf_type, fpfn, score_mode, reps_id, wnum)
             if os.path.exists(patch_path):
                 print(f"[SKIP] already exists: {patch_path}")
                 continue
             print(f"{'='*90}\nProcessing: ds={ds}, k={k}, tgt_rank={tgt_rank}, "
-                  f"misclf_type={misclf_type}, fpfn={fpfn}, score_mode={score_mode}, reps_id={reps_id}")
+                  f"misclf_type={misclf_type}, fpfn={fpfn}, score_mode={score_mode}, reps_id={reps_id}, wnum={wnum}")
             cmd = [
                 "python", "exp-repair-7-1-1.py",
                 ds, str(k), str(tgt_rank), str(reps_id),
                 "--score_mode", score_mode,
                 "--misclf_type", misclf_type,
+                "--wnum", str(wnum),
             ]
             if fpfn is not None:
                 cmd.extend(["--fpfn", fpfn])

@@ -2,12 +2,19 @@
 exp-repair-7-1-4.py  —  launcher for exp-repair-7-1-3.py (evaluation, Meta3 / RQ6)
 """
 import os
+import argparse
 import subprocess
 from itertools import product
 
 NUM_REPS = 5
 
 if __name__ == "__main__":
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--wnum", type=int, default=472,
+                    help="equal weight budget N_w (default 472; use 236 for the tight-budget ablation)")
+    cli = ap.parse_args()
+    wnum = cli.wnum
+
     ds_list          = ["c100", "tiny-imagenet"]
     k_list           = [0]
     tgt_rank_list    = [1, 2, 3]
@@ -37,6 +44,7 @@ if __name__ == "__main__":
                 "--score_mode", score_mode,
                 "--misclf_type", misclf_type,
                 "--tgt_split", tgt_split,
+                "--wnum", str(wnum),
             ]
             if fpfn is not None:
                 cmd.extend(["--fpfn", fpfn])

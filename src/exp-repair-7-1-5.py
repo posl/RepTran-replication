@@ -56,9 +56,15 @@ TGT_RANK_LIST = [1, 2, 3]
 MISCLF_LIST   = ["src_tgt", "tgt_fp", "tgt_fn"]
 
 # Condition -> (origin, short label).  Origin tells which JSON file to read.
-CONDITIONS = ["Full", "VDiff", "MisAct", "None"]
+# The meta-review asks to "isolate the contribution of the proposed neuron score"
+# (Full = VDiff x MisAct), so every contrast is Full-vs-{ablated component}: removing
+# MisAct (-> VDiff-only) or removing VDiff (-> MisAct-only). The no-score floor and the
+# equal-budget ArachneW comparison are already covered by RQ1/RQ3, so "None" (=ArachneW
+# bl) is intentionally excluded here. VDiff-only vs MisAct-only ("which component is
+# stronger") is a different question the reviewer did not ask, so it is excluded too.
+CONDITIONS = ["Full", "VDiff", "MisAct"]
 COND_LABEL = {"Full": "Full", "VDiff": "VDiff-only",
-              "MisAct": "MisAct-only", "None": "No-neuron-score"}
+              "MisAct": "MisAct-only"}
 
 # first element = DataFrame column name produced by collect_records (NOT the raw
 # JSON key, which is read directly via js.get() there); used by plot_ablation & run_stats.
@@ -67,11 +73,9 @@ METRIC_INFO = dict(
     BR=("BR_all", "Break Rate"),
 )
 
-# Paired contrasts (md: 4 contrasts)
-PAIRS = [("Full", "VDiff"),
-         ("Full", "MisAct"),
-         ("Full", "None"),
-         ("VDiff", "MisAct")]
+# Paired contrasts: Full vs each ablated component (isolate the proposed score).
+PAIRS = [("Full", "VDiff"),    # remove MisAct
+         ("Full", "MisAct")]   # remove VDiff
 
 
 def metrics_path(condition, save_dir, reps):
@@ -168,7 +172,7 @@ def run_stats(df: pd.DataFrame, ds: str) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def plot_ablation(df: pd.DataFrame, ds: str) -> str:
+def plot_ablation(df: pd.DataFrame, ds: str, suffix: str = "") -> str:
     """Per-benchmark + overall box plots of RR and BR for the 4 conditions."""
     sns.set(style="whitegrid", font_scale=0.85)
     hue_order = [COND_LABEL[c] for c in CONDITIONS]
@@ -195,7 +199,7 @@ def plot_ablation(df: pd.DataFrame, ds: str) -> str:
 
     fig.suptitle(f"Neuron-score component ablation — {ds}", fontsize=13)
     plt.tight_layout(rect=[0, 0, 1, 0.98])
-    out_pdf = f"exp-repair-7-1_{ds}_ablation_plots.pdf"
+    out_pdf = f"exp-repair-7-1_{ds}{suffix}_ablation_plots.pdf"
     plt.savefig(out_pdf, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"[INFO] plot saved to {out_pdf}")
@@ -203,13 +207,22 @@ def plot_ablation(df: pd.DataFrame, ds: str) -> str:
 
 
 if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--wnum", type=int, default=FIXED_WNUM,
+                    help="equal weight budget N_w (default 472; use 236 for the tight-budget ablation)")
+    cli = ap.parse_args()
+    FIXED_WNUM = cli.wnum  # rebinds module global; metrics_path()/plot title read it
+    # keep the existing 472 outputs intact; suffix non-default budgets
+    SUFFIX = "" if FIXED_WNUM == 472 else f"_n{FIXED_WNUM}"
+
     ds_list = ["c100", "tiny-imagenet"]
 
     for ds_arg in ds_list:
-        print(f"{'='*90}\nProcessing: dataset={ds_arg}")
+        print(f"{'='*90}\nProcessing: dataset={ds_arg} (N_w={FIXED_WNUM})")
 
         df_all = collect_records(ds_arg)
-        out_csv = f"exp-repair-7-1_{ds_arg}_{TGT_SPLIT}_results_all.csv"
+        out_csv = f"exp-repair-7-1_{ds_arg}{SUFFIX}_{TGT_SPLIT}_results_all.csv"
         df_all.to_csv(out_csv, index=False)
         print(f"[INFO] saved {out_csv}  ({len(df_all)} rows)")
 
@@ -218,10 +231,10 @@ if __name__ == "__main__":
                    .mean().reindex([COND_LABEL[c] for c in CONDITIONS]))
         print(summary.to_string())
 
-        plot_ablation(df_all, ds_arg)
+        plot_ablation(df_all, ds_arg, SUFFIX)
 
         stats_df = run_stats(df_all, ds_arg)
-        out_stats = f"exp-repair-7-1_{ds_arg}_{TGT_SPLIT}_stats.csv"
+        out_stats = f"exp-repair-7-1_{ds_arg}{SUFFIX}_{TGT_SPLIT}_stats.csv"
         stats_df.to_csv(out_stats, index=False)
         print(f"[INFO] stats saved to {out_stats}")
         print(stats_df.to_string(index=False))

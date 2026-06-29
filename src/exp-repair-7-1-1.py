@@ -68,6 +68,8 @@ if __name__ == "__main__":
                         help="neuron-score component to keep (vdiff=VDiff only, misact=MisAct only)")
     parser.add_argument("--misclf_type", type=str, default="tgt", choices=["src_tgt", "tgt"])
     parser.add_argument("--fpfn",      type=str,   default=None, choices=["fp", "fn"])
+    parser.add_argument("--wnum",      type=int,   default=FIXED_WNUM,
+                        help="equal weight budget N_w (default 472; use 236 for the tight-budget ablation)")
     args = parser.parse_args()
 
     ds_name     = args.ds
@@ -77,8 +79,9 @@ if __name__ == "__main__":
     score_mode  = args.score_mode
     misclf_type = args.misclf_type
     fpfn        = args.fpfn
+    wnum        = args.wnum
 
-    setting_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_{score_mode}_ours"
+    setting_id = f"n{wnum}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_{score_mode}_ours"
 
     pretrained_dir = getattr(ViTExperiment, ds_name.replace("-", "_")).OUTPUT_DIR.format(k=k)
 
@@ -105,7 +108,7 @@ if __name__ == "__main__":
     logger.info(f"ds={ds_name}, k={k}, tgt_rank={tgt_rank}, reps_id={reps_id}, "
                 f"score_mode={score_mode}, misclf_type={misclf_type}, fpfn={fpfn}")
     logger.info(f"setting_id={setting_id}, FIXED_ALPHA={FIXED_ALPHA:.6f} "
-                f"(alpha_in_arachne={ALPHA_IN_ARACHNE}), FIXED_WNUM={FIXED_WNUM}")
+                f"(alpha_in_arachne={ALPHA_IN_ARACHNE}), wnum={wnum}")
 
     # ── Dataset ──────────────────────────────────────────────────────────────
     if ds_name in ("c10", "tiny-imagenet"):
@@ -228,7 +231,7 @@ if __name__ == "__main__":
 
     # Top-N selection with default p (weight_grad_loss=weight_fwd_imp=0.5), matching exp-repair-4
     identified = calculate_top_n_flattened(
-        grad_loss_list, fwd_imp_list, n=FIXED_WNUM,
+        grad_loss_list, fwd_imp_list, n=wnum,
     )
     pos_before = identified["bef"]
     pos_after  = identified["aft"]
@@ -236,7 +239,7 @@ if __name__ == "__main__":
     # Save score_mode-specific location file for use by evaluation script (7-1-3.py)
     loc_save_path = os.path.join(
         location_save_dir,
-        f"exp-repair-7-1-location_n{FIXED_WNUM}_{score_mode}_weight_ours.npy"
+        f"exp-repair-7-1-location_n{wnum}_{score_mode}_weight_ours.npy"
     )
     np.save(loc_save_path, (pos_before, pos_after))
     logger.info(f"Saved score_mode-specific location to {loc_save_path}")

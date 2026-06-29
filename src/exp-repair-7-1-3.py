@@ -61,6 +61,8 @@ if __name__ == "__main__":
     parser.add_argument("--misclf_type", type=str, default="tgt", choices=["src_tgt", "tgt"])
     parser.add_argument("--fpfn",      type=str,   default=None, choices=["fp", "fn"])
     parser.add_argument("--tgt_split", type=str,   default="test", choices=["repair", "test"])
+    parser.add_argument("--wnum",      type=int,   default=FIXED_WNUM,
+                        help="equal weight budget N_w (default 472; use 236 for the tight-budget ablation)")
     args = parser.parse_args()
 
     ds_name     = args.ds
@@ -71,15 +73,16 @@ if __name__ == "__main__":
     misclf_type = args.misclf_type
     fpfn        = args.fpfn
     tgt_split   = args.tgt_split
+    wnum        = args.wnum
 
-    setting_id = f"n{FIXED_WNUM}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_{score_mode}_ours"
+    setting_id = f"n{wnum}_alpha{FIXED_ALPHA}_bounds{FIXED_BOUNDS}_{score_mode}_ours"
 
     pretrained_dir         = getattr(ViTExperiment, ds_name.replace("-", "_")).OUTPUT_DIR.format(k=k)
     location_save_dir, save_dir = get_dirs(pretrained_dir, tgt_rank, misclf_type, fpfn)
 
     location_path = os.path.join(
         location_save_dir,
-        f"exp-repair-7-1-location_n{FIXED_WNUM}_{score_mode}_weight_ours.npy"
+        f"exp-repair-7-1-location_n{wnum}_{score_mode}_weight_ours.npy"
     )
     patch_path = os.path.join(save_dir, f"exp-repair-7-1-best_patch_{setting_id}_reps{reps_id}.npy")
 
