@@ -63,6 +63,12 @@ cd /src/script
 python 007b_calc_vscore.py
 ```
 
+> **Terminology note (code ↔ paper).** The variance-based component computed here is
+> referred to as `vscore` in the implementation (e.g., `007b_calc_vscore.py`) but is
+> called **VDiff** in the paper. They denote the same quantity. The neuron score used for
+> weight selection is the product of this variance-based component and the activation-based
+> component (MisAct), i.e., **neuron score = VDiff × MisAct**.
+
 ---
 
 ### 🔍 1. Selection Phase
@@ -146,6 +152,116 @@ Based on the results obtained so far:
 cd /src/script
 python 400_run_summarize.py
 ```
+
+---
+
+### 🧪 5. Neuron-Score Component Ablation
+
+To isolate the contribution of each component of the neuron score (**VDiff × MisAct**) at a
+fixed weight budget, we additionally provide a component ablation. At a fixed budget `N_w`,
+three selection variants are compared (everything else identical: α = 10, Arachne bounds):
+
+| Variant | Neuron score used for selection |
+|---|---|
+| **Full** | `VDiff × MisAct` (= RepTran; reused from the main search results) |
+| **VDiff-only** | `VDiff` (MisAct set to a uniform 1) |
+| **MisAct-only** | `MisAct` (VDiff set to a uniform 1) |
+
+The ablation is reported at **`N_w = 236`** (the tight budget where selection quality is most
+consequential; at the larger `N_w = 472` the budget is ample enough that the selection
+criterion saturates and the variants coincide). Run the three steps from the core source
+directory:
+
+```bash
+cd /src/src
+python exp-repair-7-1-2.py --wnum 236   # 1. localization + DE search for VDiff-only / MisAct-only (180 runs; resumable)
+python exp-repair-7-1-4.py --wnum 236   # 2. evaluate the patched models on the test set
+python exp-repair-7-1-5.py --wnum 236   # 3. aggregate, run paired Wilcoxon + Cliff's delta, and plot
+```
+
+Step 3 produces, per dataset (`{c100, tiny-imagenet}`):
+- `exp-repair-7-1_{ds}_n236_test_results_all.csv` — raw RR/BR over the 9 benchmarks × 5 reps,
+- `exp-repair-7-1_{ds}_n236_test_stats.csv` — Cliff's δ and Holm-corrected *p* for the
+  contrasts **Full vs VDiff-only** and **Full vs MisAct-only** (per metric),
+- `exp-repair-7-1_{ds}_n236_ablation_plots.pdf` — per-benchmark RR/BR box plots.
+
+> Omitting `--wnum` defaults to `N_w = 472`; non-default budgets are written with an
+> `_n{N_w}` filename suffix so the two budgets do not overwrite each other.
+
+---
+
+### ⚖️ 6. Sensitivity to the Balance Parameter `p`
+
+The weight suspiciousness score balances the forward-impact and gradient-loss terms as
+`WeightSusp = p · ModFI + (1 − p) · ModGL` (Eq. 2), with `p = 0.5` by default. To check that
+RepTran is not sensitive to this choice, we re-run the full pipeline at **`p ∈ {0.1, 0.9}`**
+(the default `p = 0.5` is reused from the main results in Steps 2–3). This range **brackets** the
+`{0.25, 0.5, 0.75}` suggested in review, i.e., it is strictly wider. Run from the core source
+directory:
+
+```bash
+cd /src/src
+python exp-repair-6-1-2.py   # 1. localization + DE search at p in {0.1, 0.9} (p=0.5 reused from exp-repair-4-1)
+python exp-repair-6-1-4.py   # 2. evaluate the patched models on the test set
+python exp-repair-6-1-5.py   # 3. aggregate over p in {0.1, 0.5, 0.9}, run Kruskal-Wallis, and plot
+```
+
+Step 3 produces, per dataset (`{c100, tiny-imagenet}`):
+- `exp-repair-6-1_{ds}_test_results_all.csv` — RR/BR for each `p` over the 9 benchmarks × 5 reps,
+- `exp-repair-6-1_{ds}_test_kruskal_p.csv` — Kruskal-Wallis test across the three `p` values
+  (per metric),
+- `exp-repair-6-1_{ds}_test_p_lineplots.pdf` — RR/BR vs. `p` line plots.
+
+The Kruskal-Wallis tests find **no significant effect of `p`** on either RR or BR for either
+dataset, indicating that RepTran's effectiveness is robust to the value of `p`.
+
+---
+
+### 🪄 7. Comparison with PRoViT
+
+We additionally compare RepTran with **PRoViT**, the ViT-specific repair method, across its
+three variants. To make the comparison component-fair with RepTran (which edits the last
+encoder block's FFN), all three PRoViT variants are **targeted at the last-block FFN** rather
+than the classification head:
+
+| Variant | Mechanism | Target | Runs | Launcher |
+|---|---|---|---|---|
+| **PRoViTLP** | LP on the LayerNorm-linearised surrogate | `output.dense` (W_aft) | deterministic, 1 run | `exp-provit-2.py` |
+| **PRoViTFT** | Fine-tune the FFN until 100% efficacy | W_bef + W_aft | 9 × 5 reps | `exp-provit-ft-2.py` |
+| **PRoViTFT+LP** | One FT epoch, then LP fallback if efficacy < 100% | W_bef + W_aft → W_aft | 9 × 5 reps | `exp-provit-ft-lp-2.py` |
+
+Run each variant for both datasets (`fold 0`) from the core source directory:
+
+```bash
+cd /src/src
+# PRoViTLP (deterministic; the LP can hit its 30-min TimeLimit on Tiny-ImageNet, recorded as no_solution)
+python exp-provit-2.py c100 0
+python exp-provit-2.py tiny-imagenet 0
+
+# PRoViTFT (5 reps per benchmark; per-benchmark incremental save + resume)
+python exp-provit-ft-2.py c100 0
+python exp-provit-ft-2.py tiny-imagenet 0
+
+# PRoViTFT+LP (5 reps; --save-subdir provit_ft_lp_rerun also persists per-sample change sets and weights)
+python exp-provit-ft-lp-2.py c100 0 --save-subdir provit_ft_lp_rerun
+python exp-provit-ft-lp-2.py tiny-imagenet 0 --save-subdir provit_ft_lp_rerun
+```
+
+Results are written under each dataset's output directory:
+- `out_vit_<ds>_fold0/provit_lp_ffn/results_eps0.01.json` (PRoViTLP),
+- `out_vit_<ds>_fold0/provit_ft/results_lr0.001_tl1800.json` (PRoViTFT, merged over reps),
+- `out_vit_<ds>_fold0/provit_ft_lp_rerun/results_lr0.001_eps0.01.json` (PRoViTFT+LP, merged over reps).
+
+Notes:
+- The metric mapping is efficacy = repair-set accuracy, drawdown ≈ break rate (BR),
+  generalization ≈ repair rate (RR). RepTran edits only **472 weights (~0.01% of the FFN)**,
+  whereas the PRoViT variants edit ~2.36M (LP / FT+LP) or ~4.72M (FT) parameters.
+- The full 18-benchmark comparison (RR/BR and repair time, expressed relative to RepTran) is
+  provided in the replication package; the head-faithful LP variant (`exp-provit-lp-1.py`,
+  output `provit_lp/results_eps0.01.json`) is kept as a supplementary PRoViT-faithful reference.
+- A qualitative comparison (which faults each method repairs vs. breaks) is produced by
+  `exp-discuss-diff_cases_table.py` using the per-sample change sets saved by the
+  `provit_ft_lp_rerun` run above.
 
 ---
 
